@@ -30,6 +30,10 @@ identifier_name:
     - tv
     - id
 
+# A flat `switch` that maps one value to another is a table, not a tangle.
+cyclomatic_complexity:
+  ignores_case_statements: true
+
 large_tuple:
   warning: 3
   error: 4
