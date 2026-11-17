@@ -2,6 +2,7 @@ import Foundation
 import MediaCore
 import MediaLibrary
 import PlayerKit
+import StreamEngine
 
 /// The long-lived services the UI is built from. Created once by the app target.
 public struct AppDependencies: Sendable {
@@ -17,6 +18,8 @@ public struct AppDependencies: Sendable {
     /// Whether the player appears in the system's Now Playing display and answers media keys.
     /// Off for silent checks and tests, which must not take the user's media keys from their music.
     public let usesSystemNowPlaying: Bool
+    /// Plays torrents: the engine, the loopback server and the cache, started on first use.
+    public let streamManager: StreamManager
     /// Finds and downloads subtitles through installed add-ons.
     public let subtitleService: AddonSubtitleService
     /// Set when something went wrong during startup that the user should know about.
@@ -30,6 +33,7 @@ public struct AppDependencies: Sendable {
         defaultAddonAddresses: [String],
         playerConfiguration: PlayerConfiguration? = nil,
         usesSystemNowPlaying: Bool = false,
+        streamManager: StreamManager? = nil,
         subtitleHTTP: (any HTTPClient)? = nil,
         subtitleDirectory: URL? = nil,
         startupWarning: String? = nil
@@ -46,6 +50,14 @@ public struct AppDependencies: Sendable {
             logSubsystem: branding.bundleIdentifier
         )
         self.usesSystemNowPlaying = usesSystemNowPlaying
+        // Without a place of its own (tests, previews) streams stay on this machine and in a
+        // folder that is cleared with the temporary files.
+        self.streamManager = streamManager ?? StreamManager(
+            settings: .loopback(userAgent: branding.userAgent),
+            cache: StreamCache(directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("streams-\(UUID().uuidString)", isDirectory: true)),
+            logSubsystem: branding.bundleIdentifier
+        )
         subtitleService = AddonSubtitleService(
             client: addonClient,
             http: subtitleHTTP ?? URLSessionHTTPClient(userAgent: branding.userAgent),
@@ -62,16 +74,24 @@ public struct AppDependencies: Sendable {
     /// - Parameters:
     ///   - playsAudio: `false` discards the player's audio (used when checking the app silently).
     ///   - additionalEngineOptions: Extra playback-engine options (used for experiments).
+    ///   - profileDirectory: Keeps the database and caches in this folder instead of the user's
+    ///     own, so that a check can install add-ons and stream without touching their data.
+    ///   - streamsStayLocal: Keeps the stream engine to this machine (no trackers' peers, no
+    ///     hash table, no router). For checks.
     public static func live(
         branding: AppBranding,
         defaultAddonAddresses: [String],
         playsAudio: Bool = true,
-        additionalEngineOptions: [PlayerConfiguration.EngineOption] = []
+        additionalEngineOptions: [PlayerConfiguration.EngineOption] = [],
+        profileDirectory: URL? = nil,
+        streamsStayLocal: Bool = false
     ) -> AppDependencies {
         let files = FileManager.default
-        let support = files.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+        let support = profileDirectory?.appendingPathComponent("Support", isDirectory: true)
+            ?? files.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent(branding.bundleIdentifier, isDirectory: true)
-        let caches = files.urls(for: .cachesDirectory, in: .userDomainMask).first?
+        let caches = profileDirectory?.appendingPathComponent("Caches", isDirectory: true)
+            ?? files.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent(branding.bundleIdentifier, isDirectory: true)
 
         var warning: String?
@@ -120,6 +140,11 @@ public struct AppDependencies: Sendable {
                 additionalEngineOptions: additionalEngineOptions
             ),
             usesSystemNowPlaying: playsAudio,
+            streamManager: StreamManager(
+                settings: streamsStayLocal ? .loopback(userAgent: branding.userAgent) : TorrentEngineSettings(userAgent: branding.userAgent),
+                cache: StreamCache(directory: (caches ?? files.temporaryDirectory).appendingPathComponent("Streams", isDirectory: true)),
+                logSubsystem: branding.bundleIdentifier
+            ),
             subtitleHTTP: apiClient,
             subtitleDirectory: (caches ?? files.temporaryDirectory).appendingPathComponent("Subtitles", isDirectory: true),
             startupWarning: warning

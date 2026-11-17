@@ -67,6 +67,49 @@ public struct PlayableSource: Sendable, Hashable {
     }
 }
 
+/// How one source is to be opened, beyond its address.
+public struct PlaybackOptions: Sendable, Equatable {
+    /// Names under which track choices and the position are remembered, most specific first.
+    /// `nil` uses the file and its folder, or the stream's address.
+    public var memoryKeys: [String]?
+    /// Whether still frames are made for the seek bar. They need a second connection to the
+    /// source, which a stream that is still being fetched cannot spare.
+    public var generatesThumbnails: Bool
+    /// Extra HTTP headers the source's server needs, as an add-on may ask for.
+    public var httpHeaders: [String: String]
+    /// What to call it, when the caller knows better than the file's own name does.
+    public var title: String?
+
+    public init(
+        memoryKeys: [String]? = nil,
+        generatesThumbnails: Bool = true,
+        httpHeaders: [String: String] = [:],
+        title: String? = nil
+    ) {
+        self.title = title
+        self.memoryKeys = memoryKeys
+        self.generatesThumbnails = generatesThumbnails
+        self.httpHeaders = httpHeaders
+    }
+
+    /// The headers as the engine's per-file option, or `nil` when there are none to send.
+    ///
+    /// The engine takes a comma-separated list, so commas inside a value are escaped; the whole
+    /// value is passed with its length in front, which is how the engine is told where it ends.
+    /// Names and values that could break out of a header line are dropped.
+    var headerOption: String? {
+        let lines = httpHeaders.sorted { $0.key < $1.key }.compactMap { name, value -> String? in
+            let isValidName = !name.isEmpty && name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+            let isValidValue = !value.contains { $0.isNewline } && !value.contains("\0")
+            guard isValidName, isValidValue else { return nil }
+            return "\(name): \(value)".replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: ",", with: "\\,")
+        }
+        guard !lines.isEmpty else { return nil }
+        let list = lines.joined(separator: ",")
+        return "http-header-fields=%\(list.utf8.count)%\(list)"
+    }
+}
+
 /// How the playback engine is set up. Everything here is fixed for the life of one player.
 public struct PlayerConfiguration: Sendable, Equatable {
     public enum VideoOutput: Sendable, Equatable {

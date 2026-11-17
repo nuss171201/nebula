@@ -81,7 +81,7 @@ extension PlayerModel {
     }
 
     /// The names the open file's choices are remembered under.
-    var currentMemoryKeys: [String] {
+    public var currentMemoryKeys: [String] {
         guard let source else { return [] }
         return explicitMemoryKeys[source.engineArgument] ?? source.memoryKeys
     }

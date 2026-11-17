@@ -19,6 +19,9 @@
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -keys "]]l"   (plain keys, after 2 s)
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -subtitleSearch "a film's name"
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -window pictureInPicture   (or mini)
+    ///     open -g Orbit.app --args -profile /tmp/scratch -installNow http://127.0.0.1:8123/manifest.json -open movie:tt0063350
+    ///     open -g Orbit.app --args -silent YES -profile /tmp/scratch -open movie:tt0063350 -stream 0   (plays the first listed stream)
+    ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -episode tt0386676:1:1
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -26,6 +29,12 @@
         /// used for a check, so the app never makes a sound the user did not ask for.
         static var isSilent: Bool {
             UserDefaults.standard.bool(forKey: "silent")
+        }
+
+        /// `-profile <folder>`: keep the database and caches there instead of in the user's own
+        /// folders, so a check can install add-ons and stream without touching their data.
+        static var profileDirectory: URL? {
+            UserDefaults.standard.string(forKey: "profile").map { URL(fileURLWithPath: $0, isDirectory: true) }
         }
 
         /// `-engine "name=value,name=value"`: extra playback-engine options, for experiments.
@@ -45,6 +54,33 @@
                 // Stops at the confirmation sheet; nothing is installed without a click.
                 model.addons.addressInput = address
                 Task { await model.addons.fetchPendingInstall() }
+            }
+            if let address = defaults.string(forKey: "installNow"), profileDirectory != nil {
+                // Without the confirmation, and therefore only ever into a scratch profile.
+                Task {
+                    // The registry sets itself up (and installs the defaults) when the window appears.
+                    for _ in 0 ..< 100 where !model.registry.isReady {
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                    if let addon = try? await model.registry.preview(address: address) {
+                        try? await model.registry.install(addon)
+                    }
+                }
+            }
+            if let episode = defaults.string(forKey: "episode") {
+                // Once the detail page has had time to load: show this episode's streams.
+                Task {
+                    try? await Task.sleep(for: .seconds(3))
+                    model.showStreamsOfEpisode(withID: episode)
+                }
+            }
+            if defaults.object(forKey: "stream") != nil {
+                // Once the streams have had time to arrive: play the one at this place in the list.
+                let index = defaults.integer(forKey: "stream")
+                Task {
+                    try? await Task.sleep(for: .seconds(5))
+                    model.playListedStream(at: index)
+                }
             }
             // Not now: this runs while SwiftUI is still creating the app's state, and anything
             // that lays out a window from here (resizing the player's, for one) re-enters

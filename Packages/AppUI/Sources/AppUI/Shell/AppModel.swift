@@ -15,6 +15,7 @@ public final class AppModel {
     public let search: SearchModel
     public let addons: AddonsModel
     public let player: PlayerCoordinator
+    public let streamPlayer: StreamPlayer
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -39,6 +40,8 @@ public final class AppModel {
     @ObservationIgnored private let reportMilestone: @MainActor (LaunchMetrics.Milestone) -> TimeInterval?
     @ObservationIgnored private var reportedMilestones: Set<LaunchMetrics.Milestone> = []
     @ObservationIgnored private var hasStarted = false
+    /// The detail page opened most recently, while it is on screen.
+    @ObservationIgnored private weak var latestDetail: DetailModel?
 
     public init(
         dependencies: AppDependencies,
@@ -63,6 +66,7 @@ public final class AppModel {
             subtitleService: dependencies.subtitleService,
             usesSystemNowPlaying: dependencies.usesSystemNowPlaying
         )
+        streamPlayer = StreamPlayer(coordinator: player, manager: dependencies.streamManager)
         selection = initialSection
         currentSection = initialSection
         let subsystem = dependencies.branding.bundleIdentifier
@@ -89,6 +93,8 @@ public final class AppModel {
         }
         await registry.start()
         await dependencies.imagePipeline.trimDiskCache()
+        // What earlier sessions streamed is kept up to the cache's budget.
+        await dependencies.streamManager.trimCache()
     }
 
     /// Called when the root view first appears.
@@ -103,7 +109,34 @@ public final class AppModel {
     }
 
     public func detailModel(for route: MediaRoute) -> DetailModel {
-        DetailModel(route: route, client: dependencies.addonClient)
+        let model = DetailModel(
+            route: route,
+            client: dependencies.addonClient,
+            streamMemory: LibraryStreamChoiceMemory(store: dependencies.playbackMemory)
+        )
+        latestDetail = model
+        return model
+    }
+
+    /// Plays one of the streams listed on the detail page that was opened last, as a click on
+    /// it would. Returns whether there was such a stream. For checking the app without the pointer.
+    @discardableResult
+    public func playListedStream(at index: Int) -> Bool {
+        guard let detail = latestDetail, let video = detail.streamVideo, detail.streams.choices.indices.contains(index) else { return false }
+        let choice = detail.streams.choices[index]
+        detail.streams.didChoose(choice)
+        streamPlayer.play(choice, for: video)
+        return true
+    }
+
+    /// Shows the streams of an episode on the detail page that was opened last, as a click on it would.
+    @discardableResult
+    public func showStreamsOfEpisode(withID videoID: String) -> Bool {
+        guard let detail = latestDetail, let video = detail.meta?.videos.first(where: { $0.id == videoID }) else { return false }
+        if detail.selectedVideoID != videoID {
+            detail.toggleStreams(for: video)
+        }
+        return true
     }
 
     /// Pushes the installed add-ons to every screen now and again whenever they change.

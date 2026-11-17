@@ -181,3 +181,26 @@ struct ResumeEngineTests {
         #expect(await memory.positions[key] == 40)
     }
 }
+
+@Suite("How a source is opened")
+struct PlaybackOptionsTests {
+    @Test("Headers an add-on asks for become the engine's per-file option, escaped and with their length in front")
+    func headers() {
+        #expect(PlaybackOptions().headerOption == nil)
+        let plain = PlaybackOptions(httpHeaders: ["Referer": "https://example.com/"])
+        // 29 is the length in bytes of what follows the second "%".
+        #expect(plain.headerOption == "http-header-fields=%29%Referer: https://example.com/")
+
+        // Sorted by name; a comma inside a value is escaped so it does not start a new header.
+        let several = PlaybackOptions(httpHeaders: ["User-Agent": "Mozilla/5.0 (KHTML, like Gecko)", "Cookie": "a=b"])
+        let list = #"Cookie: a=b,User-Agent: Mozilla/5.0 (KHTML\, like Gecko)"#
+        #expect(several.headerOption == "http-header-fields=%\(list.utf8.count)%\(list)")
+    }
+
+    @Test("Headers that could smuggle in another line, or have no proper name, are dropped")
+    func unsafeHeaders() {
+        let options = PlaybackOptions(httpHeaders: ["X-Ok": "1", "X-Bad": "1\r\nHost: evil", "": "x", "Bad Name": "x", "X:Y": "x"])
+        #expect(options.headerOption == "http-header-fields=%7%X-Ok: 1")
+        #expect(PlaybackOptions(httpHeaders: ["X-Bad": "a\nb"]).headerOption == nil)
+    }
+}

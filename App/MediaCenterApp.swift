@@ -31,16 +31,21 @@ struct MediaCenterApp: App {
     private static func makeModel() -> AppModel {
         var playsAudio = true
         var engineOptions: [PlayerConfiguration.EngineOption] = []
+        var profile: URL?
         #if DEBUG
             playsAudio = !DebugLaunchOptions.isSilent
             engineOptions = DebugLaunchOptions.engineOptions
+            profile = DebugLaunchOptions.profileDirectory
         #endif
         let model = AppModel(
             dependencies: .live(
                 branding: Branding.current,
                 defaultAddonAddresses: DefaultAddons.addresses(in: .main),
                 playsAudio: playsAudio,
-                additionalEngineOptions: engineOptions
+                additionalEngineOptions: engineOptions,
+                profileDirectory: profile,
+                // A check with a scratch profile streams only between programs on this machine.
+                streamsStayLocal: profile != nil
             )
         )
         #if DEBUG

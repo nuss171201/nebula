@@ -73,10 +73,10 @@ public final class PlayerCoordinator {
         }
     }
 
-    public func play(_ source: PlayableSource) {
+    public func play(_ source: PlayableSource, options: PlaybackOptions = PlaybackOptions()) {
         errorMessage = nil
         if let controller {
-            controller.model.open(source)
+            controller.model.open(source, options: options)
             show(controller)
             return
         }
@@ -97,7 +97,7 @@ public final class PlayerCoordinator {
             }
             self.controller = controller
             isPlayerOpen = true
-            model.open(source)
+            model.open(source, options: options)
             show(controller)
         } catch {
             errorMessage = error.userMessage

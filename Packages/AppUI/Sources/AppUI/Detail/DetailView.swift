@@ -5,18 +5,24 @@ import SwiftUI
 struct DetailScreen: View {
     @State private var model: DetailModel
     private let registry: AddonRegistry
+    private let streamPlayer: StreamPlayer
     private let appIdentifier: String
 
     init(route: MediaRoute, appModel: AppModel) {
         _model = State(initialValue: appModel.detailModel(for: route))
         registry = appModel.registry
+        streamPlayer = appModel.streamPlayer
         appIdentifier = appModel.branding.bundleIdentifier
     }
 
     var body: some View {
-        DetailView(model: model, appIdentifier: appIdentifier) {
+        DetailView(model: model, appIdentifier: appIdentifier, playStream: { choice in
+            guard let video = model.streamVideo else { return }
+            model.streams.didChoose(choice)
+            streamPlayer.play(choice, for: video)
+        }, retry: {
             Task { await model.load(addons: registry.addons) }
-        }
+        })
         .task(id: registry.addons.map(\.id)) {
             await model.load(addons: registry.addons)
         }
@@ -26,6 +32,7 @@ struct DetailScreen: View {
 struct DetailView: View {
     @Bindable var model: DetailModel
     let appIdentifier: String
+    var playStream: (StreamChoice) -> Void = { _ in }
     let retry: () -> Void
 
     @State private var trailer: YouTubeVideoID?
@@ -46,6 +53,9 @@ struct DetailView: View {
                     }
                     credits
                     status
+                    if model.isSingleVideo {
+                        StreamListView(model: model.streams, play: playStream)
+                    }
                     videos
                 }
                 .padding(.horizontal, 28)
@@ -172,16 +182,37 @@ struct DetailView: View {
 
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(model.episodes) { episode in
-                        EpisodeRow(video: episode)
+                        episodeRow(episode)
                     }
                 }
             }
         } else if !model.looseVideos.isEmpty {
             LazyVStack(alignment: .leading, spacing: 12) {
                 ForEach(model.looseVideos) { video in
-                    EpisodeRow(video: video)
+                    episodeRow(video)
                 }
             }
+        }
+    }
+
+    /// An episode; clicking it shows its streams underneath.
+    @ViewBuilder
+    private func episodeRow(_ video: MetaVideo) -> some View {
+        let isSelected = model.selectedVideoID == video.id
+        Button {
+            model.toggleStreams(for: video)
+        } label: {
+            EpisodeRow(video: video)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(isSelected ? "Hides this episode's streams" : "Shows this episode's streams")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        if isSelected {
+            StreamListView(model: model.streams, play: playStream)
+                .padding(.leading, 190)
+                .padding(.bottom, 8)
         }
     }
 }

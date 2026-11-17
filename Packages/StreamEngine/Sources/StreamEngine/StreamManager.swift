@@ -84,6 +84,17 @@ public actor StreamManager {
         }
     }
 
+    /// Tells a torrent that is open, or being opened, about a peer directly, instead of waiting
+    /// for it to be discovered. Does nothing if the torrent is not there (yet).
+    public func connect(_ infoHash: String, toPeerAt address: String, port: Int) async {
+        await engine?.connect(infoHash, toPeerAt: address, port: port)
+    }
+
+    /// Whether the engine has been told about a torrent, open or still being found.
+    public func isFetching(_ infoHash: String) async -> Bool {
+        await engine?.activeTorrents.contains(infoHash) ?? false
+    }
+
     /// How a stream is doing: speed, peers, how much has arrived.
     public func status(of infoHash: String) async -> TorrentStatus? {
         await engine?.status(of: infoHash)

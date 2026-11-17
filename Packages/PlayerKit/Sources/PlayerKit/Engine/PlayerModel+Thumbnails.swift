@@ -19,7 +19,8 @@ public extension PlayerModel {
     /// length is known. These arrive one after another while a file opens, so a preview asked
     /// for too early must be asked for again when this turns true.
     var canPreviewFrames: Bool {
-        state.hasMedia && state.videoSize != nil && (state.duration ?? 0) > 0 && source != nil
+        guard let source, !sourcesWithoutThumbnails.contains(source.engineArgument) else { return false }
+        return state.hasMedia && state.videoSize != nil && (state.duration ?? 0) > 0
     }
 
     /// A small still frame near `seconds`, for the seek bar's hover preview. `nil` when

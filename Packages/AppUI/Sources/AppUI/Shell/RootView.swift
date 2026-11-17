@@ -13,6 +13,7 @@ public struct RootView: View {
     public var body: some View {
         @Bindable var search = model.search
         @Bindable var player = model.player
+        @Bindable var streamPlayer = model.streamPlayer
 
         NavigationSplitView {
             List(AppSection.allCases, selection: $model.selection) { section in
@@ -40,6 +41,12 @@ public struct RootView: View {
         .searchable(text: $search.query, placement: .toolbar, prompt: "Search")
         .sheet(isPresented: $player.isOpenLocationPresented) {
             OpenLocationView(coordinator: model.player)
+        }
+        .sheet(item: $streamPlayer.youTubeVideo) { video in
+            TrailerView(video: video, title: "", appIdentifier: model.branding.bundleIdentifier)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            StreamStatusBar(player: model.streamPlayer)
         }
         // Files and folders dropped anywhere on the window are played.
         .dropDestination(for: URL.self) { urls, _ in

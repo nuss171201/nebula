@@ -90,6 +90,10 @@ public final class PlayerModel {
     @ObservationIgnored let trackPreferences: TrackPreferences
     /// Memory keys given explicitly for a source (a series id, say), by engine argument.
     @ObservationIgnored var explicitMemoryKeys: [String: [String]] = [:]
+    /// Sources (by engine argument) for which no seek-bar stills are made.
+    @ObservationIgnored var sourcesWithoutThumbnails: Set<String> = []
+    /// Titles given by whoever opened a source (by engine argument), which win over the file's own.
+    @ObservationIgnored var givenTitles: [String: String] = [:]
     /// What is remembered for the file that is open, once it has been looked up.
     @ObservationIgnored var rememberedForCurrentFile = RememberedTracks()
     /// Counts files, so work started for one file is dropped if another has replaced it.
@@ -135,7 +139,10 @@ public final class PlayerModel {
 
     /// The media's own title once known, otherwise the file name or host.
     public var title: String {
-        state.title ?? source?.displayName ?? ""
+        if let source, let given = givenTitles[source.engineArgument] {
+            return given
+        }
+        return state.title ?? source?.displayName ?? ""
     }
 
     /// The position to show: where the user is dragging to, or the playhead.
@@ -160,8 +167,18 @@ public final class PlayerModel {
     /// Opens a source. `memoryKeys` says under which names track choices are remembered
     /// (most specific first); by default the file and its folder, or the stream's address.
     public func open(_ source: PlayableSource, memoryKeys: [String]? = nil) {
-        if let memoryKeys {
+        open(source, options: PlaybackOptions(memoryKeys: memoryKeys))
+    }
+
+    /// Opens a source with everything that can be said about how.
+    public func open(_ source: PlayableSource, options: PlaybackOptions) {
+        if let memoryKeys = options.memoryKeys {
             explicitMemoryKeys[source.engineArgument] = memoryKeys
+        }
+        givenTitles[source.engineArgument] = options.title
+        sourcesWithoutThumbnails.remove(source.engineArgument)
+        if !options.generatesThumbnails {
+            sourcesWithoutThumbnails.insert(source.engineArgument)
         }
         // Before the state is reset for the new file.
         savePosition()
@@ -174,7 +191,12 @@ public final class PlayerModel {
         // Until the new file shows what it is, it is treated as standard range.
         updateHDROutput()
         client.set("pause", to: .flag(false))
-        client.command(["loadfile", source.engineArgument, "replace"])
+        if let headers = options.headerOption {
+            // The fourth argument holds options for this file only; -1 is "no position in the queue".
+            client.command(["loadfile", source.engineArgument, "replace", "-1", headers])
+        } else {
+            client.command(["loadfile", source.engineArgument, "replace"])
+        }
     }
 
     public func setPaused(_ isPaused: Bool) {

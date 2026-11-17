@@ -63,6 +63,28 @@ public struct TorrentStatus: Sendable, Equatable {
     public var isFinished: Bool
     public var errorMessage: String?
 
+    public init(
+        hasMetadata: Bool,
+        downloadRate: Int,
+        uploadRate: Int,
+        peers: Int,
+        seeds: Int,
+        wantedBytes: Int64,
+        wantedBytesDone: Int64,
+        isFinished: Bool,
+        errorMessage: String?
+    ) {
+        self.hasMetadata = hasMetadata
+        self.downloadRate = downloadRate
+        self.uploadRate = uploadRate
+        self.peers = peers
+        self.seeds = seeds
+        self.wantedBytes = wantedBytes
+        self.wantedBytesDone = wantedBytesDone
+        self.isFinished = isFinished
+        self.errorMessage = errorMessage
+    }
+
     /// How much of the wanted file is there, 0 to 1.
     public var progress: Double {
         wantedBytes > 0 ? min(max(Double(wantedBytesDone) / Double(wantedBytes), 0), 1) : 0
