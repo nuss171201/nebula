@@ -1,0 +1,109 @@
+import Foundation
+
+/// Track switching, automatic selection when a file opens, and what is remembered between sessions.
+extension PlayerModel {
+    /// Switches to a track, or turns that kind of track off with `nil`. This is the user's
+    /// choice, so it is remembered for this title.
+    public func selectTrack(_ kind: MediaTrack.Kind, number: Int?) {
+        applyTrack(kind, number: number)
+        let track = state.tracks.first { $0.kind == kind && $0.number == number }
+        switch kind {
+        case .audio:
+            guard let track else { return }
+            rememberedForCurrentFile.audio = TrackDescriptor(track)
+        case .subtitle:
+            rememberedForCurrentFile.subtitle = track.map { .track(TrackDescriptor($0)) } ?? .off
+        case .video:
+            return
+        }
+        let (choice, keys) = (rememberedForCurrentFile, currentMemoryKeys)
+        Task { [memory] in
+            await memory?.remember(choice, for: keys)
+        }
+    }
+
+    func applyTrack(_ kind: MediaTrack.Kind, number: Int?) {
+        let property = switch kind {
+        case .video: "vid"
+        case .audio: "aid"
+        case .subtitle: "sid"
+        }
+        client.set(property, to: .string(number.map(String.init) ?? "no"))
+    }
+
+    /// The names the open file's choices are remembered under.
+    var currentMemoryKeys: [String] {
+        guard let source else { return [] }
+        return explicitMemoryKeys[source.engineArgument] ?? source.memoryKeys
+    }
+
+    /// When a file has loaded: look up what is remembered for it and pick its tracks.
+    func selectTracksForLoadedFile() {
+        fileGeneration += 1
+        let generation = fileGeneration
+        let keys = currentMemoryKeys
+        rememberedForCurrentFile = RememberedTracks()
+        selectionTask = Task { [weak self, memory] in
+            let remembered = await memory?.rememberedTracks(forAnyOf: keys)
+            guard let self, generation == fileGeneration else { return }
+            rememberedForCurrentFile = remembered ?? RememberedTracks()
+            let selection = TrackSelector.selection(tracks: state.tracks, preferences: trackPreferences, remembered: remembered)
+            if let audio = selection.audio, state.selectedTrack(of: .audio)?.number != audio {
+                applyTrack(.audio, number: audio)
+            }
+            switch selection.subtitle {
+            case .off where state.selectedTrack(of: .subtitle) != nil:
+                applyTrack(.subtitle, number: nil)
+            case let .track(number) where state.selectedTrack(of: .subtitle)?.number != number:
+                applyTrack(.subtitle, number: number)
+            default:
+                break
+            }
+        }
+    }
+
+    /// Waits for the automatic track selection of the open file. For tests.
+    func waitForTrackSelection() async {
+        await selectionTask?.value
+    }
+
+    func restore(_ volume: RememberedVolume) {
+        let level = min(max(volume.level, 0), 100)
+        state.volume = level
+        state.isMuted = volume.isMuted
+        client.set("volume", to: .double(level))
+        client.set("mute", to: .flag(volume.isMuted))
+    }
+
+    /// Saves the volume a moment after the last change, so dragging the slider writes once.
+    func rememberVolumeSoon() {
+        guard let memory else { return }
+        volumeSaveTask?.cancel()
+        let volume = RememberedVolume(level: state.volume, isMuted: state.isMuted)
+        volumeSaveTask = Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            await memory.remember(volume)
+        }
+    }
+
+    /// Waits for a pending volume save. For tests.
+    func waitForVolumeSave() async {
+        await volumeSaveTask?.value
+    }
+
+    /// Selects the next track of a kind, wrapping round; subtitles also pass through "off".
+    func cycleTrack(_ kind: MediaTrack.Kind) {
+        let tracks = state.tracks(of: kind)
+        guard !tracks.isEmpty else { return }
+        let current = tracks.firstIndex { $0.isSelected }
+        switch (kind, current) {
+        case (_, nil):
+            selectTrack(kind, number: tracks[0].number)
+        case let (.subtitle, index?) where index == tracks.count - 1:
+            selectTrack(kind, number: nil)
+        case let (_, index?):
+            selectTrack(kind, number: tracks[(index + 1) % tracks.count].number)
+        }
+    }
+}

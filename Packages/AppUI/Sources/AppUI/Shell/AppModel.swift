@@ -56,7 +56,10 @@ public final class AppModel {
         discover = DiscoverModel(client: client)
         search = SearchModel(client: client)
         addons = AddonsModel(registry: registry)
-        player = PlayerCoordinator(configuration: dependencies.playerConfiguration)
+        player = PlayerCoordinator(
+            configuration: dependencies.playerConfiguration,
+            memory: LibraryPlayerMemory(store: dependencies.playbackMemory, settings: dependencies.settings)
+        )
         selection = initialSection
         currentSection = initialSection
         let subsystem = dependencies.branding.bundleIdentifier
@@ -75,6 +78,9 @@ public final class AppModel {
         guard !hasStarted else { return }
         hasStarted = true
         observeAddons()
+        if let stored = try? await dependencies.settings.value(for: LibraryPlayerMemory.trackPreferencesKey) {
+            player.configuration.trackPreferences = stored
+        }
         await registry.start()
         await dependencies.imagePipeline.trimDiskCache()
     }

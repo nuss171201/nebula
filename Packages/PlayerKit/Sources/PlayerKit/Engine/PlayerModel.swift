@@ -10,9 +10,9 @@ import os
 public final class PlayerModel {
     public static let logCategory = "player"
 
-    public private(set) var state = PlaybackState()
+    public internal(set) var state = PlaybackState()
     /// What was asked to be opened most recently.
-    public private(set) var source: PlayableSource?
+    public internal(set) var source: PlayableSource?
     /// Time from `open` to the first frame of that file being shown.
     public private(set) var timeToFirstFrame: Duration?
     /// The position being dragged to on the seek bar, while the user is dragging.
@@ -45,24 +45,36 @@ public final class PlayerModel {
         }
     }
 
-    public private(set) var abLoop = ABLoop.off
+    public internal(set) var abLoop = ABLoop.off
 
     /// The view the video is drawn into; `nil` when the configuration has no video output.
     @ObservationIgnored public let surface: PlayerSurfaceView?
     /// Called once, after the engine has shut down.
     @ObservationIgnored public var onShutdown: (@MainActor () -> Void)?
 
-    @ObservationIgnored private let client: MPVClient
-    @ObservationIgnored private let logger: Logger
+    @ObservationIgnored let client: MPVClient
+    @ObservationIgnored let logger: Logger
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var openedAt: ContinuousClock.Instant?
     @ObservationIgnored private var hasShutDown = false
+    @ObservationIgnored let memory: (any PlayerMemory)?
+    @ObservationIgnored let trackPreferences: TrackPreferences
+    /// Memory keys given explicitly for a source (a series id, say), by engine argument.
+    @ObservationIgnored var explicitMemoryKeys: [String: [String]] = [:]
+    /// What is remembered for the file that is open, once it has been looked up.
+    @ObservationIgnored var rememberedForCurrentFile = RememberedTracks()
+    /// Counts files, so work started for one file is dropped if another has replaced it.
+    @ObservationIgnored var fileGeneration = 0
+    @ObservationIgnored var selectionTask: Task<Void, Never>?
+    @ObservationIgnored var volumeSaveTask: Task<Void, Never>?
     /// The last absolute seek asked for, until it is confirmed to have landed.
-    @ObservationIgnored private var unconfirmedSeek: (target: Double, retriesLeft: Int)?
+    @ObservationIgnored var unconfirmedSeek: (target: Double, retriesLeft: Int)?
 
-    public init(configuration: PlayerConfiguration) throws(PlayerEngineError) {
+    public init(configuration: PlayerConfiguration, memory: (any PlayerMemory)? = nil) throws(PlayerEngineError) {
         let logger = Logger(subsystem: configuration.logSubsystem, category: Self.logCategory)
         self.logger = logger
+        self.memory = memory
+        trackPreferences = configuration.trackPreferences
 
         let surface = configuration.videoOutput == .surface ? PlayerSurfaceView() : nil
         self.surface = surface
@@ -73,8 +85,13 @@ public final class PlayerModel {
             logger: logger
         )
 
+        state.volume = configuration.initialVolume
         let events = client.events
         eventTask = Task { [weak self] in
+            // Restore the volume before any event (and so before any sound) is handled.
+            if let volume = await memory?.rememberedVolume() {
+                self?.restore(volume)
+            }
             for await event in events {
                 self?.handle(event)
             }
@@ -100,14 +117,19 @@ public final class PlayerModel {
     }
 
     /// The selected video track's size in pixels, before any adjustment.
-    private var sourceVideoSize: CGSize? {
+    var sourceVideoSize: CGSize? {
         guard let track = state.selectedTrack(of: .video), let width = track.width, let height = track.height else { return nil }
         return CGSize(width: width, height: height)
     }
 
     // MARK: - Intents
 
-    public func open(_ source: PlayableSource) {
+    /// Opens a source. `memoryKeys` says under which names track choices are remembered
+    /// (most specific first); by default the file and its folder, or the stream's address.
+    public func open(_ source: PlayableSource, memoryKeys: [String]? = nil) {
+        if let memoryKeys {
+            explicitMemoryKeys[source.engineArgument] = memoryKeys
+        }
         self.source = source
         timeToFirstFrame = nil
         openedAt = .now
@@ -163,11 +185,13 @@ public final class PlayerModel {
         if clamped > 0, state.isMuted {
             setMuted(false)
         }
+        rememberVolumeSoon()
     }
 
     public func setMuted(_ isMuted: Bool) {
         state.isMuted = isMuted
         client.set("mute", to: .flag(isMuted))
+        rememberVolumeSoon()
     }
 
     public func toggleMute() {
@@ -177,102 +201,6 @@ public final class PlayerModel {
     /// Closes the current file but keeps the player ready for another.
     public func stop() {
         client.command(["stop"])
-    }
-
-    // MARK: - Tracks, chapters, queue
-
-    /// Switches to a track, or turns that kind of track off with `nil`.
-    public func selectTrack(_ kind: MediaTrack.Kind, number: Int?) {
-        let property = switch kind {
-        case .video: "vid"
-        case .audio: "aid"
-        case .subtitle: "sid"
-        }
-        client.set(property, to: .string(number.map(String.init) ?? "no"))
-    }
-
-    public func seek(toChapter index: Int) {
-        guard state.chapters.indices.contains(index) else { return }
-        client.set("chapter", to: .int(Int64(index)))
-    }
-
-    public func nextChapter() {
-        client.command(["add", "chapter", "1"])
-    }
-
-    public func previousChapter() {
-        client.command(["add", "chapter", "-1"])
-    }
-
-    /// Replaces the queue with these sources, in this order, and starts playing the one at `index`.
-    public func open(_ sources: [PlayableSource], startingAt index: Int = 0) {
-        guard !sources.isEmpty else { return }
-        let start = sources.indices.contains(index) ? index : 0
-        open(sources[start])
-        for source in sources[(start + 1)...] {
-            client.command(["loadfile", source.engineArgument, "append"])
-        }
-        // Items before the starting one are appended and then moved in front of it, in order.
-        let countFromStart = sources.count - start
-        for (offset, source) in sources[..<start].enumerated() {
-            client.command(["loadfile", source.engineArgument, "append"])
-            client.command(["playlist-move", String(countFromStart + offset), String(offset)])
-        }
-    }
-
-    /// Adds a source to the end of the queue without interrupting playback.
-    public func enqueue(_ source: PlayableSource) {
-        client.command(["loadfile", source.engineArgument, state.hasMedia || state.phase == .loading ? "append" : "append-play"])
-    }
-
-    public func playNext() {
-        client.command(["playlist-next", "weak"])
-    }
-
-    public func playPrevious() {
-        client.command(["playlist-prev", "weak"])
-    }
-
-    public func play(queueIndex index: Int) {
-        guard state.playlist.indices.contains(index) else { return }
-        client.command(["playlist-play-index", String(index)])
-    }
-
-    // MARK: - Stepping and looping
-
-    /// Advances one frame and pauses.
-    public func stepFrameForward() {
-        client.command(["frame-step"])
-    }
-
-    /// Goes back one frame and pauses.
-    public func stepFrameBackward() {
-        client.command(["frame-back-step"])
-    }
-
-    /// Marks the loop start, then the loop end, then clears the loop.
-    public func cycleABLoop() {
-        setABLoop(abLoop.advanced(at: state.position))
-    }
-
-    public func setABLoop(_ loop: ABLoop) {
-        abLoop = loop
-        for write in loop.engineWrites {
-            client.set(write.name, to: write.value)
-        }
-    }
-
-    // MARK: - Still frames
-
-    /// The current frame at the video's own resolution, with or without subtitles.
-    public func captureFrame(includingSubtitles: Bool) async -> CGImage? {
-        guard state.hasMedia else { return nil }
-        let client = client
-        let mode = includingSubtitles ? "subtitles" : "video"
-        let node = await Task.detached(priority: .userInitiated) {
-            client.commandResult(["screenshot-raw", mode])
-        }.value
-        return node.flatMap(FrameImage.make(from:))
     }
 
     /// Runs a command that only concerns playback. Window commands return `false`
@@ -301,21 +229,6 @@ public final class PlayerModel {
         default: return false
         }
         return true
-    }
-
-    /// Selects the next track of a kind, wrapping round; subtitles also pass through "off".
-    private func cycleTrack(_ kind: MediaTrack.Kind) {
-        let tracks = state.tracks(of: kind)
-        guard !tracks.isEmpty else { return }
-        let current = tracks.firstIndex { $0.isSelected }
-        switch (kind, current) {
-        case (_, nil):
-            selectTrack(kind, number: tracks[0].number)
-        case let (.subtitle, index?) where index == tracks.count - 1:
-            selectTrack(kind, number: nil)
-        case let (_, index?):
-            selectTrack(kind, number: tracks[(index + 1) % tracks.count].number)
-        }
     }
 
     /// Checks that an absolute seek landed where it was aimed, and repeats it once if not.
@@ -387,6 +300,8 @@ public final class PlayerModel {
             if abLoop != .off {
                 setABLoop(.off)
             }
+        case .fileLoaded:
+            selectTracksForLoadedFile()
         case let .property(.playlist(entries)):
             // The engine moved on by itself (next in queue): keep `source` pointing at what is playing.
             if let current = entries.first(where: \.isCurrent), current.location != source?.engineArgument,

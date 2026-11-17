@@ -107,6 +107,8 @@ public struct PlayerConfiguration: Sendable, Equatable {
     public var playsAudio: Bool
     /// The volume the player starts at, 0–100.
     public var initialVolume: Double
+    /// Which languages to pick for sound and subtitles when a file opens.
+    public var trackPreferences: TrackPreferences
     /// Further engine options, applied after the built-in ones so they can override them.
     /// Used for the user's own engine configuration and for experiments.
     public var additionalEngineOptions: [EngineOption]
@@ -140,6 +142,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         renderQuality: RenderQuality = .efficient,
         playsAudio: Bool = true,
         initialVolume: Double = 100,
+        trackPreferences: TrackPreferences = .system(),
         additionalEngineOptions: [EngineOption] = []
     ) {
         self.userAgent = userAgent
@@ -149,7 +152,18 @@ public struct PlayerConfiguration: Sendable, Equatable {
         self.renderQuality = renderQuality
         self.playsAudio = playsAudio
         self.initialVolume = min(max(initialVolume, 0), 100)
+        self.trackPreferences = trackPreferences
         self.additionalEngineOptions = additionalEngineOptions
+    }
+
+    /// Each language as both its two- and three-letter code, which is how files tag them.
+    static func engineLanguageList(_ languages: [String]) -> String {
+        var seen = Set<String>()
+        return languages
+            .compactMap(LanguageMatcher.canonical)
+            .flatMap { [$0, Locale.LanguageCode($0).identifier(.alpha3) ?? $0] }
+            .filter { seen.insert($0).inserted }
+            .joined(separator: ",")
     }
 
     /// The engine options this configuration translates to, in the order they are applied.
@@ -194,6 +208,11 @@ public struct PlayerConfiguration: Sendable, Equatable {
         }
         if !playsAudio {
             options.append(("ao", "null"))
+        }
+        // A first guess for the engine, so the right track usually plays from the first sample.
+        // The app's own selection (TrackSelector) runs when the file has loaded and has the last word.
+        if !trackPreferences.audioLanguages.isEmpty {
+            options.append(("alang", Self.engineLanguageList(trackPreferences.audioLanguages)))
         }
         options += additionalEngineOptions.map { ($0.name, $0.value) }
         return options

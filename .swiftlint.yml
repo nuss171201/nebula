@@ -21,7 +21,7 @@ opt_in_rules:
   - implicitly_unwrapped_optional
 
 line_length:
-  warning: 140
+  warning: 160
   error: 200
   ignores_comments: true
 

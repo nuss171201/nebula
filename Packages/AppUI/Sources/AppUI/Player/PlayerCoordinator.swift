@@ -16,13 +16,18 @@ public final class PlayerCoordinator {
     /// Drives the "Open Location" sheet.
     public var isOpenLocationPresented = false
 
-    @ObservationIgnored private let configuration: PlayerConfiguration
+    /// How new players are set up. The app updates this once stored preferences are loaded.
+    @ObservationIgnored public var configuration: PlayerConfiguration
+    @ObservationIgnored private let memory: (any PlayerMemory)?
     @ObservationIgnored private let presentsWindow: Bool
     @ObservationIgnored private var controller: PlayerWindowController?
 
-    /// - Parameter presentsWindow: `false` keeps the player window off screen. For tests.
-    public init(configuration: PlayerConfiguration, presentsWindow: Bool = true) {
+    /// - Parameters:
+    ///   - memory: Where track choices and volume are remembered; `nil` remembers nothing.
+    ///   - presentsWindow: `false` keeps the player window off screen. For tests.
+    public init(configuration: PlayerConfiguration, memory: (any PlayerMemory)? = nil, presentsWindow: Bool = true) {
         self.configuration = configuration
+        self.memory = memory
         self.presentsWindow = presentsWindow
     }
 
@@ -62,7 +67,7 @@ public final class PlayerCoordinator {
             return
         }
         do {
-            let model = try PlayerModel(configuration: configuration)
+            let model = try PlayerModel(configuration: configuration, memory: memory)
             let controller = PlayerWindowController(model: model)
             controller.onClose = { [weak self] in
                 self?.controller = nil

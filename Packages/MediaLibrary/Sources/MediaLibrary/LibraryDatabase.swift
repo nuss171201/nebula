@@ -60,6 +60,15 @@ public struct LibraryDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v3-playback-memory") { db in
+            try db.create(table: "playbackMemory") { table in
+                // A caller-defined name: "file:/path", "folder:/path", "series:tt123", …
+                table.primaryKey("key", .text)
+                table.column("value", .text).notNull()
+                table.column("updatedAt", .datetime).notNull()
+            }
+        }
+
         return migrator
     }
 }
