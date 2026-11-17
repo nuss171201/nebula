@@ -34,7 +34,23 @@ struct LibraryPlayerMemory: PlayerMemory {
         try? await settings.set(volume, for: Self.volumeKey)
     }
 
+    func rememberedPosition(for key: String) async -> Double? {
+        try? await store.value(forAnyOf: [Self.positionKey(key)], as: Double.self)
+    }
+
+    func remember(position: Double?, for key: String) async {
+        if let position {
+            try? await store.set(position, for: [Self.positionKey(key)])
+        } else {
+            try? await store.remove(keys: [Self.positionKey(key)])
+        }
+    }
+
     private static func trackKey(_ key: String) -> String {
         "tracks|" + key
+    }
+
+    private static func positionKey(_ key: String) -> String {
+        "position|" + key
     }
 }

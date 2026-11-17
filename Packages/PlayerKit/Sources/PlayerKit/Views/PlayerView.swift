@@ -8,19 +8,24 @@ public struct PlayerView: View {
     private let model: PlayerModel
     @Bindable private var chrome: PlayerChromeModel
     private let onlineSubtitles: OnlineSubtitlesModel?
+    private let openURLs: ([URL]) -> Void
     private let perform: (PlayerCommand) -> Void
 
-    /// - Parameter perform: Runs a command through the window, which handles the ones that
-    ///   concern it (full screen, window modes) and passes the rest to the player.
+    /// - Parameters:
+    ///   - openURLs: Called with files and folders dropped on the player.
+    ///   - perform: Runs a command through the window, which handles the ones that concern it
+    ///     (full screen, window modes) and passes the rest to the player.
     public init(
         model: PlayerModel,
         chrome: PlayerChromeModel,
         onlineSubtitles: OnlineSubtitlesModel? = nil,
+        openURLs: @escaping ([URL]) -> Void = { _ in },
         perform: @escaping (PlayerCommand) -> Void
     ) {
         self.model = model
         self.chrome = chrome
         self.onlineSubtitles = onlineSubtitles
+        self.openURLs = openURLs
         self.perform = perform
     }
 
@@ -37,6 +42,13 @@ public struct PlayerView: View {
         }
         // The content runs under the title bar.
         .ignoresSafeArea()
+        // Media dropped here plays; a subtitle file is added to what is playing.
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter(\.isFileURL)
+            guard !files.isEmpty else { return false }
+            openURLs(files)
+            return true
+        }
         .onContinuousHover { phase in
             if case .active = phase {
                 chrome.userDidInteract()

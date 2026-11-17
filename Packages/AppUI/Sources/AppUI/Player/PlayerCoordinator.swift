@@ -92,12 +92,50 @@ public final class PlayerCoordinator {
                 self?.controller = nil
                 self?.isPlayerOpen = false
             }
+            controller.onOpenURLs = { [weak self] urls in
+                Task { await self?.open(urls: urls) }
+            }
             self.controller = controller
             isPlayerOpen = true
             model.open(source)
             show(controller)
         } catch {
             errorMessage = error.userMessage
+        }
+    }
+
+    /// Opens what the user chose, dropped or sent from Finder: media files play (several as a
+    /// queue, folders searched for media), and subtitle files are added to the open video.
+    /// Returns whether anything could be used.
+    @discardableResult
+    public func open(urls: [URL]) async -> Bool {
+        // Looking through folders can take a while on a slow disk.
+        let selection = await Task.detached(priority: .userInitiated) {
+            MediaFiles.selection(from: urls)
+        }.value
+        let sources = selection.media.compactMap { try? PlayableSource(url: $0) }
+        if !sources.isEmpty {
+            play(sources)
+        }
+        if let player, !selection.subtitles.isEmpty {
+            for file in selection.subtitles {
+                await player.addSubtitle(fileURL: file)
+            }
+        } else if sources.isEmpty {
+            errorMessage = selection.subtitles.isEmpty
+                ? "There was nothing there that can be played."
+                : "Open a video first, then add subtitles to it."
+            return false
+        }
+        return true
+    }
+
+    /// Plays several sources as a queue, starting with the first.
+    public func play(_ sources: [PlayableSource]) {
+        guard let first = sources.first else { return }
+        play(first)
+        if sources.count > 1 {
+            controller?.model.open(sources)
         }
     }
 
@@ -179,17 +217,18 @@ public final class PlayerCoordinator {
         controller?.close()
     }
 
-    /// Shows the standard Open panel and plays the chosen file.
+    /// Shows the standard Open panel and plays what is chosen: one file, several, or folders.
     public func chooseFile() {
         let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
         panel.allowedContentTypes = Self.playableTypes
-        panel.message = "Choose a video or audio file to play."
+        panel.message = "Choose video or audio files, or a folder of them, to play."
         panel.begin { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
+            guard response == .OK else { return }
+            let urls = panel.urls
             Task { @MainActor in
-                self?.play(fileURL: url)
+                await self?.open(urls: urls)
             }
         }
     }

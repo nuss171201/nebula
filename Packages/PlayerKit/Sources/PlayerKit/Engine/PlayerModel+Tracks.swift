@@ -109,6 +109,8 @@ extension PlayerModel {
             default:
                 break
             }
+            // After the tracks: switching track makes the engine re-read the file around the playhead.
+            await restorePosition(generation: generation)
         }
     }
 

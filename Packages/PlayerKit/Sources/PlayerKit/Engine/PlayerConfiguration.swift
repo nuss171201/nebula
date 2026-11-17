@@ -113,6 +113,8 @@ public struct PlayerConfiguration: Sendable, Equatable {
     public var screenshotDirectory: URL
     /// Converts audio the engine cannot decode; `nil` when no ffmpeg program is available.
     public var audioTranscoder: AudioTranscoder?
+    /// Whether a file opens where it was left last time, and where it is left is remembered.
+    public var resumesPlayback: Bool
     /// Further engine options, applied after the built-in ones so they can override them.
     /// Used for the user's own engine configuration and for experiments.
     public var additionalEngineOptions: [EngineOption]
@@ -156,6 +158,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         trackPreferences: TrackPreferences = .system(),
         screenshotDirectory: URL = PlayerConfiguration.defaultScreenshotDirectory,
         audioTranscoder: AudioTranscoder? = .locate(),
+        resumesPlayback: Bool = true,
         additionalEngineOptions: [EngineOption] = []
     ) {
         self.userAgent = userAgent
@@ -168,6 +171,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         self.trackPreferences = trackPreferences
         self.screenshotDirectory = screenshotDirectory
         self.audioTranscoder = audioTranscoder
+        self.resumesPlayback = resumesPlayback
         self.additionalEngineOptions = additionalEngineOptions
     }
 

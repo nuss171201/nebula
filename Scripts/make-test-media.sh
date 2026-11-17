@@ -20,6 +20,7 @@
 #                             s:1 SubRip      lang=eng
 #   external-subs.en.srt    External subtitle file matching multi-track.mkv.
 #   audio-only.m4a          AAC stereo with a title and an artist and no picture: the mini player's case.
+#   long-low-res.mp4        90 seconds of small H.264 + AAC: long enough to have a middle worth resuming in.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -57,6 +58,14 @@ if needs hdr10-hevc-4k60.mkv; then
         -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc \
         -c:a aac -b:a 128k -ac 2 -metadata:s:a:0 language=eng \
         "$OUT/hdr10-hevc-4k60.mkv"
+fi
+
+if needs long-low-res.mp4; then
+    echo "==> long-low-res.mp4"
+    "${FF[@]}" -f lavfi -i "testsrc2=size=320x180:rate=12:duration=90" \
+        -f lavfi -i "sine=frequency=494:sample_rate=48000:duration=90" \
+        -c:v libx264 -preset veryfast -crf 28 -g 24 -pix_fmt yuv420p \
+        -c:a aac -b:a 64k -ac 2 -movflags +faststart "$OUT/long-low-res.mp4"
 fi
 
 if needs audio-only.m4a; then

@@ -17,9 +17,10 @@ enum TestMedia {
     static let hdr = directory.appending(path: "hdr10-hevc-4k60.mkv")
     static let multiTrack = directory.appending(path: "multi-track.mkv")
     static let audioOnly = directory.appending(path: "audio-only.m4a")
+    static let long = directory.appending(path: "long-low-res.mp4")
 
     static var isAvailable: Bool {
-        [sdr, hdr, multiTrack, audioOnly].allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
+        [sdr, hdr, multiTrack, audioOnly, long].allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
     }
 }
 

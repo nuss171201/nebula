@@ -41,6 +41,18 @@ public struct RootView: View {
         .sheet(isPresented: $player.isOpenLocationPresented) {
             OpenLocationView(coordinator: model.player)
         }
+        // Files and folders dropped anywhere on the window are played.
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter(\.isFileURL)
+            guard !files.isEmpty else { return false }
+            Task { await model.player.open(urls: files) }
+            return true
+        }
+        .alert("Cannot Play", isPresented: playbackErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.player.errorMessage ?? "")
+        }
         .environment(\.imagePipeline, model.dependencies.imagePipeline)
         .frame(minWidth: 900, minHeight: 560)
         .onAppear {
@@ -48,6 +60,18 @@ public struct RootView: View {
         }
         .task {
             await model.start()
+        }
+    }
+
+    /// Problems opening something from Finder, a drop or the Open panel. The Open Location
+    /// sheet shows its own.
+    private var playbackErrorBinding: Binding<Bool> {
+        Binding {
+            model.player.errorMessage != nil && !model.player.isOpenLocationPresented
+        } set: { isPresented in
+            if !isPresented {
+                model.player.errorMessage = nil
+            }
         }
     }
 

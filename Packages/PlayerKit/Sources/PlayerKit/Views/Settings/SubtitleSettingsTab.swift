@@ -72,14 +72,12 @@ struct SubtitleSettingsTab: View {
         }
     }
 
-    /// Formats the engine reads; anything else is greyed out in the panel.
-    static let subtitleFileExtensions = ["srt", "ass", "ssa", "vtt", "sub", "idx", "sup", "smi", "lrc", "ttml", "mks"]
-
     private func chooseFile() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = Self.subtitleFileExtensions.compactMap { UTType(filenameExtension: $0) }
+        // Anything else is greyed out in the panel.
+        panel.allowedContentTypes = MediaFiles.subtitleExtensions.sorted().compactMap { UTType(filenameExtension: $0) }
         panel.message = "Choose a subtitle file for this video."
         // Start where the video is: that is where its subtitles usually are.
         if let source = model.source, source.isLocalFile {

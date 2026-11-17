@@ -67,6 +67,44 @@ struct PlayerCoordinatorTests {
         #expect(coordinator.player == nil)
     }
 
+    @Test(
+        "Several files and folders open as a queue; subtitle files join the open video; anything else is refused in words",
+        .enabled(if: FileManager.default.fileExists(atPath: sampleFile.path), "run Scripts/make-test-media.sh first")
+    )
+    func opensSelections() async throws {
+        let media = sampleFile.deletingLastPathComponent()
+        let coordinator = makeCoordinator()
+
+        // A subtitle file with nothing to add it to, and a file that is not media.
+        #expect(await coordinator.open(urls: [media.appending(path: "external-subs.en.srt")]) == false)
+        #expect(coordinator.errorMessage == "Open a video first, then add subtitles to it.")
+        #expect(await coordinator.open(urls: [URL(filePath: #filePath)]) == false)
+        #expect(coordinator.errorMessage == "There was nothing there that can be played.")
+        #expect(!coordinator.isPlayerOpen)
+
+        // Two files: a queue of two, the first playing.
+        #expect(await coordinator.open(urls: [sampleFile, media.appending(path: "multi-track.mkv")]))
+        #expect(coordinator.errorMessage == nil)
+        let player = try #require(coordinator.player)
+        #expect(await eventually { player.state.playlist.count == 2 && player.state.phase == .playing })
+        #expect(player.state.playlist.map(\.displayName) == ["sdr-h264-1080p.mp4", "multi-track.mkv"])
+        #expect(await eventually { player.state.playlist.first?.isCurrent == true })
+
+        // A subtitle file now joins what is playing.
+        #expect(await eventually { player.state.hasShownFirstFrame })
+        #expect(await coordinator.open(urls: [media.appending(path: "external-subs.en.srt")]))
+        #expect(await eventually { player.state.selectedTrack(of: .subtitle)?.isExternal == true })
+        #expect(player.state.playlist.count == 2)
+
+        // A folder: everything playable in it, in name order.
+        #expect(await coordinator.open(urls: [media]))
+        #expect(await eventually { player.state.playlist.count >= 4 })
+        let names = player.state.playlist.map(\.displayName)
+        #expect(names == names.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
+        #expect(!names.contains("external-subs.en.srt"))
+        coordinator.closePlayer()
+    }
+
     @Test("The Open panel offers video and audio, including containers the system has no type for")
     func playableTypes() {
         let extensions = Set(PlayerCoordinator.playableTypes.compactMap(\.preferredFilenameExtension))

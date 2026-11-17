@@ -22,6 +22,18 @@ public protocol PlayerMemory: Sendable {
     func remember(_ tracks: RememberedTracks, for keys: [String]) async
     func rememberedVolume() async -> RememberedVolume?
     func remember(_ volume: RememberedVolume) async
+    /// Where the user stopped watching the thing stored under `key`, in seconds.
+    func rememberedPosition(for key: String) async -> Double?
+    /// Stores where the user stopped; `nil` forgets it (the file was watched to the end).
+    func remember(position: Double?, for key: String) async
+}
+
+public extension PlayerMemory {
+    func rememberedPosition(for _: String) async -> Double? {
+        nil
+    }
+
+    func remember(position _: Double?, for _: String) async {}
 }
 
 public extension PlayableSource {

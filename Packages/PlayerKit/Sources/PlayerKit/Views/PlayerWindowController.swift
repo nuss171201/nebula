@@ -77,6 +77,8 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
     public let model: PlayerModel
     /// Called after the window has closed and the player has been told to shut down.
     public var onClose: (@MainActor () -> Void)?
+    /// Called with files and folders dropped on the player.
+    public var onOpenURLs: (@MainActor ([URL]) -> Void)?
 
     let window: PlayerWindow
     /// Which of the window's controls and panels are showing.
@@ -132,9 +134,13 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.contentMinSize = Self.minimumSize
         window.delegate = self
-        window.contentView = NSHostingView(rootView: PlayerView(model: model, chrome: chrome, onlineSubtitles: onlineSubtitles) { [weak self] in
-            self?.perform($0)
-        })
+        window.contentView = NSHostingView(rootView: PlayerView(
+            model: model,
+            chrome: chrome,
+            onlineSubtitles: onlineSubtitles,
+            openURLs: { [weak self] in self?.onOpenURLs?($0) },
+            perform: { [weak self] in self?.perform($0) }
+        ))
         window.setContentSize(Self.initialSize)
         window.center()
         connectInput(nowPlaying: center)

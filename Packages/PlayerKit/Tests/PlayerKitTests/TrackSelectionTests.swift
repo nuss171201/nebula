@@ -165,9 +165,19 @@ struct TrackSelectionTests {
 actor FakePlayerMemory: PlayerMemory {
     private(set) var tracks: [String: RememberedTracks] = [:]
     private(set) var volume: RememberedVolume?
+    private(set) var positions: [String: Double] = [:]
 
-    init(volume: RememberedVolume? = nil) {
+    init(volume: RememberedVolume? = nil, positions: [String: Double] = [:]) {
         self.volume = volume
+        self.positions = positions
+    }
+
+    func rememberedPosition(for key: String) async -> Double? {
+        positions[key]
+    }
+
+    func remember(position: Double?, for key: String) async {
+        positions[key] = position
     }
 
     func rememberedTracks(forAnyOf keys: [String]) async -> RememberedTracks? {

@@ -82,6 +82,8 @@ public final class PlayerModel {
     @ObservationIgnored var noticeCount = 0
     @ObservationIgnored let audioTranscoder: AudioTranscoder?
     @ObservationIgnored var audioFallback = AudioFallbackState()
+    @ObservationIgnored var resume = ResumeState()
+    @ObservationIgnored let resumesPlayback: Bool
     @ObservationIgnored var thumbnailGenerator: ThumbnailGenerator?
     @ObservationIgnored var thumbnailCache: [Int: CGImage] = [:]
     @ObservationIgnored let memory: (any PlayerMemory)?
@@ -104,6 +106,7 @@ public final class PlayerModel {
         userAgent = configuration.userAgent
         screenshotDirectory = configuration.screenshotDirectory
         audioTranscoder = configuration.audioTranscoder
+        resumesPlayback = configuration.resumesPlayback
         trackPreferences = configuration.trackPreferences
 
         let surface = configuration.videoOutput == .surface ? PlayerSurfaceView() : nil
@@ -160,6 +163,9 @@ public final class PlayerModel {
         if let memoryKeys {
             explicitMemoryKeys[source.engineArgument] = memoryKeys
         }
+        // Before the state is reset for the new file.
+        savePosition()
+        resume = ResumeState()
         self.source = source
         timeToFirstFrame = nil
         openedAt = .now
@@ -280,6 +286,7 @@ public final class PlayerModel {
     public func shutdown() {
         guard !hasShutDown else { return }
         hasShutDown = true
+        savePosition()
         discardThumbnails()
         resetAudioFallback()
         client.quit()
@@ -304,6 +311,11 @@ public final class PlayerModel {
 
     private func handle(_ event: PlayerEvent) {
         let previousSourceSize = sourceVideoSize
+        if event == .startedLoading {
+            // The engine is moving on by itself (next in queue): note where this file was left.
+            savePosition()
+            resume = ResumeState()
+        }
         state.apply(event)
         // The surface shows the part of its canvas the video occupies, so it needs the video's size.
         updateSurfaceGeometry()
@@ -332,6 +344,10 @@ public final class PlayerModel {
             }
         case .property(.tracks):
             checkAudioDecoding()
+        case .property(.position):
+            savePositionIfDue()
+        case .property(.paused(true)), .ended(.reachedEnd), .property(.reachedEnd(true)):
+            savePosition()
         case .playbackRestarted:
             confirmSeek()
             checkAudioDecoding()
