@@ -24,6 +24,15 @@ let package = Package(
             dependencies: ["MediaCore", "MediaLibrary", "StreamEngine", "PlayerKit"],
             swiftSettings: strictSettings
         ),
-        .testTarget(name: "AppUITests", dependencies: ["AppUI"], swiftSettings: strictSettings),
+        .testTarget(
+            name: "AppUITests",
+            dependencies: [
+                "AppUI",
+                "MediaCore",
+                "MediaLibrary",
+                .product(name: "AddonTestSupport", package: "MediaCore"),
+            ],
+            swiftSettings: strictSettings
+        ),
     ]
 )
