@@ -30,6 +30,8 @@ The full product spec is the original brief; this file is the working reference.
 xcodegen generate                 # regenerate MediaCenter.xcodeproj (not committed)
 Scripts/ci.sh                     # format check + lint + Debug build (warnings = errors) + all tests
 Scripts/ci.sh --release           # the above + universal Release build (arm64 + x86_64)
+Scripts/package.sh                # ci.sh --release, then build/dist/<name>-<version>.dmg (signed .app inside); --skip-ci to reuse the build
+SIGN_IDENTITY="Developer ID Application: … (TEAMID)" NOTARY_PROFILE=<keychain profile> Scripts/package.sh   # for other people's Macs
 swiftformat .                     # apply formatting
 
 # One package, fast (no Xcode project needed):
@@ -40,6 +42,7 @@ cd Packages/AppUI && LIVE_ADDON_TESTS=1 swift test --filter LiveSubtitleServiceT
 # Prerequisites that ci.sh runs for you (both skip work that is already done):
 Scripts/build-mpv-framework.sh    # Packages/PlayerKit/Vendor/Libmpv.xcframework from Config/mpv-libraries.lock
 Scripts/build-torrent-framework.sh  # Packages/StreamEngine/Vendor/Libtorrent.xcframework from Config/torrent-libraries.lock (needs cmake, ninja)
+Scripts/collect-licenses.sh       # Vendor/Licenses/ from Config/licenses.lock (hash-verified); bundled as Resources/Licenses
 Scripts/make-test-media.sh        # TestMedia/: 1080p H.264, 4K HDR10 HEVC, multi-track MKV, external subs
 
 # Looking at the running app without taking focus (Debug build):
@@ -89,6 +92,7 @@ two seconds after launch: the only way to check a binding and its on-screen noti
 `-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
 `-window pictureInPicture|mini` puts the player window in that mode.
 `-settings general|playback|streaming|shortcuts|advanced` opens the Settings window on that tab.
+`-acknowledgements YES` opens the Acknowledgements window.
 `-autoscroll <seconds>` scrolls the screen's list by itself (`App/DebugAutoscroll.swift`), `-scrollSpeed <pt/s>`;
 `-stats <seconds>` logs dropped and late frames and the buffered duration that long after launch.
 `-profile <folder>` keeps the database and caches in a scratch folder and keeps the stream engine to
@@ -145,7 +149,7 @@ App/ (target MediaCenter)   entry point + composition root + Branding. No featur
   made sync-ready (`updatedAt` on synced rows). Migrations live in `LibraryDatabase.migrator`; never edit
   one that has shipped.
 - **Distribution:** outside the App Store. Hardened runtime on, App Sandbox off (mpv.conf access, local
-  HTTP server, torrent engine). Local builds are ad-hoc signed; Developer ID signing arrives in Stage 9.
+  HTTP server, torrent engine). Builds are ad-hoc signed unless `Scripts/package.sh` is given an identity.
 - **Networking rule:** every call has a timeout, supports cancellation, retries with `RetryPolicy`
   backoff, and surfaces a clear error state in the UI.
 - **Dependencies are pinned exactly** in each `Package.swift` because the generated Xcode project (and
@@ -318,6 +322,34 @@ StreamPlayer ─┬─ web address ───────────────
 - **Screens are split so that a view is evaluated only for what it reads.** Discover's pickers and its
   results are separate views: a page arriving used to rebuild the pickers (9 to 10 ms, mid-scroll).
 
+### How packaging fits together (Stage 9)
+
+- **`Scripts/package.sh` is the only way a build leaves this machine.** It copies the Release app,
+  strips local symbols (132 MB to 102 MB; the dSYMs are kept beside the image), signs from the inside
+  out with the hardened runtime (Sparkle's two XPC services, its `Autoupdate` and `Updater.app`, the
+  Sparkle framework, `Libmpv.framework`, then the app), checks signature, entitlements, both
+  architectures and that the binary starts, builds a compressed disk image with an Applications
+  shortcut, and checks the image by mounting it out of Finder's sight. With a Developer ID identity it
+  also signs the image, and with a `notarytool` keychain profile it notarises and staples it.
+- **The library-validation exception is for ad-hoc signatures only.** `package.sh` adds
+  `Config/LocalSigning.entitlements` only when there is no identity, and refuses to finish if a build
+  signed with an identity carries it.
+- **The script makes no credentials.** The signing identity and the notarisation profile come from the
+  keychain; the Sparkle key pair is made by the user with Sparkle's `generate_keys`.
+- **Sparkle is linked but inert until configured.** `UPDATE_FEED_URL` and `UPDATE_PUBLIC_KEY` in
+  `Config/Branding.xcconfig` reach Info.plist as `SUFeedURL` and `SUPublicEDKey`; `UpdateConfiguration`
+  accepts only an https address with a host and a 32-byte base64 key. Otherwise `AppUpdater` creates no
+  updater and there is no menu item. Debug builds never create one. Sparkle is a dependency of the app
+  target (pinned in `project.yml`), not of a package.
+- **Licence texts are pinned like the libraries.** `Config/licenses.lock` names each text's address at
+  the library's version (or at a fixed commit where the prebuilt library does not say which version of a
+  dependency it holds) with its hash; `collect-licenses.sh` fetches them into `Vendor/Licenses`, adds
+  libtorrent's and Boost's from their source archives, and fails if the files and
+  `Config/ThirdParty.json` disagree in either direction (a test checks the same). The app shows them in
+  its Acknowledgements window (`AcknowledgementsModel`), under the app menu.
+- **Disk image by `hdiutil`**, not `create-dmg`: nothing to install, and no Finder scripting (which
+  would open windows on the user's screen). The image has no background picture or icon layout.
+
 ### Decisions still to be made (with the stage that decides them)
 
 | Stage | Decision | Current recommendation |
@@ -325,8 +357,11 @@ StreamPlayer ─┬─ web address ───────────────
 | later | Shortcuts in the menus | The Playback menu shows no key equivalents, because the keys are the user's to change and live in `KeyBindings`. Showing the current key next to each menu item needs the menu to read the bindings. Not done in Stage 8. |
 | later | Subtitles in black bars | With the fixed canvas, subtitles are kept inside the picture (`sub-use-margins=no`). Goes with the engine build. |
 | later | Engine build | Building libmpv from source (meson, with MPVKit's patches plus a resize event) is **the user's call and was not started**: every target is met without it. It would buy a surface that follows the window (about 55 MB less in a 1280×720 window, nothing in full screen), subtitles in the black bars, and a chance to find the fixed 190 MB of GPU memory described in the performance log. It costs a long from-source build as a prerequisite and a patch to maintain. Adapting MPVKit's patches means checking their licence and telling the user first. |
-| 9 | Bundling ffmpeg for the audio fallback | The fallback chain exists and uses an ffmpeg the user has installed. Shipping an LGPL ffmpeg helper inside the app (tens of MB) is the user's call; ask before doing it. |
-| 9 | Notarisation | Needs a paid Developer ID certificate; ask first. |
+| user | Bundling ffmpeg for the audio fallback | Not bundled. The fallback chain uses an ffmpeg the user has installed. Shipping an LGPL ffmpeg helper inside the app (tens of MB, and one more thing to provide source for) is the user's call; ask before doing it. |
+| user | Developer ID and notarisation | `package.sh` is ready for both but neither has run: the keychain holds an Apple Development identity only. A Developer ID needs the paid Apple Developer Program; the user decides. Until then a disk image from here opens on another Mac only after its owner allows it by hand. |
+| user | Update feed | Where the appcast is hosted, and making the Sparkle key pair (it lives in the user's keychain), are the user's to do; see the README. |
+| user | The app's own licence | None chosen; the README says all rights are reserved until one is. |
+| user | Source for the LGPL libraries | Whoever distributes the app must make the source of the LGPL libraries available (or offer it in writing). The binaries are MPVKit's; pointing at MPVKit is not the same as providing the source. Not arranged. |
 
 Decided (Stage 4): **HDR output is on only while an HDR video is on an HDR-capable display**
 (`PlayerModel.updateHDROutput`). `target-colorspace-hint=yes` makes the renderer switch the canvas layer
@@ -363,7 +398,8 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - Runtime testing is only possible on this machine's OS and architecture. The x86_64 slice is built and
   checked with `lipo` but not executed; macOS 14–26 behaviour is not runtime-tested.
 - Tools (Homebrew): xcodegen 2.46, swiftformat 0.64, swiftlint 0.65, ffmpeg 9.0, cmake 4.5, ninja 1.13.
-  Still to install: create-dmg (Stage 9).
+  The disk image is made with the system's `hdiutil` (create-dmg was not needed).
+- Signing identities in the keychain: one Apple Development identity; no Developer ID.
 
 ## Stage checklist
 
@@ -375,7 +411,7 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - [x] **6. Library** — Continue Watching, resume, next-episode autoplay, calendar
 - [x] **7. Settings + polish** — settings window, shortcut editor, mpv.conf/input.conf, saved player choices
 - [x] **8. Performance pass** — every target in spec section 4 measured; playback, memory and scrolling fixes
-- [ ] **9. Packaging** — signed .app + .dmg, Sparkle, README
+- [x] **9. Packaging** — `package.sh` (signed .app in a .dmg), Sparkle (off until configured), licences and Acknowledgements, README
 
 ### Stage 1 contents
 
@@ -638,6 +674,42 @@ Carried over or not verified in Stage 8:
   judged with the window in the background, so the engine's default (3) stays.
 - `leaks` still reports 3 to 5 blocks of 80 bytes during playback.
 
+### Stage 9 contents
+
+| Where | Added | Tests |
+|---|---|---|
+| Scripts, Config | `package.sh`, `collect-licenses.sh`, `licenses.lock`, `ThirdParty.json`, update settings in `Branding.xcconfig`, Sparkle 2.10.1 in `project.yml` | — |
+| AppUI | `ThirdPartyCatalog`, `AcknowledgementsModel` + view + menu command, `UpdateConfiguration` | 133 |
+| App | `AppUpdater` + "Check for Updates…", the Acknowledgements window, licence resources, `-acknowledgements` | — |
+| Repository | `README.md` | — |
+
+What was produced and checked: `build/dist/Orbit-0.1.0.dmg`, 44 MB, holding a 101 MB universal app,
+ad-hoc signed with the hardened runtime. The script verified the signature (deep, strict), both
+architectures of the app and of the engine, that the binary starts, the image's checksum, and the app
+inside the mounted image. The app was also launched from the mounted image in the background and drew
+its window (70 MB footprint). The Acknowledgements window was seen showing mpv's licence.
+
+Carried over or not verified in Stage 9:
+
+- **Developer ID signing, signing the image, notarisation and stapling have never run.** There is no
+  Developer ID in the keychain. Those branches of `package.sh` follow Apple's and Sparkle's
+  documentation and are untested, including Sparkle's signing order with a real identity.
+- **The updater has never started.** No feed or key is configured, so Sparkle is linked and silent. A
+  check for updates, an appcast, a download and an install were not tried; only the rule for when an
+  updater exists is tested.
+- **The disk image was not opened on another Mac**, and not by double-click on this one (it was mounted
+  from the command line, hidden from Finder). What Gatekeeper says about an ad-hoc signed app elsewhere
+  is from its documentation, not observed. The Intel half is built and checked with `lipo`, not run.
+- **Licence versions**: for FreeType, FriBidi, HarfBuzz, libunibreak, GMP, Nettle, glslang, SPIRV-Tools,
+  SPIRV-Cross, uavs3d, libdovi and LuaJIT the text is from a fixed recent commit, because MPVKit's
+  binaries do not say which version they contain. The licences themselves are the same; a copyright
+  year in a text may be newer than the code. Whether MPVKit's FFmpeg is built with its version-3 option
+  (which makes it LGPL 3) is not known; both texts are shipped and the entry says so.
+- Nothing in the Acknowledgements window was clicked; its list and texts are tested through the model.
+- The icon is still the generated placeholder. The disk image has no background or layout.
+- Left to the user (see the decisions table): Developer ID and notarisation, the update feed and key,
+  bundling ffmpeg, the app's own licence, and providing source for the LGPL libraries when distributing.
+
 ## Performance log
 
 Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K HDR < 600 MB;
@@ -706,6 +778,10 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 8 | Profile build | Home scrolled, SwiftUI strips / layer-based strips: longest tick | 17–31 ms / 6.9 ms |
 | 2026-11-17 | 8 | Release, universal | Launch to first screen / Home content, warm, median of 5; first run after the build | 193 ms / 377 ms; 206 ms / 392 ms |
 | 2026-11-17 | 8 | Release, universal | Idle memory, Home loaded; app bundle size | 71 MB; 128 MB |
+
+| 2026-11-17 | 9 | Release, universal | Launch to first screen / Home content, first run after the build (with Sparkle linked) | 179 ms / 344 ms |
+| 2026-11-17 | 9 | Packaged app | App bundle as built / after stripping local symbols; disk image | 132 MB / 102 MB; 44 MB |
+| 2026-11-17 | 9 | Packaged app | Idle memory, launched from the mounted disk image | 70 MB |
 
 **The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
 10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)

@@ -9,6 +9,8 @@ import SwiftUI
 struct MediaCenterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = MediaCenterApp.makeModel()
+    @State private var acknowledgements = AcknowledgementsModel(resources: Bundle.main.resourceURL)
+    @State private var updater = AppUpdater()
 
     var body: some Scene {
         Window(Branding.current.name, id: "main") {
@@ -22,7 +24,14 @@ struct MediaCenterApp: App {
         .defaultSize(width: 1280, height: 800)
         .commands {
             PlaybackCommands(model: model)
+            AcknowledgementsCommands()
+            UpdaterCommands(updater: updater)
         }
+
+        Window("Acknowledgements", id: AcknowledgementsModel.windowID) {
+            AcknowledgementsView(model: acknowledgements)
+        }
+        .defaultSize(width: 920, height: 640)
 
         Settings {
             SettingsView(model: model.settings)

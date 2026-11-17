@@ -31,6 +31,10 @@ packages:
     path: Packages/PlayerKit
   AppUI:
     path: Packages/AppUI
+  # Pinned exactly, like the packages' own dependencies: the generated project is not committed.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
 
 targets:
   MediaCenter:
@@ -40,10 +44,18 @@ targets:
       - path: App
       - path: Config/DefaultAddons.json
         buildPhase: resources
+      # The Acknowledgements window: what third-party code is in the app, and its licence texts
+      # (collected into Vendor/Licenses by Scripts/collect-licenses.sh; copied as Resources/Licenses).
+      - path: Config/ThirdParty.json
+        buildPhase: resources
+      - path: Vendor/Licenses
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: MediaCore
       - package: PlayerKit
       - package: AppUI
+      - package: Sparkle
 
 schemes:
   MediaCenter:

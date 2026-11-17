@@ -26,6 +26,7 @@
     ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -addToLibrary YES -markWatched tt0386676:1:1
     ///     open -g Orbit.app --args -settings shortcuts   (general, playback, streaming, shortcuts, advanced)
     ///     open -g Orbit.app --args -section discover -autoscroll 8   (scrolls by itself; see DebugAutoscroll)
+    ///     open -g Orbit.app --args -acknowledgements YES   (opens the Acknowledgements window)
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -54,6 +55,9 @@
             if let name = defaults.string(forKey: "settings"), let tab = SettingsTab(rawValue: name) {
                 model.settings.selectedTab = tab
                 model.opensSettingsAtLaunch = true
+            }
+            if defaults.bool(forKey: "acknowledgements") {
+                model.opensAcknowledgementsAtLaunch = true
             }
             if defaults.object(forKey: "autoscroll") != nil {
                 // `-autoscroll <seconds>` scrolls the screen's list by itself, three seconds after

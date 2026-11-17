@@ -1,0 +1,40 @@
+# Licence texts of the third-party code the app ships, collected by Scripts/collect-licenses.sh
+# into Vendor/Licenses/ and bundled into the app (Resources/Licenses). Each comes from the project's
+# own repository at the version in Config/mpv-libraries.lock, Config/torrent-libraries.lock or the
+# Swift packages; where a prebuilt library does not say which version of a dependency it contains
+# (FreeType, FriBidi, HarfBuzz, libunibreak, GMP, Nettle, glslang, SPIRV-Tools, SPIRV-Cross, uavs3d,
+# libdovi, LuaJIT), the text is taken at a fixed commit: these licences do not change between versions.
+# libtorrent's and Boost's texts come out of their source archives (Scripts/build-torrent-framework.sh).
+#
+# Format: <file name> <sha256> <url>. The script refuses a download whose hash differs.
+mpv-LICENSE.LGPL.txt         72b672113d642cbb8ef5dcc76938db801983c56e50b1400ab930f1a64d6dc8d9 https://raw.githubusercontent.com/mpv-player/mpv/v0.41.0/LICENSE.LGPL
+mpv-Copyright.txt            bfe9ee4cceabcb8ecbfadf208d04156f73d801e6a57369a5606bb8341e204a23 https://raw.githubusercontent.com/mpv-player/mpv/v0.41.0/Copyright
+FFmpeg-LICENSE.md            2e1d16c72fd74e12063776371da757322f8b77589386532f4fd8634bde7de1af https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.2/LICENSE.md
+FFmpeg-COPYING.LGPLv3.txt    da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768 https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.2/COPYING.LGPLv3
+FFmpeg-COPYING.LGPLv2.1.txt  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30 https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.2/COPYING.LGPLv2.1
+GPL-3.0.txt                  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903 https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.2/COPYING.GPLv3
+libplacebo-LICENSE.txt       b3aa400aca6d2ba1f0bd03bd98d03d1fe7489a3bbb26969d72016360af8a5c9d https://raw.githubusercontent.com/haasn/libplacebo/v7.360.1/LICENSE
+libass-COPYING.txt           f7e30699d02798351e7f839e3d3bfeb29ce65e44efa7735c225464c4fd7dfe9c https://raw.githubusercontent.com/libass/libass/0.17.5/COPYING
+FreeType-LICENSE.txt         bd36c8b474855fa294c2ec5c184544478ef3720aad37d65a6296a4f264fd2d3b https://raw.githubusercontent.com/freetype/freetype/dbb00e529e69a2be629a9ef98498e4f9b188aab1/LICENSE.TXT
+FreeType-FTL.txt             5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f https://raw.githubusercontent.com/freetype/freetype/dbb00e529e69a2be629a9ef98498e4f9b188aab1/docs/FTL.TXT
+FriBidi-COPYING.txt          20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95 https://raw.githubusercontent.com/fribidi/fribidi/15393e4937aa95bcf865d92143735746aeb654fa/COPYING
+HarfBuzz-COPYING.txt         ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64 https://raw.githubusercontent.com/harfbuzz/harfbuzz/59fa8f0c28df047b6786a60febf2c8b53a694e05/COPYING
+libunibreak-LICENCE.txt      0c57e2ec42ece17791a75d2f9b2f8e0663181be008667a507f765b3ef22522db https://raw.githubusercontent.com/adah1972/libunibreak/ff24f284a567a006c183b3507b6c650d6ec68b94/LICENCE
+libbluray-COPYING.txt        b3aa400aca6d2ba1f0bd03bd98d03d1fe7489a3bbb26969d72016360af8a5c9d https://code.videolan.org/videolan/libbluray/-/raw/1.4.0/COPYING
+uavs3d-COPYING.txt           5a8dcb7da222df8a81b6e334000f859248196335e2d28e1db9f3c552827d7cdf https://raw.githubusercontent.com/uavs3/uavs3d/0e20d2c291853f196c68922a264bcd8471d75b68/COPYING
+libdovi-LICENSE.txt          e9d76c149b1176de4aa0202cfb6a4a266a0c4cb71959f429d670c3a857f95e52 https://raw.githubusercontent.com/quietvoid/dovi_tool/41dae646193c12de152333ff5dbc33579cb9ef4a/dolby_vision/LICENSE
+MoltenVK-LICENSE.txt         cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30 https://raw.githubusercontent.com/KhronosGroup/MoltenVK/v1.4.2/LICENSE
+shaderc-LICENSE.txt          c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4 https://raw.githubusercontent.com/google/shaderc/v2025.5/LICENSE
+glslang-LICENSE.txt          17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677 https://raw.githubusercontent.com/KhronosGroup/glslang/b954d8e76c10d5bbf238f0d9847442615ac19f4a/LICENSE.txt
+SPIRV-Tools-LICENSE.txt      7d52847928f607914a1218a7afd40d8d0fe1570dcf094205c276c8aa52d5a816 https://raw.githubusercontent.com/KhronosGroup/SPIRV-Tools/727277f679857e5a680cf559586268b2df35c48d/LICENSE
+SPIRV-Cross-LICENSE.txt      cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30 https://raw.githubusercontent.com/KhronosGroup/SPIRV-Cross/57e4efcc84112abcd426dc5ec248b5339bee04f2/LICENSE
+LittleCMS-LICENSE.txt        6dbd60437f8ef91d8de1f08ad75882547fd4931bfcc3566a0735f28db1484d31 https://raw.githubusercontent.com/mm2/Little-CMS/lcms2.17/LICENSE
+dav1d-COPYING.txt            dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5 https://code.videolan.org/videolan/dav1d/-/raw/1.5.3/COPYING
+uchardet-COPYING.txt         107a29ccdd2d778aa2df5462f85dddfa099059abd22e064e07ec2cc9bafc37cd https://gitlab.freedesktop.org/uchardet/uchardet/-/raw/v0.0.8/COPYING
+LuaJIT-COPYRIGHT.txt         6cda3076a8c09b31bb1f90da614ea89e7ee194589626eeac613e522849604e47 https://raw.githubusercontent.com/LuaJIT/LuaJIT/63c8f1a9b479ba5518cf6a170ff7729178bc3cfd/COPYRIGHT
+OpenSSL-LICENSE.txt          7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a https://raw.githubusercontent.com/openssl/openssl/openssl-3.3.5/LICENSE.txt
+GnuTLS-COPYING.LESSERv2.txt  20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95 https://gitlab.com/gnutls/gnutls/-/raw/3.8.11/COPYING.LESSERv2
+Nettle-COPYING.LESSERv3.txt  e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118 https://raw.githubusercontent.com/gnutls/nettle/10d33c60c1c797c5ac4adb36e22294a91174fcd9/COPYING.LESSERv3
+GMP-COPYING.LESSERv3.txt     a853c2ffec17057872340eee242ae4d96cbf2b520ae27d903e1b2fef1a5f9d1c https://raw.githubusercontent.com/alisw/GMP/2bbd52703e5af82509773264bfbd20ff8464804f/COPYING.LESSERv3
+GRDB-LICENSE.txt             9853f9dce81365fcc1d9b46004633354450164b8d17904e92e80c444545f7e87 https://raw.githubusercontent.com/groue/GRDB.swift/v7.12.0/LICENSE
+Sparkle-LICENSE.txt          389a4e4e9a32f059775b13a06e25a591445ba229d2838d26dd3e7c0c45127cfe https://raw.githubusercontent.com/sparkle-project/Sparkle/2.10.1/LICENSE

@@ -4,3 +4,11 @@
 
 BRAND_NAME = Orbit
 BRAND_BUNDLE_ID = dev.orbit.placeholder.app
+
+// Updates (Sparkle). With both empty, as here, the app has no updater and no "Check for Updates…".
+// To switch it on: put the appcast's https address in UPDATE_FEED_URL and the Ed25519 public key
+// (from Sparkle's generate_keys tool) in UPDATE_PUBLIC_KEY. Anything else leaves the updater off:
+// see UpdateConfiguration. An xcconfig file reads "//" as the start of a comment, so write the
+// address as  https:/$()/updates.example.com/appcast.xml
+UPDATE_FEED_URL =
+UPDATE_PUBLIC_KEY =

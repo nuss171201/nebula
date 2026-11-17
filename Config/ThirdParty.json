@@ -1,0 +1,49 @@
+{
+  "sourceNote": "The playback engine is a separate dynamic library inside the app (Contents/Frameworks/Libmpv.framework), so that it can be replaced with a build of your own, as the LGPL asks. It is linked from prebuilt libraries published by the MPVKit project (github.com/mpvkit), LGPL configuration; the exact files, with their hashes, are listed in Config/mpv-libraries.lock in the app's source, and each of MPVKit's build repositories names the upstream source release it was built from. An app signed by a developer only loads libraries signed by the same developer: after replacing the framework, sign the app again yourself (codesign --force --deep --sign - <app>).",
+  "groups": [
+    {
+      "title": "Playback engine",
+      "note": "In Libmpv.framework, a dynamic library.",
+      "components": [
+        {"name": "mpv", "version": "0.41.0", "license": "LGPL 2.1 or later", "url": "https://mpv.io", "files": ["mpv-LICENSE.LGPL.txt", "mpv-Copyright.txt"]},
+        {"name": "FFmpeg", "version": "9.0.2", "license": "LGPL 2.1 or later (LGPL 3 or later for parts built against version 3 libraries)", "url": "https://ffmpeg.org", "files": ["FFmpeg-LICENSE.md", "FFmpeg-COPYING.LGPLv2.1.txt", "FFmpeg-COPYING.LGPLv3.txt", "GPL-3.0.txt"]},
+        {"name": "libplacebo", "version": "7.360.1", "license": "LGPL 2.1 or later", "url": "https://libplacebo.org", "files": ["libplacebo-LICENSE.txt"]},
+        {"name": "libass", "version": "0.17.5", "license": "ISC", "url": "https://github.com/libass/libass", "files": ["libass-COPYING.txt"]},
+        {"name": "FreeType", "version": "", "license": "FreeType License", "url": "https://freetype.org", "files": ["FreeType-LICENSE.txt", "FreeType-FTL.txt"]},
+        {"name": "FriBidi", "version": "", "license": "LGPL 2.1 or later", "url": "https://github.com/fribidi/fribidi", "files": ["FriBidi-COPYING.txt"]},
+        {"name": "HarfBuzz", "version": "", "license": "MIT (\"Old MIT\")", "url": "https://harfbuzz.github.io", "files": ["HarfBuzz-COPYING.txt"]},
+        {"name": "libunibreak", "version": "", "license": "zlib", "url": "https://github.com/adah1972/libunibreak", "files": ["libunibreak-LICENCE.txt"]},
+        {"name": "libbluray", "version": "1.4.0", "license": "LGPL 2.1 or later", "url": "https://www.videolan.org/developers/libbluray.html", "files": ["libbluray-COPYING.txt"]},
+        {"name": "dav1d", "version": "1.5.3", "license": "BSD 2-Clause", "url": "https://www.videolan.org/projects/dav1d.html", "files": ["dav1d-COPYING.txt"]},
+        {"name": "uavs3d", "version": "1.2.1", "license": "BSD 3-Clause", "url": "https://github.com/uavs3/uavs3d", "files": ["uavs3d-COPYING.txt"]},
+        {"name": "libdovi", "version": "3.3.2", "license": "MIT", "url": "https://github.com/quietvoid/dovi_tool", "files": ["libdovi-LICENSE.txt"]},
+        {"name": "MoltenVK", "version": "1.4.2", "license": "Apache 2.0", "url": "https://github.com/KhronosGroup/MoltenVK", "files": ["MoltenVK-LICENSE.txt", "SPIRV-Cross-LICENSE.txt"]},
+        {"name": "Shaderc, with glslang and SPIRV-Tools", "version": "2025.5", "license": "Apache 2.0; glslang under BSD and other permissive licences", "url": "https://github.com/google/shaderc", "files": ["shaderc-LICENSE.txt", "glslang-LICENSE.txt", "SPIRV-Tools-LICENSE.txt"]},
+        {"name": "Little CMS", "version": "2.17", "license": "MIT", "url": "https://www.littlecms.com", "files": ["LittleCMS-LICENSE.txt"]},
+        {"name": "uchardet", "version": "0.0.8", "license": "MPL 1.1 (also offered under GPL 2 or later and LGPL 2.1 or later)", "url": "https://www.freedesktop.org/wiki/Software/uchardet/", "files": ["uchardet-COPYING.txt"]},
+        {"name": "LuaJIT", "version": "2.1", "license": "MIT", "url": "https://luajit.org", "files": ["LuaJIT-COPYRIGHT.txt"]},
+        {"name": "GnuTLS", "version": "3.8.11", "license": "LGPL 2.1 or later", "url": "https://gnutls.org", "files": ["GnuTLS-COPYING.LESSERv2.txt"]},
+        {"name": "Nettle", "version": "", "license": "LGPL 3 or later (also offered under GPL 2 or later)", "url": "https://www.lysator.liu.se/~nisse/nettle/", "files": ["Nettle-COPYING.LESSERv3.txt", "GPL-3.0.txt"]},
+        {"name": "GMP", "version": "", "license": "LGPL 3 or later (also offered under GPL 2 or later)", "url": "https://gmplib.org", "files": ["GMP-COPYING.LESSERv3.txt", "GPL-3.0.txt"]},
+        {"name": "OpenSSL", "version": "3.3.5", "license": "Apache 2.0", "url": "https://www.openssl.org", "files": ["OpenSSL-LICENSE.txt"]}
+      ]
+    },
+    {
+      "title": "Stream engine",
+      "note": "Linked into the app.",
+      "components": [
+        {"name": "libtorrent", "version": "2.0.15", "license": "BSD 3-Clause", "url": "https://libtorrent.org", "files": ["libtorrent-LICENSE.txt"]},
+        {"name": "Boost", "version": "1.92", "license": "Boost Software License 1.0", "url": "https://www.boost.org", "files": ["Boost-LICENSE_1_0.txt"]},
+        {"name": "OpenSSL", "version": "3.3.5", "license": "Apache 2.0", "url": "https://www.openssl.org", "files": ["OpenSSL-LICENSE.txt"]}
+      ]
+    },
+    {
+      "title": "App",
+      "note": "Linked into the app.",
+      "components": [
+        {"name": "GRDB", "version": "7.12.0", "license": "MIT", "url": "https://github.com/groue/GRDB.swift", "files": ["GRDB-LICENSE.txt"]},
+        {"name": "Sparkle", "version": "2.10.1", "license": "MIT, with notices for the code it includes", "url": "https://sparkle-project.org", "files": ["Sparkle-LICENSE.txt"]}
+      ]
+    }
+  ]
+}

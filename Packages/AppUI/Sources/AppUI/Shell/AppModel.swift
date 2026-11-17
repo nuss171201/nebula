@@ -50,6 +50,8 @@ public final class AppModel {
     @ObservationIgnored private let usesStartSection: Bool
     /// Opens the Settings window once the app has started. For checking it without the pointer.
     @ObservationIgnored public var opensSettingsAtLaunch = false
+    /// Opens the Acknowledgements window once the app has started. For checking it without the pointer.
+    @ObservationIgnored public var opensAcknowledgementsAtLaunch = false
     /// The detail page opened most recently, while it is on screen.
     @ObservationIgnored private weak var latestDetail: DetailModel?
     /// Episodes to show the streams of when their series' page opens, by series id.

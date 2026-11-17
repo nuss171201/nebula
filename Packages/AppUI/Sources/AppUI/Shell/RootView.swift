@@ -7,6 +7,7 @@ import SwiftUI
 public struct RootView: View {
     @Bindable private var model: AppModel
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     public init(model: AppModel) {
         self.model = model
@@ -79,6 +80,9 @@ public struct RootView: View {
             await model.start()
             if model.opensSettingsAtLaunch {
                 openSettings()
+            }
+            if model.opensAcknowledgementsAtLaunch {
+                openWindow(id: AcknowledgementsModel.windowID)
             }
         }
     }
