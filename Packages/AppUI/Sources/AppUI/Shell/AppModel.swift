@@ -22,6 +22,7 @@ public final class AppModel {
     public let libraryScreen: LibraryModel
     public let nextEpisode: NextEpisodeController
     public let calendar: CalendarModel
+    public let settings: SettingsModel
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -46,6 +47,9 @@ public final class AppModel {
     @ObservationIgnored private let reportMilestone: @MainActor (LaunchMetrics.Milestone) -> TimeInterval?
     @ObservationIgnored private var reportedMilestones: Set<LaunchMetrics.Milestone> = []
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private let usesStartSection: Bool
+    /// Opens the Settings window once the app has started. For checking it without the pointer.
+    @ObservationIgnored public var opensSettingsAtLaunch = false
     /// The detail page opened most recently, while it is on screen.
     @ObservationIgnored private weak var latestDetail: DetailModel?
     /// Episodes to show the streams of when their series' page opens, by series id.
@@ -88,10 +92,23 @@ public final class AppModel {
             subtitleService: dependencies.subtitleService,
             usesSystemNowPlaying: dependencies.usesSystemNowPlaying
         )
-        streamPlayer = StreamPlayer(coordinator: player, manager: dependencies.streamManager, library: library)
+        streamPlayer = StreamPlayer(
+            coordinator: player,
+            manager: dependencies.streamManager,
+            library: library,
+            subtitleService: dependencies.subtitleService
+        )
         nextEpisode = NextEpisodeController(coordinator: player, streamPlayer: streamPlayer, client: client)
+        settings = SettingsModel(
+            store: dependencies.settings,
+            coordinator: player,
+            streamManager: dependencies.streamManager,
+            nextEpisode: nextEpisode,
+            configFolder: dependencies.engineConfigFolder
+        )
         selection = initialSection
         currentSection = initialSection
+        usesStartSection = initialSection == .home
         let subsystem = dependencies.branding.bundleIdentifier
         self.reportMilestone = reportMilestone ?? { LaunchMetrics.report($0, subsystem: subsystem) }
         home.onFirstContent = { [weak self] in
@@ -108,13 +125,15 @@ public final class AppModel {
         guard !hasStarted else { return }
         hasStarted = true
         observeAddons()
-        if let stored = try? await dependencies.settings.value(for: LibraryPlayerMemory.trackPreferencesKey) {
-            player.configuration.trackPreferences = stored
+        // Side by side: the add-ons' catalogs are what the first screen waits for, and nothing
+        // about fetching them depends on a setting.
+        async let addonsLoaded: Void = registry.start()
+        await settings.load()
+        // The section to open on, unless something (a debug argument, the user) chose one already.
+        if usesStartSection, currentSection == .home, path.isEmpty {
+            selection = settings.settings.startSection
         }
-        if let overrides = try? await dependencies.settings.value(for: LibraryPlayerMemory.keyBindingOverridesKey) {
-            player.keyBindings = KeyBindings.standard.applying(overrides: overrides)
-        }
-        await registry.start()
+        await addonsLoaded
         await dependencies.imagePipeline.trimDiskCache()
         // What earlier sessions streamed is kept up to the cache's budget.
         await dependencies.streamManager.trimCache()
@@ -138,6 +157,8 @@ public final class AppModel {
             streamMemory: LibraryStreamChoiceMemory(store: dependencies.playbackMemory),
             library: library
         )
+        model.streams.sort = settings.settings.streamSort
+        model.streams.preferredQuality = settings.settings.preferredQuality
         // Arriving from Continue Watching: go straight to the episode in question.
         model.initialVideoID = pendingEpisodes.removeValue(forKey: route.id)
         latestDetail = model

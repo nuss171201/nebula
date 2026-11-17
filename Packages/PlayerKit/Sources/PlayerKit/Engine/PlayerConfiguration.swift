@@ -124,7 +124,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
     /// Measured on an M4 Pro playing 4K HEVC 10-bit HDR at 60 fps into a 3024×1964 canvas
     /// (medians of three runs): `efficient` about 20 % of one core and 275 MB;
     /// `high` about 35 % and 533 MB. See the performance log in CLAUDE.md.
-    public enum RenderQuality: String, Sendable, Equatable, CaseIterable {
+    public enum RenderQuality: String, Sendable, Equatable, CaseIterable, Codable {
         /// Bilinear scaling, no HDR peak detection, ordered dithering. Meets the app's CPU and memory targets.
         case efficient
         /// The engine's own defaults: high-quality scalers in linear light and HDR peak detection.
@@ -158,6 +158,8 @@ public struct PlayerConfiguration: Sendable, Equatable {
     public var audioTranscoder: AudioTranscoder?
     /// Whether a file opens where it was left last time, and where it is left is remembered.
     public var resumesPlayback: Bool
+    /// What the panel's settings start at.
+    public var defaults: PlayerDefaults
     /// Further engine options, applied after the built-in ones so they can override them.
     /// Used for the user's own engine configuration and for experiments.
     public var additionalEngineOptions: [EngineOption]
@@ -202,6 +204,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         screenshotDirectory: URL = PlayerConfiguration.defaultScreenshotDirectory,
         audioTranscoder: AudioTranscoder? = .locate(),
         resumesPlayback: Bool = true,
+        defaults: PlayerDefaults = PlayerDefaults(),
         additionalEngineOptions: [EngineOption] = []
     ) {
         self.userAgent = userAgent
@@ -215,6 +218,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         self.screenshotDirectory = screenshotDirectory
         self.audioTranscoder = audioTranscoder
         self.resumesPlayback = resumesPlayback
+        self.defaults = defaults
         self.additionalEngineOptions = additionalEngineOptions
     }
 
@@ -276,15 +280,16 @@ public struct PlayerConfiguration: Sendable, Equatable {
         case .none:
             options += [("vo", "null")]
         }
-        if !playsAudio {
-            options.append(("ao", "null"))
-        }
         // A first guess for the engine, so the right track usually plays from the first sample.
         // The app's own selection (TrackSelector) runs when the file has loaded and has the last word.
         if !trackPreferences.audioLanguages.isEmpty {
             options.append(("alang", Self.engineLanguageList(trackPreferences.audioLanguages)))
         }
         options += additionalEngineOptions.map { ($0.name, $0.value) }
+        // Last, so that nothing above (an options file, an experiment) can make a silent player heard.
+        if !playsAudio {
+            options.append(("ao", "null"))
+        }
         return options
     }
 }

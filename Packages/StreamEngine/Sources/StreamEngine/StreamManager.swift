@@ -33,7 +33,7 @@ public struct OpenedStream: Sendable, Equatable {
 /// Everything behind "play this torrent": the engine, the loopback server and the cache,
 /// started when first needed.
 public actor StreamManager {
-    private let settings: TorrentEngineSettings
+    public private(set) var settings: TorrentEngineSettings
     private let logSubsystem: String
     public private(set) var cache: StreamCache
     private var engine: TorrentEngine?
@@ -119,6 +119,19 @@ public actor StreamManager {
     @discardableResult
     public func clearCache() -> Int64 {
         cache.clear(active: Set(opened.keys))
+    }
+
+    /// Changes limits and discovery. A running engine takes them at once; the listening
+    /// addresses only apply to an engine started afterwards.
+    public func updateSettings(_ settings: TorrentEngineSettings) async {
+        guard settings != self.settings else { return }
+        self.settings = settings
+        await engine?.apply(settings)
+    }
+
+    /// How much the cache may keep.
+    public var cachePolicy: StreamCachePolicy {
+        cache.policy
     }
 
     public func setCachePolicy(_ policy: StreamCachePolicy) {

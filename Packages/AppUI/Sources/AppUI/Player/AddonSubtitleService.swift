@@ -18,6 +18,10 @@ public final class AddonSubtitleService: OnlineSubtitleService {
     private let http: any HTTPClient
     private let directory: URL
     private let addons = OSAllocatedUnfairLock(initialState: [InstalledAddon]())
+    /// Subtitles that came with the stream being played, and the video they belong to.
+    private let attached = OSAllocatedUnfairLock(initialState: (videoID: "", items: [SubtitleItem]()))
+    /// What attached subtitles are listed as coming from.
+    static let attachedProviderName = "This stream"
 
     /// - Parameters:
     ///   - http: Used to download subtitle files.
@@ -31,6 +35,12 @@ public final class AddonSubtitleService: OnlineSubtitleService {
     /// Tells the service which add-ons are installed. Call whenever they change.
     public func update(addons installed: [InstalledAddon]) {
         addons.withLock { $0 = installed }
+    }
+
+    /// Subtitles an add-on sent along with the stream that is about to play. They are listed
+    /// first for that video: they were made for this very file, so their timing is the likeliest to fit.
+    public func setAttached(_ items: [SubtitleItem], forVideo videoID: String) {
+        attached.withLock { $0 = (videoID, items) }
     }
 
     // MARK: - OnlineSubtitleService
@@ -60,8 +70,22 @@ public final class AddonSubtitleService: OnlineSubtitleService {
     }
 
     public func subtitles(for video: SubtitleVideo, file: SubtitleFileHints) async throws(OnlineSubtitleError) -> [OnlineSubtitle] {
+        let fromStream = attached.withLock { $0.videoID == video.videoID ? $0.items : [] }.map { item in
+            OnlineSubtitle(
+                id: "stream|\(item.id)|\(item.url.absoluteString)",
+                url: item.url,
+                language: item.language,
+                releaseName: item.releaseName,
+                providerName: Self.attachedProviderName
+            )
+        }
         let providers = addons.withLock { $0 }.serving(resource: ManifestResource.subtitles, type: video.type, id: video.videoID)
-        guard !providers.isEmpty else { throw .noProvider }
+        guard !providers.isEmpty else {
+            if fromStream.isEmpty {
+                throw .noProvider
+            }
+            return fromStream
+        }
 
         var extra: [AddonResourcePath.Extra] = []
         if let fingerprint = file.fingerprint {
@@ -83,7 +107,13 @@ public final class AddonSubtitleService: OnlineSubtitleService {
             }
         }
         var seen = Set<String>()
-        return try Self.merged(answers).filter { seen.insert($0.id).inserted }
+        do {
+            return try (fromStream + Self.merged(answers)).filter { seen.insert($0.id).inserted }
+        } catch {
+            // The stream's own subtitles are still there when every add-on is down.
+            guard !fromStream.isEmpty, error != .cancelled else { throw error }
+            return fromStream
+        }
     }
 
     public func download(_ subtitle: OnlineSubtitle) async throws(OnlineSubtitleError) -> URL {

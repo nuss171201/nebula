@@ -85,7 +85,15 @@ public struct KeyBindings: Sendable, Equatable {
     }
 
     public func command(for chord: KeyChord) -> PlayerCommand? {
-        commands[chord]
+        if let command = commands[chord] {
+            return command
+        }
+        // A sign that is typed with Shift (">", "?") arrives with Shift held; a binding written
+        // for the sign alone, as bindings files do, is still meant.
+        if case let .character(character) = chord.key, !character.isLetter, !character.isNumber, chord.modifiers.contains(.shift) {
+            return commands[KeyChord(chord.key, chord.modifiers.subtracting(.shift))]
+        }
+        return nil
     }
 
     public static let standard = KeyBindings(commands: [

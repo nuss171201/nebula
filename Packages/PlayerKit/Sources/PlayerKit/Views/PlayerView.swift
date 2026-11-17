@@ -10,6 +10,12 @@ public struct PlayerView: View {
     private let onlineSubtitles: OnlineSubtitlesModel?
     private let openURLs: ([URL]) -> Void
     private let perform: (PlayerCommand) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    /// Side panels slide in from the edge, or fade where the user has asked for less motion.
+    private var panelTransition: AnyTransition {
+        reducesMotion ? .opacity : .move(edge: .trailing)
+    }
 
     /// - Parameters:
     ///   - openURLs: Called with files and folders dropped on the player.
@@ -106,11 +112,11 @@ public struct PlayerView: View {
             if chrome.isSettingsPanelVisible {
                 PlayerSettingsPanel(model: model, chrome: chrome, onlineSubtitles: onlineSubtitles)
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                    .transition(.move(edge: .trailing))
+                    .transition(panelTransition)
             } else if chrome.isQueueVisible {
                 PlayerQueuePanel(model: model, chrome: chrome)
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                    .transition(.move(edge: .trailing))
+                    .transition(panelTransition)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: chrome.isSidePanelVisible)

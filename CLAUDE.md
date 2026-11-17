@@ -48,6 +48,7 @@ Scripts/screenshot.sh /path/shot.png 6 -section discover        # also: library,
 Scripts/screenshot.sh /path/shot.png 7 -search "the office"
 Scripts/screenshot.sh /path/shot.png 7 -open series:tt0386676   # a detail page
 Scripts/screenshot.sh /path/shot.png 6 -silent YES -play "$PWD/TestMedia/sdr-h264-1080p.mp4"   # player
+Scripts/screenshot.sh /path/shot.png 5 -settings shortcuts      # Settings is saved as shot-2.png
 Scripts/stage-media.sh TestMedia/multi-track.mkv   # prints a copy's path outside ~/Documents, for -play
 
 # Playback over HTTP (Range-capable; python's http.server is not):
@@ -77,6 +78,7 @@ player side panel), `-seekPreview <0…1>` (the seek bar's hover preview at that
 two seconds after launch: the only way to check a binding and its on-screen notice without the keyboard).
 `-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
 `-window pictureInPicture|mini` puts the player window in that mode.
+`-settings general|playback|streaming|shortcuts|advanced` opens the Settings window on that tab.
 `-profile <folder>` keeps the database and caches in a scratch folder and keeps the stream engine to
 this machine; with it, `-installNow <address>` installs an add-on without the confirmation click,
 `-episode <video id>` shows an episode's streams, `-stream <n>` plays the nth listed stream,
@@ -223,7 +225,7 @@ StreamPlayer ─┬─ web address ───────────────
   playhead would take pieces from what is about to be watched.
 - **Cache**: one folder per info hash under `Caches/<bundle id>/Streams`, measured by allocated size
   (files are sparse), trimmed least-recently-watched first to 10 GB at launch and whenever a stream
-  closes; what is playing is never removed. The budget becomes a setting in Stage 7.
+  closes; what is playing is never removed. The budget is a setting (Settings → Streaming).
 - **Neutrality**: with no stream add-on installed the detail page says so and suggests nothing.
 
 ### How the library fits together (Stage 6)
@@ -249,10 +251,39 @@ StreamPlayer ─┬─ web address ───────────────
   day in the user's time zone. Fetched through an add-on's calendar catalog where there is one (one
   request for up to 100 series, answer under `metasDetailed`), else series by series.
 
+### How settings fit together (Stage 7)
+
+- **Two stored values, both JSON in the settings table**: `app.settings` (`AppSettings`: everything in the
+  Settings window) and `player.defaults` (`PlayerDefaults`: what the user leaves the player's own panels
+  at, such as subtitle style, equaliser and HDR choice). Both decode leniently, field by field, so a value
+  written by another version is read as far as it goes. Key bindings are a third value (`player.keyBindings`).
+- **`SettingsModel` is the one place settings turn into behaviour.** Every change is applied at once and
+  saved a moment later: it rebuilds `PlayerCoordinator.configuration` from the configuration the app was
+  started with (so what is not a setting, like a silent check's `playsAudio: false`, survives), switches
+  autoplay, and hands limits to `StreamManager`. Player options apply to the next video opened.
+- **A setting can narrow what the app was started with, never widen it.** A stream engine started for
+  this machine only (`-profile`, tests) stays that way whatever is stored
+  (`AppSettings.engineSettings(basedOn:)`); a player started not to resume does not resume; and
+  `ao=null` is appended after every other engine option so nothing can make a silent player heard.
+- **Key bindings have three layers** (`ShortcutsModel`): the standard table, an `input.conf` if there is
+  one, and the user's changes from the editor. Only the last is stored, as the difference from the first
+  two. A chord the app's menus use is refused. A change reaches the open player at once.
+- **`mpv.conf` and `input.conf` live in the app's own Application Support folder**, not `~/.config/mpv`,
+  and are parsed by the app (`EngineConfigFile`, `InputConfigFile`); the engine's own config loading stays
+  off. From `mpv.conf` only options are read, minus the ones the app controls and the ones that reach
+  beyond playback (scripts, includes, anything that writes files); profiles are not supported.
+  `input.conf` commands are translated to `PlayerCommand`s; nothing is passed to the engine as text, so a
+  bindings file cannot do more than the app's own shortcuts. What was left out is listed in Settings →
+  Advanced with the reason. The option deny-list is hygiene, not a security boundary: the file is the user's.
+- **Subtitles that come with a stream** are handed to `AddonSubtitleService` when the stream starts and
+  listed first ("This stream") when the player's subtitle panel looks that video up. They are not loaded
+  by themselves.
+
 ### Decisions still to be made (with the stage that decides them)
 
 | Stage | Decision | Current recommendation |
 |---|---|---|
+| 8 | Shortcuts in the menus | The Playback menu shows no key equivalents, because the keys are the user's to change and live in `KeyBindings`. Showing the current key next to each menu item needs the menu to read the bindings. |
 | 8 | Subtitles in black bars | With the fixed canvas, subtitles are kept inside the picture (`sub-use-margins=no`). Revisit with the engine build. |
 | 8 | Engine build | Build libmpv from source with a resize event in the Metal context, replacing the fixed canvas. |
 | 9 | Bundling ffmpeg for the audio fallback | The fallback chain exists and uses an ffmpeg the user has installed. Shipping an LGPL ffmpeg helper inside the app (tens of MB) is the user's call; ask before doing it. |
@@ -303,7 +334,7 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - [x] **4. Player features** — everything in spec section 3B (the shortcut editor and mpv.conf/input.conf are Stage 7)
 - [x] **5. Streams + torrent engine** — stream list, libtorrent bridge, local HTTP server, cache
 - [x] **6. Library** — Continue Watching, resume, next-episode autoplay, calendar
-- [ ] **7. Settings + polish** — shortcuts, mpv.conf/input.conf, accessibility
+- [x] **7. Settings + polish** — settings window, shortcut editor, mpv.conf/input.conf, saved player choices
 - [ ] **8. Performance pass** — measure every target in spec section 4
 - [ ] **9. Packaging** — signed .app + .dmg, Sparkle, README
 
@@ -404,8 +435,8 @@ Carried over or not verified in Stage 4:
 - **No sound has ever been played aloud**, as before.
 - Online subtitles: listing is checked live against the default add-ons; downloading a real subtitle is
   not (the mock server covers it), to keep to "no copyrighted downloads".
-- The player panel's settings (subtitle style, equaliser, HDR choice) last for the session only. Saving
-  them, the shortcut editor and mpv.conf / input.conf are Stage 7.
+- The player panel's settings (subtitle style, equaliser, HDR choice) lasted for the session only in
+  this stage; they are saved since Stage 7.
 - The mini player shows no cover art.
 - Picture in picture uses a normal window, so clicking it activates the app.
 
@@ -432,7 +463,7 @@ Carried over or not verified in Stage 5:
 - HTTP headers an add-on asks for are passed to the engine in the form its documentation gives; this
   was not tried against a server that requires them.
 - Uploading to other peers is unlimited by default; limits, the cache size and connection count are
-  settings for Stage 7. Subtitles that come attached to a stream are not loaded yet.
+  settings since Stage 7. Subtitles that come attached to a stream are listed in the player since Stage 7, not loaded by themselves.
 - The cache's trimming was tested with small files only.
 
 ### Stage 6 contents
@@ -472,12 +503,51 @@ Carried over or not verified in Stage 6:
   button are covered by view-model tests only.
 - Continue Watching and the calendar ask the catalog add-on about each series; with many series this is
   one request per series for Continue Watching (the calendar batches). Not measured with a large library.
-- Autoplay is on with a 10-second countdown; switching it off and changing the delay are settings for
+- Autoplay is on with a 10-second countdown; switching it off and changing the delay are settings since
   Stage 7. Local files in a folder do not get "next episode" (the queue already plays them in order).
 - `ImagePipelineTests` ("a second request is served from memory") failed once in some twenty Xcode runs
   of the AppUI tests during this stage. Not reproduced, not investigated.
 - The app raises its open-file limit to 4096 at launch (`ProcessLimits`); whether libtorrent ever needed
   more than the default 256 was not measured.
+
+### Stage 7 contents
+
+| Where | Added | Tests |
+|---|---|---|
+| PlayerKit | `PlayerDefaults`, `EngineConfigFile` and `InputConfigFile` (parsers), `ShortcutAction`, chord display and spoken text, bindings changeable while a player is open, panels fade under Reduce Motion | 174 |
+| StreamEngine | `StreamManager.updateSettings`, `cachePolicy` | 41 |
+| AppUI | `AppSettings`, `SettingsModel`, `ShortcutsModel`, `EngineConfigFolder`, `LanguageList`, the Settings window (General, Playback, Streaming, Shortcuts, Advanced), preferred stream quality, a stream's own subtitles in the player's subtitle panel | 118 |
+| App | `-settings <tab>` debug argument | — |
+
+Settings there are: appearance, opening section, Continue Watching on or off; sound and subtitle
+languages and when subtitles show; resume; autoplay and its countdown; rendering preset; preferred stream
+quality and stream sorting; cache size (with the size on disk and Clear); connections, download and upload
+limits, DHT, local discovery, port mapping; reading the config files. Choices made in the player's panels
+(subtitle style, equaliser, loudness, downmix, HDR, tone mapping, hardware decoding) are kept without a
+setting of their own.
+
+Carried over or not verified in Stage 7:
+
+- **Seen in the running app** (background screenshots, scratch profile): all five Settings tabs, the
+  config-file report with lines left out, the shortcut list with an `input.conf` applied, and a key bound
+  by `input.conf` muting the player. **Nothing was clicked or typed**: every control in the window, recording
+  a shortcut from a real key press (the `NSEvent` monitor in `KeyRecorder`), the confirmation dialogs,
+  Show Folder, and the appearance switch are covered by view-model tests or not at all.
+- The appearance setting is applied with `NSApplication.appearance`; light and dark were not looked at
+  side by side. VoiceOver was not run; labels and values are set, how they read aloud is unchecked.
+- `mpv.conf` options are handed to the engine as they are once they pass the deny-list. An option this
+  build does not know is logged and skipped (never fatal), but an option that conflicts with how the app
+  renders (the fixed canvas) could still spoil the picture; the list of controlled options is from
+  reading the engine's manual, not from trying each one. An option the app also has a control for
+  (`hwdec`, subtitle style) is overridden by that control.
+- `input.conf` supports the keys the player has names for (letters, digits, signs, arrows, Space, Enter,
+  Esc with modifiers). Function keys, Tab, mouse buttons and the wheel are listed as left out.
+- A stream's own subtitles are listed, not loaded automatically, and only after the user looks the
+  title up in the subtitle panel.
+- Limits changed while a torrent is streaming are handed to the running engine; this was tested only as
+  "the manager holds the new settings", not against a live transfer.
+- Not done: the mini player's cover art; key equivalents shown in the Playback menu (see the decisions
+  table); export or import of settings.
 
 ## Performance log
 
@@ -527,6 +597,10 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 6 | Release, universal | Launch to first screen / Home content, warm, median of 5 (Home now also reads the watch history) | 181 ms / 341 ms |
 | 2026-11-17 | 6 | Release, universal | Idle memory, Home loaded; app bundle size | 68 MB; 126 MB |
 | 2026-11-17 | 6 | Debug app | Next episode after the countdown: first frame of the following file | 78 ms |
+
+| 2026-11-17 | 7 | Release, universal | Launch to first screen / Home content, warm, median of 5 (settings are read alongside the add-ons) | 180 ms / 354 ms |
+| 2026-11-17 | 7 | Release, universal | Same, with settings read before the add-ons (first attempt, two runs of 5) | 191–222 ms / 405–432 ms |
+| 2026-11-17 | 7 | Release, universal | Idle memory, Home loaded; app bundle size | 68 MB; 128 MB |
 
 **The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
 10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)

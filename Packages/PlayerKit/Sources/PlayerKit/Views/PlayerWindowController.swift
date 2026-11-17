@@ -87,7 +87,8 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
     public let chrome = PlayerChromeModel()
     /// Finds subtitles on the network; `nil` when the app provides no service for it.
     public let onlineSubtitles: OnlineSubtitlesModel?
-    let bindings: KeyBindings
+    /// Which key does what. Changing it takes effect with the next key press.
+    public var bindings: KeyBindings
     var sizedForVideo: CGSize?
     private var screenObserver: (any NSObjectProtocol)?
     /// Where the normal window was before it became a small one.

@@ -23,6 +23,7 @@
     ///     open -g Orbit.app --args -silent YES -profile /tmp/scratch -open movie:tt0063350 -stream 0   (plays the first listed stream)
     ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -episode tt0386676:1:1
     ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -addToLibrary YES -markWatched tt0386676:1:1
+    ///     open -g Orbit.app --args -settings shortcuts   (general, playback, streaming, shortcuts, advanced)
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -47,6 +48,10 @@
         static func apply(to model: AppModel, defaults: UserDefaults = .standard) {
             if let name = defaults.string(forKey: "section"), let section = AppSection(rawValue: name) {
                 model.selection = section
+            }
+            if let name = defaults.string(forKey: "settings"), let tab = SettingsTab(rawValue: name) {
+                model.settings.selectedTab = tab
+                model.opensSettingsAtLaunch = true
             }
             if let query = defaults.string(forKey: "search") {
                 model.search.query = query

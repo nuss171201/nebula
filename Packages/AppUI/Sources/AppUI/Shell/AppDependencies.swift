@@ -24,6 +24,8 @@ public struct AppDependencies: Sendable {
     public let streamManager: StreamManager
     /// Finds and downloads subtitles through installed add-ons.
     public let subtitleService: AddonSubtitleService
+    /// Where the user can keep an `mpv.conf` and an `input.conf`; `nil` reads none.
+    public let engineConfigFolder: EngineConfigFolder?
     /// Set when something went wrong during startup that the user should know about.
     public let startupWarning: String?
 
@@ -38,6 +40,7 @@ public struct AppDependencies: Sendable {
         streamManager: StreamManager? = nil,
         subtitleHTTP: (any HTTPClient)? = nil,
         subtitleDirectory: URL? = nil,
+        engineConfigFolder: EngineConfigFolder? = nil,
         startupWarning: String? = nil
     ) {
         self.branding = branding
@@ -69,6 +72,7 @@ public struct AppDependencies: Sendable {
             directory: subtitleDirectory ?? FileManager.default.temporaryDirectory
                 .appendingPathComponent("subtitles-\(UUID().uuidString)", isDirectory: true)
         )
+        self.engineConfigFolder = engineConfigFolder
         self.startupWarning = startupWarning
     }
 
@@ -152,6 +156,7 @@ public struct AppDependencies: Sendable {
             ),
             subtitleHTTP: apiClient,
             subtitleDirectory: (caches ?? files.temporaryDirectory).appendingPathComponent("Subtitles", isDirectory: true),
+            engineConfigFolder: support.map(EngineConfigFolder.init(directory:)),
             startupWarning: warning
         )
     }

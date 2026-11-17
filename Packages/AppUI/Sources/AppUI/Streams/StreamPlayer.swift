@@ -98,16 +98,21 @@ public final class StreamPlayer {
     /// The stream it was played from.
     public private(set) var nowPlayingChoice: StreamChoice?
     @ObservationIgnored private let openExternal: @MainActor (URL) -> Void
+    @ObservationIgnored private let subtitleService: AddonSubtitleService?
     @ObservationIgnored private var prepareTask: Task<Void, Never>?
     @ObservationIgnored private var activeURL: URL?
 
-    /// - Parameter openExternal: Opens a web page outside the app.
+    /// - Parameters:
+    ///   - subtitleService: Told about subtitles that come with a stream, so the player can offer them.
+    ///   - openExternal: Opens a web page outside the app.
     public init(
         coordinator: PlayerCoordinator,
         manager: StreamManager,
         library: LibraryCenter? = nil,
+        subtitleService: AddonSubtitleService? = nil,
         openExternal: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
     ) {
+        self.subtitleService = subtitleService
         self.coordinator = coordinator
         self.manager = manager
         self.library = library
@@ -205,6 +210,7 @@ public final class StreamPlayer {
     private func noteStarted(_ video: StreamVideo, choice: StreamChoice) {
         nowPlaying = video
         nowPlayingChoice = choice
+        subtitleService?.setAttached(choice.stream.subtitles, forVideo: video.videoID)
         if let library {
             Task { await library.begin(video.watchVideo) }
         }

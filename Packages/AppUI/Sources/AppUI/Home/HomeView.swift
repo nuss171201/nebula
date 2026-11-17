@@ -7,6 +7,8 @@ struct HomeView: View {
     let registry: AddonRegistry
     let continueWatching: ContinueWatchingModel
     let library: LibraryCenter
+    /// Off when the user has hidden the row in Settings.
+    var showsContinueWatching = true
     /// Opens a video's page with its streams showing.
     let open: (WatchVideo) -> Void
 
@@ -15,12 +17,14 @@ struct HomeView: View {
             if !registry.isReady {
                 ProgressView("Loading add-ons…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if model.rows.isEmpty, continueWatching.items.isEmpty {
+            } else if model.rows.isEmpty, continueWatching.items.isEmpty || !showsContinueWatching {
                 emptyState
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 26) {
-                        ContinueWatchingRow(model: continueWatching, open: open)
+                        if showsContinueWatching {
+                            ContinueWatchingRow(model: continueWatching, open: open)
+                        }
                         ForEach(model.rows) { row in
                             CatalogRowView(row: row)
                         }
@@ -30,7 +34,8 @@ struct HomeView: View {
             }
         }
         // What was watched changes while the app is open; so do the add-ons that can say what comes next.
-        .task(id: "\(library.revision)|\(registry.addons.count)") {
+        .task(id: "\(library.revision)|\(registry.addons.count)|\(showsContinueWatching)") {
+            guard showsContinueWatching else { return }
             await continueWatching.reload()
         }
     }

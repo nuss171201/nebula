@@ -18,13 +18,18 @@ public final class PlayerCoordinator {
 
     /// How new players are set up. The app updates this once stored preferences are loaded.
     @ObservationIgnored public var configuration: PlayerConfiguration
-    /// Which key does what in the player window. Applies to players opened from now on.
-    @ObservationIgnored public var keyBindings = KeyBindings.standard
+    /// Which key does what in the player window, including the one that is open.
+    @ObservationIgnored public var keyBindings = KeyBindings.standard {
+        didSet { controller?.bindings = keyBindings }
+    }
+
     @ObservationIgnored private let usesSystemNowPlaying: Bool
     @ObservationIgnored private let memory: (any PlayerMemory)?
     @ObservationIgnored private let subtitleService: (any OnlineSubtitleService)?
     @ObservationIgnored private let presentsWindow: Bool
     @ObservationIgnored private var controller: PlayerWindowController?
+    /// Called when the user changes something in the player's panel that carries over to the next video.
+    @ObservationIgnored public var onPlayerDefaultsChanged: (@MainActor (PlayerDefaults) -> Void)?
     /// Called with the user's answer to an "up next" offer in the player: `true` to play it now.
     @ObservationIgnored public var onUpNextDecision: (@MainActor (Bool) -> Void)?
 
@@ -102,6 +107,7 @@ public final class PlayerCoordinator {
             }
             self.controller = controller
             isPlayerOpen = true
+            watchDefaults(of: model)
             model.open(source, options: options)
             show(controller)
         } catch {
@@ -161,6 +167,19 @@ public final class PlayerCoordinator {
             errorMessage = error.userMessage
             return false
         }
+    }
+
+    /// Reports the panel's carried-over choices whenever they change, for as long as this player is the open one.
+    private func watchDefaults(of model: PlayerModel) {
+        let defaults = withObservationTracking {
+            model.currentDefaults
+        } onChange: { [weak self, weak model] in
+            Task { @MainActor in
+                guard let self, let model, self.controller?.model === model else { return }
+                self.watchDefaults(of: model)
+            }
+        }
+        onPlayerDefaultsChanged?(defaults)
     }
 
     private func show(_ controller: PlayerWindowController) {

@@ -38,7 +38,7 @@ struct StreamListView: View {
 
             if let suggested = model.suggested {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Like Last Time")
+                    Text(model.suggestionTitle)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     StreamRow(choice: suggested, play: play)

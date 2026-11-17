@@ -1,3 +1,4 @@
+import AppKit
 import MediaCore
 import SwiftUI
 
@@ -5,6 +6,7 @@ import SwiftUI
 /// with a search field that takes over the content while a query is entered.
 public struct RootView: View {
     @Bindable private var model: AppModel
+    @Environment(\.openSettings) private var openSettings
 
     public init(model: AppModel) {
         self.model = model
@@ -65,8 +67,18 @@ public struct RootView: View {
         .onAppear {
             model.firstScreenDidAppear()
         }
+        // For every window of the app, the Settings window included. The player stays dark.
+        .onChange(of: model.settings.settings.appearance, initial: true) { _, appearance in
+            // Only on a real change: assigning it redraws every window.
+            if NSApplication.shared.appearance?.name != appearance.systemAppearance?.name {
+                NSApplication.shared.appearance = appearance.systemAppearance
+            }
+        }
         .task {
             await model.start()
+            if model.opensSettingsAtLaunch {
+                openSettings()
+            }
         }
     }
 
@@ -92,7 +104,8 @@ public struct RootView: View {
                     model: model.home,
                     registry: model.registry,
                     continueWatching: model.continueWatching,
-                    library: model.library
+                    library: model.library,
+                    showsContinueWatching: model.settings.settings.showsContinueWatching
                 ) { model.open($0) }
             case .discover:
                 DiscoverView(model: model.discover, registry: model.registry)
@@ -104,19 +117,5 @@ public struct RootView: View {
                 CalendarView(model: model.calendar, library: model.library, registry: model.registry) { model.open($0) }
             }
         }
-    }
-}
-
-/// Content of the Settings window (⌘,).
-public struct SettingsView: View {
-    public init() {}
-
-    public var body: some View {
-        ContentUnavailableView(
-            "Settings",
-            systemImage: "gearshape",
-            description: Text("Playback, streaming and interface options will appear here.")
-        )
-        .frame(width: 520, height: 320)
     }
 }

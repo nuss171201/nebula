@@ -129,6 +129,7 @@ public final class PlayerModel {
         )
 
         state.volume = configuration.initialVolume
+        applyDefaults(configuration.defaults)
         let events = client.events
         eventTask = Task { [weak self] in
             // Restore the volume before any event (and so before any sound) is handled.

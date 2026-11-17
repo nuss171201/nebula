@@ -122,6 +122,40 @@ struct AddonSubtitleServiceTests {
         #expect(none.isEmpty)
     }
 
+    @Test("Subtitles that came with the stream are listed first, for that video only, even with no subtitle add-on")
+    func attachedToStream() async throws {
+        let fixture = try await makeFixture()
+        defer { fixture.harness.server.stop() }
+        fixture.harness.server.respond(
+            to: "/subs/subtitles/movie/tt0000001.json",
+            with: .json(#"{"subtitles": [{"id": "1", "url": "https://subs.example.com/1.srt", "lang": "eng"}]}"#)
+        )
+        let film = SubtitleVideo(type: .movie, videoID: "tt0000001")
+        let own = try [
+            SubtitleItem(id: "a", url: #require(URL(string: "https://stream.example.com/a.srt")), language: "fre"),
+            SubtitleItem(id: "a", url: #require(URL(string: "https://stream.example.com/b.srt")), language: "eng"),
+        ]
+        fixture.service.setAttached(own, forVideo: "tt0000001")
+        let found = try await fixture.service.subtitles(for: film, file: SubtitleFileHints())
+        #expect(found.map(\.language) == ["fre", "eng", "eng"])
+        #expect(found.map(\.providerName) == ["This stream", "This stream", "Test Subtitles"])
+        #expect(Set(found.map(\.id)).count == 3)
+
+        // Another video's stream: nothing of it is offered here.
+        fixture.service.setAttached(own, forVideo: "tt0000002")
+        #expect(try await fixture.service.subtitles(for: film, file: SubtitleFileHints()).map(\.providerName) == ["Test Subtitles"])
+
+        // No subtitle add-on at all: the stream's own are still there, and without them there is nobody to ask.
+        let bare = try await makeFixture(installSubtitles: false)
+        defer { bare.harness.server.stop() }
+        bare.service.setAttached(own, forVideo: "tt0000001")
+        #expect(try await bare.service.subtitles(for: film, file: SubtitleFileHints()).count == 2)
+        bare.service.setAttached([], forVideo: "tt0000001")
+        await #expect(throws: OnlineSubtitleError.noProvider) {
+            try await bare.service.subtitles(for: film, file: SubtitleFileHints())
+        }
+    }
+
     @Test("A subtitle is downloaded once and kept; bad downloads are refused")
     func downloads() async throws {
         let fixture = try await makeFixture()

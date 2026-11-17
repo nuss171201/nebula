@@ -75,6 +75,30 @@ struct AppModelTests {
         #expect(Set(sections.map(\.systemImage)).count == sections.count)
     }
 
+    @Test("Stored settings are in force once the app has started: the opening section and how streams are pointed out")
+    func settingsAtStart() async throws {
+        let dependencies = AppDependencies.ephemeral(http: StubHTTPClient(data: Data()))
+        var stored = AppSettings()
+        stored.startSection = .library
+        stored.streamSort = .size
+        stored.preferredQualityHeight = 720
+        try await dependencies.settings.set(stored, for: SettingsKeys.app)
+
+        let model = AppModel(dependencies: dependencies)
+        #expect(model.selection == .home)
+        await model.start()
+        #expect(model.settings.hasLoaded)
+        #expect(model.selection == .library)
+        let detail = model.detailModel(for: MediaRoute(type: .movie, id: "tt1"))
+        #expect(detail.streams.sort == .size)
+        #expect(detail.streams.preferredQuality == .hd720)
+
+        // A section chosen before the settings arrived (a launch argument) is not overridden.
+        let chosen = AppModel(dependencies: dependencies, initialSection: .discover)
+        await chosen.start()
+        #expect(chosen.selection == .discover)
+    }
+
     @Test("Screens follow the installed add-ons, from first launch through later changes")
     func screensFollowAddons() async throws {
         let harness = try await AddonHarness.make()

@@ -25,7 +25,7 @@ struct MediaCenterApp: App {
         }
 
         Settings {
-            SettingsView()
+            SettingsView(model: model.settings)
         }
     }
 

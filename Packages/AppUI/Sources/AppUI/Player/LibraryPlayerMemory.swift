@@ -5,8 +5,6 @@ import PlayerKit
 /// The player's memory, kept in the app's database.
 struct LibraryPlayerMemory: PlayerMemory {
     static let volumeKey = SettingKey<RememberedVolume?>("player.volume", default: nil)
-    /// The user's language preferences; `nil` means "follow the system languages".
-    static let trackPreferencesKey = SettingKey<TrackPreferences?>("player.trackPreferences", default: nil)
 
     /// The user's changes to the player's key bindings: chord text to command identifier
     /// (see `KeyBindings.applying(overrides:)`). Empty means the standard bindings.
