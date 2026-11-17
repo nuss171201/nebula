@@ -174,18 +174,17 @@ App/ (target MediaCenter)   entry point + composition root + Branding. No featur
 - **Render quality defaults to `efficient`** (`profile=fast` plus ordered dithering) because the
   engine's default pipeline misses the CPU and memory targets at 4K (see the performance log).
   `RenderQuality.high` keeps the engine defaults for a future Settings choice.
-- This FFmpeg build has no image encoders, so mpv's own screenshot-to-file fails; screenshots
-  (Stage 4) must use `screenshot-raw` and encode with ImageIO (verified in the spike).
+- This FFmpeg build has no image encoders, so mpv's own screenshot-to-file fails; screenshots use
+  `screenshot-raw` and are encoded with ImageIO (`FrameImage`, `ScreenshotFile`).
 - The system audio output this build picks is `avfoundation`, not `coreaudio`.
 
 ### Decisions still to be made (with the stage that decides them)
 
 | Stage | Decision | Current recommendation |
 |---|---|---|
-| 4 | Subtitles in black bars | With the fixed canvas, subtitles are kept inside the picture (`sub-use-margins=no`). Revisit for full screen. |
+| 8 | Subtitles in black bars | With the fixed canvas, subtitles are kept inside the picture (`sub-use-margins=no`). Revisit with the engine build. |
 | 8 | Engine build | Build libmpv from source with a resize event in the Metal context, replacing the fixed canvas. |
 | 9 | Bundling ffmpeg for the audio fallback | The fallback chain exists and uses an ffmpeg the user has installed. Shipping an LGPL ffmpeg helper inside the app (tens of MB) is the user's call; ask before doing it. |
-| 4 | Picture-in-Picture | Floating always-on-top window with public APIs (no private PIP.framework). |
 | 9 | Notarisation | Needs a paid Developer ID certificate; ask first. |
 
 Decided (Stage 4): **HDR output is on only while an HDR video is on an HDR-capable display**
@@ -230,7 +229,7 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - [x] **1. Skeleton** — XcodeGen project, five packages, CLAUDE.md, branding, placeholder icon, CI script
 - [x] **2. Add-on client + browsing** — protocol client, Cinemeta, Home, Discover, Search, Detail, Add-ons
 - [x] **3. Player core** — libmpv embedding, Metal view, basic controls, file + HTTP playback
-- [ ] **4. Player features** — everything in spec section 3B
+- [x] **4. Player features** — everything in spec section 3B (the shortcut editor and mpv.conf/input.conf are Stage 7)
 - [ ] **5. Streams + torrent engine** — stream list, libtorrent bridge, local HTTP server, cache
 - [ ] **6. Library** — Continue Watching, resume, next-episode autoplay, calendar
 - [ ] **7. Settings + polish** — shortcuts, mpv.conf/input.conf, accessibility
@@ -294,6 +293,51 @@ Carried over or not verified:
   allocation stacks recorded. Source not identified.
 - HDR is tone-mapped to SDR for now; passthrough is a Stage 4 item.
 
+### Stage 4 contents
+
+| Where | Added | Tests |
+|---|---|---|
+| PlayerKit, engine | Track model and selection (`TrackSelector`, `LanguageMatcher`, `PlayerMemory`), `VideoSettings` / `AudioSettings` / `SubtitleSettings` written through to the engine, chapters, queue and repeat, A-B loop, frame step, screenshots, `ThumbnailGenerator`, HDR output, `AudioTranscoder` and the audio fallback chain, resume (`ResumeState`), on-screen notices | 159 in total |
+| PlayerKit, views | Two-row control bar, `SeekBar` with chapter marks and hover preview, settings panel (Video / Audio / Subtitles), queue panel, picture in picture, mini player, online subtitle section | (view models tested) |
+| PlayerKit, input | `KeyBindings` with text forms and overrides, scroll and pinch gestures, `NowPlayingSession` + `SystemNowPlayingCenter`, `MediaFiles` | |
+| MediaCore | `MediaNameGuess`, `VideoFileHash`, `SubtitleItem.releaseName` | 58 (2 opt-in live) |
+| MediaLibrary | `PlaybackMemoryStore`, migration `v3-playback-memory` | 13 |
+| AppUI, App | `AddonSubtitleService`, `LibraryPlayerMemory`, `PlayerCoordinator.open(urls:)`, drag and drop, Playback menu, `AppDelegate` for files from Finder, document types in Info.plist | 57 (1 opt-in live) |
+
+How the pieces relate:
+
+- **The player is one `PlayerModel` in extensions** (`+Tracks`, `+Navigation`, `+Commands`, `+Thumbnails`,
+  `+AudioFallback`, `+Resume`); stored state lives in the class. Everything a key, menu, gesture or media
+  key can do is a `PlayerCommand`; `PlayerWindowController.perform` handles the window's own and passes
+  the rest to `PlayerModel.perform`, which also raises the on-screen notice.
+- **The player knows nothing about add-ons or the database.** It is given a `PlayerMemory` (tracks,
+  volume, positions) and an `OnlineSubtitleService`; AppUI implements both.
+- **Three window modes in one window** (`PlayerWindowMode`): normal, picture in picture (floating, all
+  Spaces, public APIs), mini (no picture decoded). Sound without a picture gets the mini player by itself.
+- **The audio fallback needs an ffmpeg program and none is shipped.** `AudioTranscoder.locate()` looks for
+  a helper in the app bundle, then Homebrew's. Without one the chain is: same-language track, any track.
+
+Carried over or not verified in Stage 4:
+
+- **Nothing here was tried by hand.** Checked only through tests and background screenshots: every
+  menu, the settings panel's controls, dragging the seek bar, the queue's drag-to-reorder, drag and drop
+  of files, real key presses, the Open panel, full screen, and whether picture in picture really stays
+  above other apps and full-screen Spaces.
+- **Scroll and pinch directions are untested on a real trackpad.** The arithmetic is tested; whether
+  "fingers up" is volume up with both system scroll settings is not.
+- **Now Playing and media keys have never run against the system** (they are off in silent checks so the
+  user's media keys stay with their music). Tested against a fake centre only.
+- **HDR output is verified by what the layer and engine report** (PQ colour space, extended range), and a
+  screenshot shows sane colours. Nobody has looked at it on the display. The HDR sample is an SDR test
+  pattern tagged as HDR10, not real HDR content; Dolby Vision and HDR10+ files were not available to test.
+- **No sound has ever been played aloud**, as before.
+- Online subtitles: listing is checked live against the default add-ons; downloading a real subtitle is
+  not (the mock server covers it), to keep to "no copyrighted downloads".
+- The player panel's settings (subtitle style, equaliser, HDR choice) last for the session only. Saving
+  them, the shortcut editor and mpv.conf / input.conf are Stage 7.
+- The mini player shows no cover art.
+- Picture in picture uses a normal window, so clicking it activates the app.
+
 ## Performance log
 
 Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K HDR < 600 MB;
@@ -324,6 +368,28 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 3 | Debug app | Same, engine defaults without HDR peak detection | 30 % / 515 MB |
 | 2026-11-17 | 3 | Debug app | 1080p H.264 30 fps, `efficient`: CPU / memory | 12 % / 200–215 MB |
 | 2026-11-17 | 3 | Debug app | Dropped frames, 4K HDR 60 fps (engine test) | fewer than 30 in the test's bound; 0 in the spike |
+
+| 2026-11-17 | 4 | Release, universal | Launch to first screen / Home content, warm, median of 5 | 190 ms / 384 ms |
+| 2026-11-17 | 4 | Release, universal | Idle memory, Home loaded; app bundle size | 67 MB; 94 MB |
+| 2026-11-17 | 4 | Debug app | Time to first frame, local file: 1080p / 4K HDR | 236–250 ms / 275–279 ms |
+| 2026-11-17 | 4 | Debug app | **1080p H.264 30 fps, looping: CPU / memory while playing** | 13 % of one core / 427 MB |
+| 2026-11-17 | 4 | Debug app | **4K HEVC 10-bit HDR 60 fps, HDR output on, looping: CPU / memory while playing** | 26 % (peak 28 %) / 520 MB |
+| 2026-11-17 | 4 | Debug app | Same 1080p file after it has ended (paused on the last frame) | 0 % / 210 MB |
+| 2026-11-17 | 4 | Debug app | Seek bar hover preview, first request (it starts a second engine) | about 0.45 s |
+| 2026-11-17 | 4 | Debug app | `leaks` during playback | 2 to 4 blocks of 80 bytes, as in Stage 3 |
+
+**The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
+10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)
+and, through a parsing slip, dropped CPU samples under 10 %, which hid the idle ones. The script now
+loops the file and reads memory while it plays; the Stage 4 rows are the ones to trust. The canvas was
+also larger for Stage 4 (3600×2338, the display was set to a higher resolution) than for Stage 3
+(3024×1964), and both CPU and memory grow with it.
+
+Reading the Stage 4 numbers: about 290 MB of the playing footprint is canvas-sized textures (swapchain
+images and the renderer's buffers at 34 MB each), the price of the fixed canvas. 4K HDR is inside the
+600 MB target by 80 MB on this display and would not be on a larger one; the "under 30 % on an M1" CPU
+target is not met with any confidence, since 26 % was measured on an M4 Pro. Both are for Stage 8, where
+the from-source engine build lets the surface follow the window instead of the screen.
 
 Reading the Stage 3 numbers: all on an M4 Pro, so the "under 30 % on an M1" target is not verified, and
 CPU is a share of one core with the window in the background. Playback memory is inside the 600 MB

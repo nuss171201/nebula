@@ -6,6 +6,11 @@
 #   Scripts/measure-playback.sh TestMedia/hdr10-hevc-4k60.mkv 12
 #   Scripts/measure-playback.sh TestMedia/hdr10-hevc-4k60.mkv 12 "profile=fast"
 #
+# The file is played in a loop, so that it is still playing while the samples are taken
+# however short it is. (Until Stage 4 it was not: with the 10-second samples the memory figure
+# was read after the file had ended, about 200 MB too low, and idle CPU samples were dropped
+# by accident. Numbers recorded before that are marked in the performance log.)
+#
 # Notes: the Debug build is used because the launch arguments that start playback are
 # compiled out of Release; the engine itself (Libmpv.framework) is the same optimised
 # binary either way. CPU is a share of one core. The window is in the background, so
@@ -15,7 +20,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 MEDIA="${1:?usage: measure-playback.sh <file-or-url> [seconds]}"
 SECONDS_TO_SAMPLE="${2:-10}"
-ENGINE_OPTIONS="${3:-}"
+ENGINE_OPTIONS="loop-file=inf${3:+,$3}"
 # Never hand the app a file inside ~/Documents: macOS would ask the user for permission.
 MEDIA="$(Scripts/stage-media.sh "$MEDIA")"
 
@@ -45,10 +50,24 @@ done
 
 sleep 3 # past start-up
 # top's first sample is since process start; the later ones are per interval.
-CPU_SAMPLES="$(top -l $((SECONDS_TO_SAMPLE / 2 + 1)) -s 2 -pid "$PID" -stats cpu 2>/dev/null | awk '/^[0-9.]+$/ {print $1}' | tail -n +2)"
+TOP_OUTPUT="$(mktemp)"
+top -l $((SECONDS_TO_SAMPLE / 2 + 1)) -s 2 -pid "$PID" -stats cpu >"$TOP_OUTPUT" 2>/dev/null &
+TOP_PID=$!
+# Memory while it plays: the largest of a few readings taken alongside the CPU samples.
+FOOTPRINT_MB=0
+while kill -0 "$TOP_PID" 2>/dev/null; do
+    reading="$(footprint "$PID" 2>/dev/null | awk '/TOTAL/ {print ($2 == "GB") ? $1 * 1024 : $1; exit}')"
+    reading="${reading%.*}"
+    [[ -n "$reading" && "$reading" -gt "$FOOTPRINT_MB" ]] && FOOTPRINT_MB="$reading"
+    sleep 1.5
+done
+wait "$TOP_PID" 2>/dev/null || true
+# top pads values below 10 with spaces, so the test is on the field, not on the whole line.
+CPU_SAMPLES="$(awk 'NF == 1 && $1 ~ /^[0-9.]+$/ {print $1}' "$TOP_OUTPUT" | tail -n +2)"
+rm -f "$TOP_OUTPUT"
 CPU_AVG="$(echo "$CPU_SAMPLES" | awk '{sum += $1; n++} END {if (n) printf "%.1f", sum / n; else print "?"}')"
 CPU_MAX="$(echo "$CPU_SAMPLES" | sort -n | tail -1)"
-FOOTPRINT="$(footprint "$PID" 2>/dev/null | grep -m1 -i 'footprint:' | sed 's/.*Footprint: *//; s/ (.*//' || true)"
+FOOTPRINT="${FOOTPRINT_MB} MB"
 LEAKS="$(leaks "$PID" 2>/dev/null | grep -E 'leaks for' | sed 's/^Process [0-9]*: //' || true)"
 FIRST_FRAME="$(/usr/bin/log show --last "$((SECONDS_TO_SAMPLE + 20))s" --style compact \
     --predicate "processID == $PID AND subsystem == \"$BUNDLE_ID\" AND category == \"player\"" 2>/dev/null \
@@ -62,5 +81,5 @@ echo "media:        $(basename "$MEDIA")${ENGINE_OPTIONS:+   [engine: $ENGINE_OP
 echo "first frame:  ${FIRST_FRAME:-not reported}"
 echo "decoder:      ${DECODER:-not reported}"
 echo "cpu:          average ${CPU_AVG}% of one core, peak ${CPU_MAX:-?}% (sampled every 2 s for ${SECONDS_TO_SAMPLE} s)"
-echo "memory:       footprint ${FOOTPRINT:-unknown}"
+echo "memory:       footprint ${FOOTPRINT:-unknown} at most while playing"
 echo "leaks:        ${LEAKS:-not available}"
