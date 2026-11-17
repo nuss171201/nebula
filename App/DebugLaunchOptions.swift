@@ -2,6 +2,7 @@
     import AppUI
     import Foundation
     import MediaCore
+    import PlayerKit
 
     /// Debug-only launch arguments that open the app in a given state, so a screen can
     /// be checked (or screenshotted) without clicking through the UI:
@@ -11,6 +12,7 @@
     ///     open -g Orbit.app --args -open series:tt0386676
     ///     open -g Orbit.app --args -section addons -install http://127.0.0.1:8123/manifest.json
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv      (or an http(s) address)
+    ///     open -g Orbit.app --args -silent YES -engine "profile=fast" -play /path/to/file.mkv
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -18,6 +20,11 @@
         /// used for a check, so the app never makes a sound the user did not ask for.
         static var isSilent: Bool {
             UserDefaults.standard.bool(forKey: "silent")
+        }
+
+        /// `-engine "name=value,name=value"`: extra playback-engine options, for experiments.
+        static var engineOptions: [PlayerConfiguration.EngineOption] {
+            PlayerConfiguration.EngineOption.parse(UserDefaults.standard.string(forKey: "engine") ?? "")
         }
 
         @MainActor

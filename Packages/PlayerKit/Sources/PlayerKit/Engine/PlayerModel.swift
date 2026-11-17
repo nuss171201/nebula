@@ -180,6 +180,11 @@ public final class PlayerModel {
                 let kind = source?.isLocalFile == true ? "file" : "network"
                 logger.notice("first-frame-ms=\(milliseconds, privacy: .public) source=\(kind, privacy: .public)")
             }
+        case let .property(.hardwareDecoder(decoder)):
+            // Worth a log line: software decoding of 4K costs several times the CPU and memory.
+            if state.hasMedia || state.phase == .loading {
+                logger.notice("decoder=\(decoder ?? "software", privacy: .public)")
+            }
         case let .ended(.failed(message)):
             logger.error("playback failed: \(message, privacy: .public)")
         case .shutdown:

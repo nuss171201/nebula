@@ -1,4 +1,5 @@
 import AppUI
+import PlayerKit
 import SwiftUI
 
 /// App entry point and composition root: builds the dependency graph and hands
@@ -23,14 +24,17 @@ struct MediaCenterApp: App {
 
     private static func makeModel() -> AppModel {
         var playsAudio = true
+        var engineOptions: [PlayerConfiguration.EngineOption] = []
         #if DEBUG
             playsAudio = !DebugLaunchOptions.isSilent
+            engineOptions = DebugLaunchOptions.engineOptions
         #endif
         let model = AppModel(
             dependencies: .live(
                 branding: Branding.current,
                 defaultAddonAddresses: DefaultAddons.addresses(in: .main),
-                playsAudio: playsAudio
+                playsAudio: playsAudio,
+                additionalEngineOptions: engineOptions
             )
         )
         #if DEBUG

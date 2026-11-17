@@ -36,16 +36,25 @@ swiftformat .                     # apply formatting
 cd Packages/MediaCore && swift test
 LIVE_ADDON_TESTS=1 swift test --filter LiveAddonTests   # opt-in: hits the real default add-ons
 
+# Prerequisites that ci.sh runs for you (both skip work that is already done):
+Scripts/build-mpv-framework.sh    # Packages/PlayerKit/Vendor/Libmpv.xcframework from Config/mpv-libraries.lock
+Scripts/make-test-media.sh        # TestMedia/: 1080p H.264, 4K HDR10 HEVC, multi-track MKV, external subs
+
 # Looking at the running app without taking focus (Debug build):
 Scripts/screenshot.sh /path/shot.png 6                          # Home
 Scripts/screenshot.sh /path/shot.png 6 -section discover        # also: library, calendar, addons
 Scripts/screenshot.sh /path/shot.png 7 -search "the office"
 Scripts/screenshot.sh /path/shot.png 7 -open series:tt0386676   # a detail page
+Scripts/screenshot.sh /path/shot.png 6 -silent YES -play "$PWD/TestMedia/sdr-h264-1080p.mp4"   # player
+
+# Playback over HTTP (Range-capable; python's http.server is not):
+Scripts/serve-test-media.py 8765 &          # then -play http://127.0.0.1:8765/<file>; add --throttle-kbps N
 
 # Measuring (Release build; run Scripts/ci.sh --release first):
 Scripts/measure-launch.sh 5                       # first-screen and home-content times, idle memory
 CLEAR_IMAGE_CACHE=1 Scripts/profile-launch.sh 8   # Time Profiler around a launch, summarised
-leaks <pid>                                       # on a Debug build left running with KEEP_RUNNING=1
+Scripts/measure-playback.sh TestMedia/hdr10-hevc-4k60.mkv 10            # first frame, CPU, memory, leaks
+Scripts/measure-playback.sh TestMedia/hdr10-hevc-4k60.mkv 10 "profile=fast"   # with extra engine options
 
 swift Scripts/generate-icon.swift App/Assets.xcassets/AppIcon.appiconset   # redraw placeholder icon
 ```
@@ -58,7 +67,14 @@ Traces: `build/traces/` (open in Instruments).
 Always launch it in the **background** (`open -g`, which the scripts above do) and quit it afterwards.
 `open` without `-g` brings the window to the front; the user was working and quit it (⌘Q) both times
 during Stage 1. Debug builds accept launch arguments that open a given state
-(`App/DebugLaunchOptions.swift`): `-section`, `-search`, `-open <type>:<id>`, `-install <address>`.
+(`App/DebugLaunchOptions.swift`): `-section`, `-search`, `-open <type>:<id>`, `-install <address>`,
+`-play <path or URL>`, `-silent YES`, `-engine "name=value,…"`.
+
+**Never make a sound the user did not ask for:** every `-play` used for a check must come with
+`-silent YES` (the scripts do this), and tests create players with `playsAudio: false` or volume 0.
+
+A crash at launch puts a system dialog on the user's screen. `ci.sh --release` therefore runs the
+Release binary directly first (a loader failure shows up in the log, not as a dialog).
 
 Limits of background verification: nothing can be clicked or scrolled, and a window with a sheet
 attached cannot be captured. Anything that needs interaction is covered by view-model tests, not by eye.
@@ -106,12 +122,49 @@ App/ (target MediaCenter)   entry point + composition root + Branding. No featur
 - Tests run against `MockAddonServer` (AddonTestSupport, in the MediaCore package): a real loopback
   HTTP server, so request URLs are verified byte for byte.
 
+### How the player fits together (Stage 3)
+
+- **Libmpv.framework is dynamic, on purpose.** MPVKit's LGPL build ships static archives; linking
+  them into the app would statically link LGPL code. `Scripts/build-mpv-framework.sh` links the 29
+  pinned libraries (SHA-256 verified, GPL variants and Samba excluded) into one dynamic framework that
+  exports only libmpv's 54 public functions. PlayerKit sees just that framework, so the libraries can
+  later come from a from-source build without touching player code. MPVKit's README calls itself
+  "only suitable for learning" and lightly maintained; treat it as a dependency to replace, not to trust.
+- **Local signing needs an entitlement.** An ad-hoc signature has no Team ID, so the hardened runtime
+  refuses to load the embedded framework. `Config/LocalSigning.entitlements` disables library validation
+  for local builds only; a Developer ID build (Stage 9) must not carry it.
+- `MPVClient` wraps one engine: commands and property writes are asynchronous; a dedicated thread
+  translates engine events to `PlayerEvent` values; the playhead is forwarded about 15 times a second
+  without ever dropping the newest value. `PlaybackState` is a pure reduction of those events.
+  `PlayerModel` (@MainActor) owns client, state and surface, and exposes intents.
+- **The app is in sole control of the engine:** its config files, scripts, key bindings, on-screen
+  controller and window are switched off (`PlayerConfiguration.engineOptions`). `PlayableSource` only
+  admits `file`, `http` and `https`, because addresses will come from add-ons and the engine
+  understands schemes that read local files or run filters.
+- **Render path: `vo=gpu-next` through MoltenVK into a `CAMetalLayer`** (passed as `wid`), with
+  VideoToolbox decoding. No OpenGL fallback is built.
+- **The surface is a fixed-size canvas, scaled by Core Animation** (`PlayerSurfaceView`,
+  `CanvasGeometry`). This engine build cannot be told its surface was resized: mpv raises the
+  external-resize control only for Android and Direct3D, and MPVKit's Metal context implements no
+  events, so after a resize the picture stayed laid out for the old size. The canvas is created once at
+  the screen's pixel size (capped at 3840 on the long edge); the engine letterboxes the video inside
+  it; the view shows the video's rectangle scaled to fit. Costs: rendering is always at screen
+  resolution, and windows smaller than the screen see a Core Animation downscale. The proper fix is a
+  resize event in the engine's Metal context, which needs a patched from-source build.
+- **Render quality defaults to `efficient`** (`profile=fast` plus ordered dithering) because the
+  engine's default pipeline misses the CPU and memory targets at 4K (see the performance log).
+  `RenderQuality.high` keeps the engine defaults for a future Settings choice.
+- This FFmpeg build has no image encoders, so mpv's own screenshot-to-file fails; screenshots
+  (Stage 4) must use `screenshot-raw` and encode with ImageIO (verified in the spike).
+- The system audio output this build picks is `avfoundation`, not `coreaudio`.
+
 ### Decisions still to be made (with the stage that decides them)
 
 | Stage | Decision | Current recommendation |
 |---|---|---|
-| 3 | Render path | `vo=gpu-next` over MoltenVK into a `CAMetalLayer`; fallback libmpv render API + OpenGL layer. Decide by spike. |
-| 3 | libmpv source | MPVKit LGPL build, dynamically linked. Verify variant and licence files before adding. |
+| 4 | HDR output | `target-colorspace-hint=yes` switched the layer to PQ / extended range in the spike; not enabled yet. Needs the layer's EDR flag set on the main thread. |
+| 4 | Subtitles in black bars | With the fixed canvas, subtitles are kept inside the picture (`sub-use-margins=no`). Revisit for full screen. |
+| 8 | Engine build | Build libmpv from source with a resize event in the Metal context, replacing the fixed canvas. |
 | 4 | Audio transcode fallback | Bundled ffmpeg helper as the last step of a fallback chain; size/licence to be approved. |
 | 4 | Picture-in-Picture | Floating always-on-top window with public APIs (no private PIP.framework). |
 | 9 | Notarisation | Needs a paid Developer ID certificate; ask first. |
@@ -150,7 +203,7 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 
 - [x] **1. Skeleton** — XcodeGen project, five packages, CLAUDE.md, branding, placeholder icon, CI script
 - [x] **2. Add-on client + browsing** — protocol client, Cinemeta, Home, Discover, Search, Detail, Add-ons
-- [ ] **3. Player core** — libmpv embedding, Metal view, basic controls, file + HTTP playback
+- [x] **3. Player core** — libmpv embedding, Metal view, basic controls, file + HTTP playback
 - [ ] **4. Player features** — everything in spec section 3B
 - [ ] **5. Streams + torrent engine** — stream list, libtorrent bridge, local HTTP server, cache
 - [ ] **6. Library** — Continue Watching, resume, next-episode autoplay, calendar
@@ -187,6 +240,31 @@ Carried over to later stages:
 - Scrolling smoothness (120 Hz, no main-thread work > 8 ms) is unmeasured for the same reason; measure
   it in Stage 8 with a UI test or by hand in Instruments.
 
+### Stage 3 contents
+
+| Where | Added | Tests |
+|---|---|---|
+| Scripts, Config | `build-mpv-framework.sh` + `mpv-libraries.lock`, `make-test-media.sh`, `serve-test-media.py`, `measure-playback.sh`, `LocalSigning.entitlements` | — |
+| PlayerKit | `MPVClient`, `PlaybackState`, `PlayerModel`, `PlayerConfiguration`, `PlayableSource`, `PlayerCommand`/`KeyBindings`, `PlayerSurfaceView`/`CanvasGeometry`, `PlayerView`, `PlayerChromeModel`, `PlayerWindowController` | 45 |
+| AppUI | `PlayerCoordinator`, Open Location sheet, File menu commands | 48 in total |
+
+The engine tests play the generated samples through the real engine (audio discarded): open, pause,
+exact seek, volume, end of file, failures, replacing a file, 4K HDR into the surface with hardware
+decoding and a window resize, the real audio output at zero volume with AC-3 / E-AC-3 / DTS, shutdown.
+
+Carried over or not verified:
+
+- Not checked by eye or hand, because they need focus, a click or a key press: full screen, real key
+  presses, dragging the seek bar, the Open panel, the Open Location sheet, and **audible sound**
+  (the output device opens and decodes; nothing was ever played aloud).
+- **Slow first frame on the first launch after a rebuild:** 2.7 to 10.9 s in five such launches, about
+  0.3 s in every other launch. In the one sample taken the engine was already rendering and the main
+  thread was saturated by AppKit cursor updates, which are expensive on this Mac because it uses an
+  accessibility pointer. Not explained yet; look at it in Stage 8.
+- `leaks` reports 2 to 5 leaked 80-byte blocks in most playback runs and none in the run with
+  allocation stacks recorded. Source not identified.
+- HDR is tone-mapped to SDR for now; passthrough is a Stage 4 item.
+
 ## Performance log
 
 Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K HDR < 600 MB;
@@ -206,6 +284,22 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 2 | Release, arm64 | Time Profiler, launch with empty image cache (`profile-launch.sh`), run 1 | After launch: main thread never busy > 8 ms at a stretch |
 | 2026-11-17 | 2 | Release, arm64 | Same, run 2 | After launch: 7 stretches > 8 ms, longest 16 ms, while ~60 posters arrive |
 | 2026-11-17 | 2 | Release, arm64 | Same traces: where the work runs | Image decode (65–75 ms) and JSON decode on background threads; no app code hot on main |
+| 2026-11-17 | 3 | Release, arm64 | Launch to first screen / Home content, warm, median of 5 | 176 ms / 357 ms |
+| 2026-11-17 | 3 | Release, arm64 | Idle memory, Home loaded | 66 MB |
+| 2026-11-17 | 3 | Release, universal | App bundle size (Libmpv.framework is 73 MB of it) | 90 MB |
+| 2026-11-17 | 3 | Debug app | Time to first frame, local file: 1080p / 4K HDR / multi-track | 270–300 ms / 280–300 ms / 260–310 ms |
+| 2026-11-17 | 3 | Debug app | Time to first frame, HTTP on loopback: 1080p / 4K HDR / multi-track | 298 ms / 513 ms / 277 ms |
+| 2026-11-17 | 3 | Debug app | Time to first frame, HTTP throttled to 10 Mbit/s, 1080p | 285 ms |
+| 2026-11-17 | 3 | Debug app | 4K HEVC 10-bit HDR 60 fps, `efficient` (default): CPU / memory, 3 runs | 23 % of one core / 276–310 MB |
+| 2026-11-17 | 3 | Debug app | Same, engine defaults (`high`), median of 3 | 35 % / 533 MB |
+| 2026-11-17 | 3 | Debug app | Same, engine defaults without HDR peak detection | 30 % / 515 MB |
+| 2026-11-17 | 3 | Debug app | 1080p H.264 30 fps, `efficient`: CPU / memory | 12 % / 200–215 MB |
+| 2026-11-17 | 3 | Debug app | Dropped frames, 4K HDR 60 fps (engine test) | fewer than 30 in the test's bound; 0 in the spike |
+
+Reading the Stage 3 numbers: all on an M4 Pro, so the "under 30 % on an M1" target is not verified, and
+CPU is a share of one core with the window in the background. Playback memory is inside the 600 MB
+target with the default preset and was not with the engine's defaults (765 MB peak seen). The loopback
+and throttled HTTP results say nothing about a real, distant server.
 
 Reading the Stage 2 numbers: launch and memory are well inside the targets. The 8 ms main-thread budget
 is met most of the time while artwork streams in but not always (run 2); that is SwiftUI committing

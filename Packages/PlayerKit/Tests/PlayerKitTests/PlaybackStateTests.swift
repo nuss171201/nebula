@@ -175,6 +175,11 @@ struct EngineMappingTests {
         #expect(table["keep-open"] == "yes")
         #expect(table["ao"] == nil)
         #expect(table["volume"] == "100.0")
+        // The efficient renderer is the default; the high-quality one adds no overrides.
+        #expect(table["profile"] == "fast")
+        #expect(table["dither"] == "ordered")
+        let high = PlayerConfiguration(userAgent: "x", logSubsystem: "test", renderQuality: .high).engineOptions
+        #expect(!high.contains { $0.name == "profile" || $0.name == "dither" })
 
         let quiet = PlayerConfiguration(
             userAgent: "x",
@@ -188,6 +193,17 @@ struct EngineMappingTests {
         #expect(quietTable["gpu-api"] == nil)
         #expect(quietTable["hwdec"] == "no")
         #expect(quietTable["ao"] == "null")
+        #expect(quietTable["profile"] == nil)
+
+        // Extra options come last, so they can override anything above.
+        let extra = PlayerConfiguration(
+            userAgent: "x",
+            logSubsystem: "test",
+            additionalEngineOptions: PlayerConfiguration.EngineOption.parse("hwdec=no, deband ,=bad,scale=bilinear")
+        ).engineOptions
+        #expect(extra.suffix(3).map(\.name) == ["hwdec", "deband", "scale"])
+        #expect(extra.suffix(3).map(\.value) == ["no", "yes", "bilinear"])
+        #expect(PlayerConfiguration.EngineOption.parse("").isEmpty)
     }
 
     @Test("Only local files and http(s) addresses can be opened", arguments: [

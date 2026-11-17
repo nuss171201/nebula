@@ -42,6 +42,7 @@ targets:
         buildPhase: resources
     dependencies:
       - package: MediaCore
+      - package: PlayerKit
       - package: AppUI
 
 schemes:

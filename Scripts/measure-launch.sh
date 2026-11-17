@@ -61,7 +61,12 @@ footprint_line=""
 rss_kb=0
 for run in $(seq 1 "$RUNS"); do
     quit_app
-    open -g "$APP"
+    # LaunchServices sometimes refuses (-600) to relaunch an app it has only just seen quit.
+    for attempt in 1 2 3; do
+        open -g "$APP" 2>/dev/null && break
+        [[ "$attempt" == 3 ]] && { echo "run $run: could not launch the app" >&2; exit 1; }
+        sleep 1
+    done
 
     pid=""
     for _ in $(seq 1 50); do

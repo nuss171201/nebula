@@ -41,11 +41,14 @@ public struct AppDependencies: Sendable {
     /// The real thing: database in Application Support, caches in Caches, both in a
     /// folder named after the bundle identifier.
     ///
-    /// - Parameter playsAudio: `false` discards the player's audio (used when checking the app silently).
+    /// - Parameters:
+    ///   - playsAudio: `false` discards the player's audio (used when checking the app silently).
+    ///   - additionalEngineOptions: Extra playback-engine options (used for experiments).
     public static func live(
         branding: AppBranding,
         defaultAddonAddresses: [String],
-        playsAudio: Bool = true
+        playsAudio: Bool = true,
+        additionalEngineOptions: [PlayerConfiguration.EngineOption] = []
     ) -> AppDependencies {
         let files = FileManager.default
         let support = files.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
@@ -89,7 +92,8 @@ public struct AppDependencies: Sendable {
             playerConfiguration: PlayerConfiguration(
                 userAgent: branding.userAgent,
                 logSubsystem: branding.bundleIdentifier,
-                playsAudio: playsAudio
+                playsAudio: playsAudio,
+                additionalEngineOptions: additionalEngineOptions
             ),
             startupWarning: warning
         )

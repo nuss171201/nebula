@@ -76,6 +76,25 @@ public struct PlayerConfiguration: Sendable, Equatable {
         case none
     }
 
+    /// How much work the renderer does per frame.
+    ///
+    /// Measured on an M4 Pro playing 4K HEVC 10-bit HDR at 60 fps into a 3024×1964 canvas
+    /// (medians of three runs): `efficient` about 20 % of one core and 275 MB;
+    /// `high` about 35 % and 533 MB. See the performance log in CLAUDE.md.
+    public enum RenderQuality: String, Sendable, Equatable, CaseIterable {
+        /// Bilinear scaling, no HDR peak detection, ordered dithering. Meets the app's CPU and memory targets.
+        case efficient
+        /// The engine's own defaults: high-quality scalers in linear light and HDR peak detection.
+        case high
+
+        var engineOptions: [(String, String)] {
+            switch self {
+            case .efficient: [("profile", "fast"), ("dither", "ordered"), ("dither-depth", "auto")]
+            case .high: []
+            }
+        }
+    }
+
     /// Sent with every network request the engine makes.
     public var userAgent: String
     /// Subsystem for the engine's log messages.
@@ -83,25 +102,54 @@ public struct PlayerConfiguration: Sendable, Equatable {
     public var videoOutput: VideoOutput
     /// Decode with VideoToolbox when the format allows; falls back to software otherwise.
     public var usesHardwareDecoding: Bool
+    public var renderQuality: RenderQuality
     /// `false` discards audio instead of playing it. For tests and silent checks.
     public var playsAudio: Bool
     /// The volume the player starts at, 0–100.
     public var initialVolume: Double
+    /// Further engine options, applied after the built-in ones so they can override them.
+    /// Used for the user's own engine configuration and for experiments.
+    public var additionalEngineOptions: [EngineOption]
+
+    public struct EngineOption: Sendable, Equatable {
+        public var name: String
+        public var value: String
+
+        public init(_ name: String, _ value: String) {
+            self.name = name
+            self.value = value
+        }
+
+        /// Parses `name=value,name=value`. Entries without a name are skipped.
+        public static func parse(_ text: String) -> [EngineOption] {
+            text.split(separator: ",").compactMap { entry in
+                let parts = entry.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                let name = parts[0].trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { return nil }
+                let value = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespaces) : "yes"
+                return EngineOption(name, value)
+            }
+        }
+    }
 
     public init(
         userAgent: String,
         logSubsystem: String,
         videoOutput: VideoOutput = .surface,
         usesHardwareDecoding: Bool = true,
+        renderQuality: RenderQuality = .efficient,
         playsAudio: Bool = true,
-        initialVolume: Double = 100
+        initialVolume: Double = 100,
+        additionalEngineOptions: [EngineOption] = []
     ) {
         self.userAgent = userAgent
         self.logSubsystem = logSubsystem
         self.videoOutput = videoOutput
         self.usesHardwareDecoding = usesHardwareDecoding
+        self.renderQuality = renderQuality
         self.playsAudio = playsAudio
         self.initialVolume = min(max(initialVolume, 0), 100)
+        self.additionalEngineOptions = additionalEngineOptions
     }
 
     /// The engine options this configuration translates to, in the order they are applied.
@@ -134,6 +182,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         ]
         switch videoOutput {
         case .surface:
+            options += renderQuality.engineOptions
             options += [
                 ("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"),
                 // The view shows only the video's rectangle of the canvas, so subtitles must stay
@@ -146,6 +195,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         if !playsAudio {
             options.append(("ao", "null"))
         }
+        options += additionalEngineOptions.map { ($0.name, $0.value) }
         return options
     }
 }

@@ -77,6 +77,26 @@ if [[ "$BUILD_RELEASE" == "1" ]]; then
     ARCHS="$(lipo -archs "$BINARY")"
     echo "Release binary architectures: $ARCHS"
     [[ "$ARCHS" == *arm64* && "$ARCHS" == *x86_64* ]] || fail "Release binary is not universal ($ARCHS)"
+
+    step "Launch check (Release, hardened runtime)"
+    # Debug builds are not hardened, so only this catches a Release app that cannot load its
+    # frameworks. The binary is first run directly: if the loader rejects it, that fails here
+    # with the reason in the log, instead of as a crash dialog from a normal launch.
+    codesign --verify --deep --strict "$APP" 2>"$LOGS/codesign-release.log" \
+        || { cat "$LOGS/codesign-release.log" >&2; fail "Release app signature does not verify"; }
+    "$BINARY" >"$LOGS/release-run.log" 2>&1 &
+    RELEASE_PID=$!
+    sleep 3
+    if kill -0 "$RELEASE_PID" 2>/dev/null; then
+        kill "$RELEASE_PID" 2>/dev/null || true
+        wait "$RELEASE_PID" 2>/dev/null || true
+    else
+        head -c 1500 "$LOGS/release-run.log" >&2
+        fail "Release app exited at launch"
+    fi
+    Scripts/measure-launch.sh 1 >"$LOGS/launch-release.log" 2>&1 \
+        || { cat "$LOGS/launch-release.log" >&2; fail "Release app did not reach its first screen"; }
+    grep -E "^run 1" "$LOGS/launch-release.log"
 fi
 
 printf '\nCI passed.\n'

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  For locally built, ad-hoc signed apps only.
+
+	  The hardened runtime's library validation only lets a process load libraries signed by
+	  Apple or by the same Team ID. An ad-hoc signature has no Team ID, so without this key
+	  the app refuses to load its own embedded Libmpv.framework and dies at launch
+	  ("mapping process and mapped file have different Team IDs").
+
+	  A build signed with a Developer ID (Stage 9) signs the app and the framework with the
+	  same team, passes library validation, and must NOT carry this entitlement.
+	-->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

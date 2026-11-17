@@ -35,3 +35,6 @@ ENABLE_USER_SCRIPT_SANDBOXING = YES
 CODE_SIGN_STYLE = Manual
 CODE_SIGN_IDENTITY = -
 DEVELOPMENT_TEAM =
+// Needed only because the signature is ad-hoc: see the comment in the file. A Developer ID
+// build must use entitlements without the library-validation exception.
+CODE_SIGN_ENTITLEMENTS = Config/LocalSigning.entitlements
