@@ -39,6 +39,10 @@ public enum PlayerCommand: Hashable, Sendable {
     case toggleAlwaysOnTop
     /// Closes the player window and stops playback.
     case closePlayer
+    /// Plays what is offered as "up next" now, without waiting for the countdown.
+    case acceptUpNext
+    /// Turns the "up next" offer down.
+    case declineUpNext
 }
 
 /// A key press: which key, and which modifier keys were held.

@@ -94,6 +94,15 @@ public struct PlayerView: View {
                     .allowsHitTesting(false)
             }
 
+            if let offer = model.upNext {
+                UpNextCard(offer: offer, perform: perform)
+                    .padding(.trailing, 24 + (chrome.isSidePanelVisible ? PlayerSettingsPanel.width : 0))
+                    // Above the control bar.
+                    .padding(.bottom, 118)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .transition(.opacity)
+            }
+
             if chrome.isSettingsPanelVisible {
                 PlayerSettingsPanel(model: model, chrome: chrome, onlineSubtitles: onlineSubtitles)
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -106,6 +115,7 @@ public struct PlayerView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: chrome.isSidePanelVisible)
         .animation(.easeInOut(duration: 0.15), value: model.notice)
+        .animation(.easeInOut(duration: 0.2), value: model.upNext != nil)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             perform(.toggleFullScreen)

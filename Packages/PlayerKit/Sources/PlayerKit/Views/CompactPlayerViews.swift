@@ -19,6 +19,10 @@ struct PictureInPictureView: View {
                 overlay
                     .transition(.opacity)
             }
+            if let offer = model.upNext {
+                UpNextCard(offer: offer, perform: perform)
+                    .scaleEffect(0.8)
+            }
         }
         .onHover { chrome.pointerIsOnControls($0) }
     }

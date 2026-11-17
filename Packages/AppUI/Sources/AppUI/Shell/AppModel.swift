@@ -20,6 +20,7 @@ public final class AppModel {
     public let library: LibraryCenter
     public let continueWatching: ContinueWatchingModel
     public let libraryScreen: LibraryModel
+    public let nextEpisode: NextEpisodeController
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -86,6 +87,7 @@ public final class AppModel {
             usesSystemNowPlaying: dependencies.usesSystemNowPlaying
         )
         streamPlayer = StreamPlayer(coordinator: player, manager: dependencies.streamManager, library: library)
+        nextEpisode = NextEpisodeController(coordinator: player, streamPlayer: streamPlayer, client: client)
         selection = initialSection
         currentSection = initialSection
         let subsystem = dependencies.branding.bundleIdentifier
@@ -180,6 +182,7 @@ public final class AppModel {
         }
         home.update(addons: addons)
         continueWatching.update(addons: addons)
+        nextEpisode.update(addons: addons)
         discover.update(addons: addons)
         search.update(addons: addons)
         dependencies.subtitleService.update(addons: addons)

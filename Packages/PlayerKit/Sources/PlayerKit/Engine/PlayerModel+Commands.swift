@@ -7,6 +7,23 @@ public struct PlayerNotice: Sendable, Equatable, Identifiable {
     public let text: String
 }
 
+/// What will play when the current video is over, offered with a countdown. The player only
+/// shows it; whoever made the offer counts down, and acts on the answer.
+public struct UpNextOffer: Sendable, Equatable {
+    /// What is next: "S1 · E3 — The Title".
+    public var title: String
+    /// A second line, such as the series' name.
+    public var detail: String?
+    /// Seconds until it starts by itself.
+    public var secondsRemaining: Int
+
+    public init(title: String, detail: String? = nil, secondsRemaining: Int) {
+        self.title = title
+        self.detail = detail
+        self.secondsRemaining = max(secondsRemaining, 0)
+    }
+}
+
 /// Commands from keys, menus and gestures, and the notices that confirm them.
 extension PlayerModel {
     /// Runs a command that only concerns playback. Window commands return `false`

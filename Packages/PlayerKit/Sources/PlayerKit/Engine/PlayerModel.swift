@@ -66,6 +66,8 @@ public final class PlayerModel {
     public internal(set) var notice: PlayerNotice?
     /// What went wrong with the sound of this file and what was done about it, if anything.
     public internal(set) var audioProblem: String?
+    /// What is offered to play next, while the offer stands. Set by whoever makes it.
+    public var upNext: UpNextOffer?
 
     /// The view the video is drawn into; `nil` when the configuration has no video output.
     @ObservationIgnored public let surface: PlayerSurfaceView?

@@ -270,3 +270,41 @@ struct PlayerNoticeView: View {
             }
     }
 }
+
+/// The offer to play the next thing, with its countdown and a way to take it or leave it.
+struct UpNextCard: View {
+    let offer: UpNextOffer
+    let perform: (PlayerCommand) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(offer.secondsRemaining > 0 ? "Up Next in \(offer.secondsRemaining)" : "Up Next")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            Text(offer.title)
+                .font(.headline)
+                .lineLimit(2)
+            if let detail = offer.detail {
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            HStack {
+                Button("Play Now") {
+                    perform(.acceptUpNext)
+                }
+                .keyboardShortcut(.defaultAction)
+                Button("Cancel") {
+                    perform(.declineUpNext)
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 280, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Up next: \(offer.title)")
+    }
+}

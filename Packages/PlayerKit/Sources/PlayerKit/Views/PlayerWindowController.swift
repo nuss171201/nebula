@@ -79,6 +79,8 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
     public var onClose: (@MainActor () -> Void)?
     /// Called with files and folders dropped on the player.
     public var onOpenURLs: (@MainActor ([URL]) -> Void)?
+    /// Called with the user's answer to an "up next" offer: `true` to play it now.
+    public var onUpNextDecision: (@MainActor (Bool) -> Void)?
 
     let window: PlayerWindow
     /// Which of the window's controls and panels are showing.
@@ -201,6 +203,9 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
             setMode(mode == .mini ? .standard : .mini)
         case .closePlayer:
             close()
+        case .acceptUpNext, .declineUpNext:
+            guard model.upNext != nil else { return false }
+            onUpNextDecision?(command == .acceptUpNext)
         case .toggleAlwaysOnTop:
             chrome.isAlwaysOnTop.toggle()
             applyWindowLevel()
@@ -214,7 +219,9 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
     /// Escape undoes one thing: closes a side panel, else leaves full screen, else returns a
     /// small window to the normal one. Returns `false` when there was nothing to undo.
     private func escape() -> Bool {
-        if chrome.isSidePanelVisible {
+        if model.upNext != nil {
+            onUpNextDecision?(false)
+        } else if chrome.isSidePanelVisible {
             chrome.isSettingsPanelVisible = false
             chrome.isQueueVisible = false
         } else if isFullScreen {

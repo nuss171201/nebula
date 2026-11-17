@@ -25,6 +25,8 @@ public final class PlayerCoordinator {
     @ObservationIgnored private let subtitleService: (any OnlineSubtitleService)?
     @ObservationIgnored private let presentsWindow: Bool
     @ObservationIgnored private var controller: PlayerWindowController?
+    /// Called with the user's answer to an "up next" offer in the player: `true` to play it now.
+    @ObservationIgnored public var onUpNextDecision: (@MainActor (Bool) -> Void)?
 
     /// - Parameters:
     ///   - memory: Where track choices and volume are remembered; `nil` remembers nothing.
@@ -94,6 +96,9 @@ public final class PlayerCoordinator {
             }
             controller.onOpenURLs = { [weak self] urls in
                 Task { await self?.open(urls: urls) }
+            }
+            controller.onUpNextDecision = { [weak self] isAccepted in
+                self?.onUpNextDecision?(isAccepted)
             }
             self.controller = controller
             isPlayerOpen = true
