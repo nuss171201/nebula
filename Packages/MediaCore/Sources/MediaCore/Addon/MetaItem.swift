@@ -110,7 +110,7 @@ public struct MetaItem: Sendable, Hashable, Identifiable, Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard let id = container.lenientString(.id),
               let type = container.lenientString(.type),
-              let name = container.lenientString(.name)
+              let name = container.lenientText(.name)
         else {
             throw DecodingError.dataCorrupted(.init(
                 codingPath: decoder.codingPath,
@@ -124,13 +124,13 @@ public struct MetaItem: Sendable, Hashable, Identifiable, Decodable {
         posterShape = container.lenientString(.posterShape).flatMap(PosterShape.init(rawValue:)) ?? .poster
         background = container.lenientWebURL(.background)
         logo = container.lenientWebURL(.logo)
-        description = container.lenientString(.description)
+        description = container.lenientText(.description)
         releaseInfo = container.lenientString(.releaseInfo) ?? container.lenientString(.year)
         released = container.lenientDate(.released)
         imdbRating = container.lenientDouble(.imdbRating)
         runtime = container.lenientString(.runtime)
         country = container.lenientString(.country)
-        awards = container.lenientString(.awards)
+        awards = container.lenientText(.awards)
         website = container.lenientWebURL(.website)
         links = container.lenientArray(.links)
         videos = container.lenientArray(.videos)
@@ -138,12 +138,12 @@ public struct MetaItem: Sendable, Hashable, Identifiable, Decodable {
         // People and genres come either as plain arrays (older form) or as categorised links.
         let links = links
         func names(_ primary: CodingKeys, _ fallback: CodingKeys? = nil, linkCategory: String) -> [String] {
-            let direct = container.lenientStrings(primary)
+            let direct = container.lenientTexts(primary)
             if !direct.isEmpty {
                 return direct
             }
             if let fallback {
-                let legacy = container.lenientStrings(fallback)
+                let legacy = container.lenientTexts(fallback)
                 if !legacy.isEmpty {
                     return legacy
                 }
@@ -275,12 +275,12 @@ public struct MetaVideo: Sendable, Hashable, Identifiable, Decodable {
         self.id = id
         season = container.lenientInt(.season)
         episode = container.lenientInt(.episode) ?? container.lenientInt(.number)
-        title = container.lenientString(.title)
-            ?? container.lenientString(.name)
+        title = container.lenientText(.title)
+            ?? container.lenientText(.name)
             ?? episode.map { "Episode \($0)" }
             ?? id
         released = container.lenientDate(.released) ?? container.lenientDate(.firstAired)
         thumbnail = container.lenientWebURL(.thumbnail)
-        overview = container.lenientString(.overview) ?? container.lenientString(.description)
+        overview = container.lenientText(.overview) ?? container.lenientText(.description)
     }
 }

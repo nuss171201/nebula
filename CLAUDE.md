@@ -39,6 +39,7 @@ cd Packages/AppUI && LIVE_ADDON_TESTS=1 swift test --filter LiveSubtitleServiceT
 
 # Prerequisites that ci.sh runs for you (both skip work that is already done):
 Scripts/build-mpv-framework.sh    # Packages/PlayerKit/Vendor/Libmpv.xcframework from Config/mpv-libraries.lock
+Scripts/build-torrent-framework.sh  # Packages/StreamEngine/Vendor/Libtorrent.xcframework from Config/torrent-libraries.lock (needs cmake, ninja)
 Scripts/make-test-media.sh        # TestMedia/: 1080p H.264, 4K HDR10 HEVC, multi-track MKV, external subs
 
 # Looking at the running app without taking focus (Debug build):
@@ -76,6 +77,9 @@ player side panel), `-seekPreview <0…1>` (the seek bar's hover preview at that
 two seconds after launch: the only way to check a binding and its on-screen notice without the keyboard).
 `-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
 `-window pictureInPicture|mini` puts the player window in that mode.
+`-profile <folder>` keeps the database and caches in a scratch folder and keeps the stream engine to
+this machine; with it, `-installNow <address>` installs an add-on without the confirmation click,
+`-episode <video id>` shows an episode's streams and `-stream <n>` plays the nth listed stream.
 
 **Debug arguments that touch the player are applied one main-queue turn after launch**, not in
 `makeModel()`: that runs while SwiftUI is creating the app's `@State`, and resizing a window from there
@@ -89,6 +93,11 @@ with the blocking `setFrame(_:display:animate:)`. Before trying a new launch arg
 permission dialog and the app waits on it. `screenshot.sh` and `measure-playback.sh` swap a `-play`
 path for a copy made by `Scripts/stage-media.sh`; do the same in anything new. Tests are not
 affected: they run under the terminal's own permission.
+
+**Never let a check reach the network with the torrent engine.** A real torrent listens on all
+interfaces and talks to the router, and macOS then asks the user to allow incoming connections (if the
+firewall is on) and local-network access. Tests use `TorrentEngineSettings.loopback()`; in the app,
+`-profile` does the same. Never play a torrent stream in the app without `-profile`.
 
 **Never make a sound the user did not ask for:** every `-play` used for a check must come with
 `-silent YES` (the scripts do this), and tests create players with `playsAudio: false` or volume 0.
@@ -178,6 +187,43 @@ App/ (target MediaCenter)   entry point + composition root + Branding. No featur
   `screenshot-raw` and are encoded with ImageIO (`FrameImage`, `ScreenshotFile`).
 - The system audio output this build picks is `avfoundation`, not `coreaudio`.
 
+### How streaming fits together (Stage 5)
+
+```
+detail page ─ StreamListModel ─ AddonClient.streams (every add-on with a stream resource, in parallel)
+     │ choice
+StreamPlayer ─┬─ web address ───────────────────────────────► PlayerCoordinator.play
+              ├─ torrent ─ StreamManager.open ─ TorrentEngine ─ TorrentBridge (Obj-C++) ─ libtorrent
+              │                │                    │ pieces
+              │                └─ StreamServer ◄────┘  http://127.0.0.1:<port>/<token>/<file> ─► player
+              ├─ YouTube ─ TrailerView          └─ external page ─ the browser (http/https only)
+```
+
+- **libtorrent is built from source, static, into `Libtorrent.xcframework`** (2.0.15, BSD; Boost 1.92
+  headers, BSL; the OpenSSL pinned for the player, Apache-2.0). Static is fine for these licences; their
+  texts are in the framework's `Licenses/` and must ship with the app (Stage 9). The bridge must be
+  compiled with the definitions in `public-defines.txt` (`Package.swift` repeats them): a missing one
+  (`TORRENT_NO_DEPRECATE` selects the ABI namespace) shows up as undefined symbols at link time.
+- **Swift never sees C++.** `TorrentBridge` is Objective-C on the outside; `TorrentEngine` is an actor
+  that turns its callbacks into an ordered event stream and async calls with cancellable waiters.
+- **`PiecePrioritizer` is pure.** From where each reader is: the next 8 MB are urgent (deadlines rising
+  piece by piece), the next 48 MB are fetched ahead, the rest of the file is background; before the
+  player asks for anything, both ends of the file are urgent (containers keep their index there).
+  Only the difference between two plans is sent to libtorrent. A file larger than the cache budget is
+  not fetched whole.
+- **The player reads torrents over HTTP from `StreamServer`**: loopback only, a random 128-bit token in
+  every address, and the Host header must be a loopback name (so a web page cannot be tricked into
+  fetching a stream). One connection is one reader; when the player hangs up (every seek), the reader
+  is closed at once and its pieces stop being urgent.
+- **Streams are remembered by what they are, not where they are**: the loopback address changes every
+  time, so tracks and position are stored under `video:<type>:<id>` and `title:<type>:<id>`
+  (`StreamVideo.memoryKeys`). Hover thumbnails are off for torrents: a second reader far from the
+  playhead would take pieces from what is about to be watched.
+- **Cache**: one folder per info hash under `Caches/<bundle id>/Streams`, measured by allocated size
+  (files are sparse), trimmed least-recently-watched first to 10 GB at launch and whenever a stream
+  closes; what is playing is never removed. The budget becomes a setting in Stage 7.
+- **Neutrality**: with no stream add-on installed the detail page says so and suggests nothing.
+
 ### Decisions still to be made (with the stage that decides them)
 
 | Stage | Decision | Current recommendation |
@@ -221,8 +267,8 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - Built with Xcode 27.2 / Swift 6.4.2 on macOS 27.2, Apple Silicon. Deployment target macOS 14.0.
 - Runtime testing is only possible on this machine's OS and architecture. The x86_64 slice is built and
   checked with `lipo` but not executed; macOS 14–26 behaviour is not runtime-tested.
-- Tools (Homebrew): xcodegen 2.46, swiftformat 0.64, swiftlint 0.65, ffmpeg 9.0. Still to install:
-  cmake, ninja, pkg-config (Stage 5); create-dmg (Stage 9).
+- Tools (Homebrew): xcodegen 2.46, swiftformat 0.64, swiftlint 0.65, ffmpeg 9.0, cmake 4.5, ninja 1.13.
+  Still to install: create-dmg (Stage 9).
 
 ## Stage checklist
 
@@ -230,7 +276,7 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - [x] **2. Add-on client + browsing** — protocol client, Cinemeta, Home, Discover, Search, Detail, Add-ons
 - [x] **3. Player core** — libmpv embedding, Metal view, basic controls, file + HTTP playback
 - [x] **4. Player features** — everything in spec section 3B (the shortcut editor and mpv.conf/input.conf are Stage 7)
-- [ ] **5. Streams + torrent engine** — stream list, libtorrent bridge, local HTTP server, cache
+- [x] **5. Streams + torrent engine** — stream list, libtorrent bridge, local HTTP server, cache
 - [ ] **6. Library** — Continue Watching, resume, next-episode autoplay, calendar
 - [ ] **7. Settings + polish** — shortcuts, mpv.conf/input.conf, accessibility
 - [ ] **8. Performance pass** — measure every target in spec section 4
@@ -338,6 +384,32 @@ Carried over or not verified in Stage 4:
 - The mini player shows no cover art.
 - Picture in picture uses a normal window, so clicking it activates the app.
 
+### Stage 5 contents
+
+| Where | Added | Tests |
+|---|---|---|
+| Scripts, Config | `build-torrent-framework.sh`, `torrent-libraries.lock` | — |
+| StreamEngine | `TorrentBridge` (Obj-C++), `TorrentEngine`, `PiecePrioritizer` / `PieceMap` / `PiecePlan`, `StreamServer` + HTTP messages, `StreamCache`, `TorrentFileChooser`, `StreamManager` | 41 |
+| PlayerKit | `PlaybackOptions` (memory keys, no thumbnails, HTTP headers, title) | 161 in total |
+| MediaCore | `MediaFileExtensions`, character references decoded in titles and names | 60 |
+| AppUI, App | `StreamChoice` / `StreamGroup` / `LastStreamChoice`, `StreamListModel`, `StreamPlayer`, `StreamListView`, status bar, streams on the detail page, scratch-profile debug arguments | 74 |
+
+Carried over or not verified in Stage 5:
+
+- **The engine has never talked to anyone but itself.** Every test is two engines on this machine's
+  loopback interface: no tracker, no hash table (DHT), no router mapping, no peer from the internet,
+  no HTTPS tracker. That real swarms work rests on libtorrent, not on anything checked here.
+- **macOS will ask the user two things the first time a real torrent plays** (allow incoming
+  connections, if the firewall is on; local-network access). Neither prompt has been seen.
+- CPU and memory while a torrent streams were not measured in the app (only the test's loopback run).
+- The stream list was looked at with a stand-in add-on serving generated media, driven by debug
+  arguments; nothing was clicked. YouTube and external streams were not seen in the app.
+- HTTP headers an add-on asks for are passed to the engine in the form its documentation gives; this
+  was not tried against a server that requires them.
+- Uploading to other peers is unlimited by default; limits, the cache size and connection count are
+  settings for Stage 7. Subtitles that come attached to a stream are not loaded yet.
+- The cache's trimming was tested with small files only.
+
 ## Performance log
 
 Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K HDR < 600 MB;
@@ -377,6 +449,11 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 4 | Debug app | Same 1080p file after it has ended (paused on the last frame) | 0 % / 210 MB |
 | 2026-11-17 | 4 | Debug app | Seek bar hover preview, first request (it starts a second engine) | about 0.45 s |
 | 2026-11-17 | 4 | Debug app | `leaks` during playback | 2 to 4 blocks of 80 bytes, as in Stage 3 |
+
+| 2026-11-17 | 5 | Release, universal | Launch to first screen / Home content, warm, median of 5 | 183 ms / 351 ms |
+| 2026-11-17 | 5 | Release, universal | Idle memory, Home loaded (the stream engine starts only when a torrent is played) | 67 MB |
+| 2026-11-17 | 5 | Release, universal | App bundle size (libtorrent and OpenSSL add 30 MB across both architectures, unstripped) | 124 MB |
+| 2026-11-17 | 5 | Debug, in a test | Torrent stream, from choosing it to the first frame, peer on this machine (engine, server and player all starting cold) | 1.7 s |
 
 **The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
 10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)

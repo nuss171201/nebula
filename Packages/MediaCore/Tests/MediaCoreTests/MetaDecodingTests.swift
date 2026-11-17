@@ -142,6 +142,24 @@ struct MetaDecodingTests {
         #expect(try streams[3].source == .external(#require(URL(string: "https://example.com/watch"))))
     }
 
+    @Test("Character references left in names and descriptions are turned back into characters", arguments: [
+        ("Judith O&apos;Dea", "Judith O'Dea"), ("Tom &amp; Jerry", "Tom & Jerry"), ("&quot;Quoted&quot;", "\"Quoted\""),
+        ("It&#39;s &#x27;here&#x27;", "It's 'here'"), ("AT&T", "AT&T"), ("5 &lt; 6 &gt; 4", "5 < 6 > 4"),
+        ("&unknown; & &;", "&unknown; & &;"), ("plain", "plain"), ("ends with &", "ends with &"),
+    ])
+    func characterReferences(text: String, expected: String) {
+        #expect(text.decodingCharacterReferences() == expected)
+    }
+
+    @Test("Names, cast and descriptions are cleaned; ids are left exactly as sent")
+    func cleansDisplayText() throws {
+        let item = try decode(MetaItem.self, #"""
+        {"id": "tt1&amp;2", "type": "movie", "name": "Rock &amp; Roll", "description": "It&apos;s loud.", "cast": ["Judith O&apos;Dea"]}
+        """#)
+        #expect(item.name == "Rock & Roll" && item.description == "It's loud." && item.cast == ["Judith O'Dea"])
+        #expect(item.id == "tt1&amp;2")
+    }
+
     @Test("Subtitles need an http(s) URL and default to an undetermined language")
     func subtitles() throws {
         let subtitle = try decode(SubtitleItem.self, #"{"url": "https://subs.example.com/a.vtt"}"#)

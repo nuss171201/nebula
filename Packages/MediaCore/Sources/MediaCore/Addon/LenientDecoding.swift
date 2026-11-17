@@ -123,3 +123,54 @@ enum LenientDate {
         return try? Date(text, strategy: Date.ISO8601FormatStyle().year().month().day())
     }
 }
+
+extension KeyedDecodingContainer {
+    /// Like `lenientString`, for text that is shown to people: catalogs sometimes send it with
+    /// HTML character references left in ("O&apos;Dea"), which are turned back into characters.
+    func lenientText(_ key: Key) -> String? {
+        lenientString(key)?.decodingCharacterReferences()
+    }
+
+    func lenientTexts(_ key: Key) -> [String] {
+        lenientStrings(key).map { $0.decodingCharacterReferences() }
+    }
+}
+
+extension String {
+    private static let namedReferences: [String: Character] = [
+        "amp": "&", "apos": "'", "quot": "\"", "lt": "<", "gt": ">", "nbsp": "\u{A0}",
+    ]
+
+    /// Replaces the common HTML character references (`&amp;`, `&apos;`, `&#39;`, `&#x27;`)
+    /// with the characters they stand for. Anything unrecognised is left as it is.
+    func decodingCharacterReferences() -> String {
+        guard contains("&") else { return self }
+        var result = ""
+        var rest = self[...]
+        while let ampersand = rest.firstIndex(of: "&") {
+            result += rest[..<ampersand]
+            let tail = rest[ampersand...]
+            guard let semicolon = tail.prefix(10).firstIndex(of: ";") else {
+                result += "&"
+                rest = tail.dropFirst()
+                continue
+            }
+            let name = tail[tail.index(after: ampersand) ..< semicolon]
+            let character: Character? = if name.hasPrefix("#x") || name.hasPrefix("#X") {
+                UInt32(name.dropFirst(2), radix: 16).flatMap(Unicode.Scalar.init).map(Character.init)
+            } else if name.hasPrefix("#") {
+                UInt32(name.dropFirst()).flatMap(Unicode.Scalar.init).map(Character.init)
+            } else {
+                Self.namedReferences[String(name)]
+            }
+            if let character {
+                result.append(character)
+                rest = tail[tail.index(after: semicolon)...]
+            } else {
+                result += "&"
+                rest = tail.dropFirst()
+            }
+        }
+        return result + rest
+    }
+}
