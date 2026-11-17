@@ -28,7 +28,7 @@ enum MPVValue: Sendable, Equatable {
 enum ObservedProperty: UInt64, CaseIterable, Sendable {
     case pause = 1, timePosition, duration, volume, mute, pausedForCache, seeking, endOfFileReached
     case mediaTitle, displayWidth, displayHeight, hardwareDecoder, cacheDuration
-    case trackList, chapterList, chapter, playlist
+    case trackList, chapterList, chapter, playlist, videoTransfer
 
     var name: String {
         switch self {
@@ -49,6 +49,7 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         case .chapterList: "chapter-list"
         case .chapter: "chapter"
         case .playlist: "playlist"
+        case .videoTransfer: "video-params/gamma"
         }
     }
 
@@ -57,7 +58,7 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         case .pause, .mute, .pausedForCache, .seeking, .endOfFileReached: MPV_FORMAT_FLAG
         case .timePosition, .duration, .volume, .cacheDuration: MPV_FORMAT_DOUBLE
         case .displayWidth, .displayHeight, .chapter: MPV_FORMAT_INT64
-        case .mediaTitle, .hardwareDecoder: MPV_FORMAT_STRING
+        case .mediaTitle, .hardwareDecoder, .videoTransfer: MPV_FORMAT_STRING
         case .trackList, .chapterList, .playlist: MPV_FORMAT_NODE
         }
     }
@@ -101,6 +102,8 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         case (.chapter, nil): .currentChapter(nil)
         case let (.playlist, .node(node)): .playlist(PlaylistEntry.list(from: node))
         case (.playlist, nil): .playlist([])
+        case let (.videoTransfer, .string(name)): .transferFunction(name.isEmpty ? nil : name)
+        case (.videoTransfer, nil): .transferFunction(nil)
         default: nil
         }
     }

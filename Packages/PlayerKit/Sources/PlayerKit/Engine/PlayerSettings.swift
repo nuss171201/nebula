@@ -57,6 +57,48 @@ public struct VideoSettings: Sendable, Equatable {
         }
     }
 
+    /// What to do with HDR video.
+    public enum HDROutput: String, Sendable, Hashable, CaseIterable, Identifiable {
+        /// Show it in HDR when the display can; otherwise convert it.
+        case automatic
+        /// Always convert it to standard range.
+        case off
+
+        public var id: Self { self }
+
+        public var title: String {
+            switch self {
+            case .automatic: "In HDR When the Display Can"
+            case .off: "Always Convert to Standard Range"
+            }
+        }
+    }
+
+    /// How HDR brightness is squeezed into what the display can show, when it has to be.
+    public enum ToneMapping: String, Sendable, Hashable, CaseIterable, Identifiable {
+        case automatic = "auto"
+        case bt2390 = "bt.2390"
+        case bt2446a = "bt.2446a"
+        case st2094 = "st2094-40"
+        case spline, hable, mobius, reinhard, clip
+
+        public var id: Self { self }
+
+        public var title: String {
+            switch self {
+            case .automatic: "Automatic"
+            case .bt2390: "BT.2390"
+            case .bt2446a: "BT.2446a"
+            case .st2094: "ST 2094-40 (HDR10+)"
+            case .spline: "Spline"
+            case .hable: "Hable (Filmic)"
+            case .mobius: "Mobius"
+            case .reinhard: "Reinhard"
+            case .clip: "Clip"
+            }
+        }
+    }
+
     public static let adjustmentRange = -100 ... 100
     public static let zoomRange = -2.0 ... 3.0
     public static let panRange = -1.0 ... 1.0
@@ -83,6 +125,8 @@ public struct VideoSettings: Sendable, Equatable {
     public var panY = 0.0
     public var isDeinterlacing = false
     public var usesHardwareDecoding = true
+    public var hdrOutput = HDROutput.automatic
+    public var toneMapping = ToneMapping.automatic
 
     public init() {}
 
@@ -147,6 +191,7 @@ public struct VideoSettings: Sendable, Equatable {
             EngineWrite("video-pan-y", clamped(panY, to: Self.panRange)),
             EngineWrite("deinterlace", .string(isDeinterlacing ? "yes" : "no")),
             EngineWrite("hwdec", .string(usesHardwareDecoding ? "videotoolbox" : "no")),
+            EngineWrite("tone-mapping", .string(toneMapping.rawValue)),
         ]
     }
 }
@@ -205,6 +250,10 @@ public struct AudioSettings: Sendable, Equatable {
     public var equalizer = Equalizer()
     /// Evens out loud and quiet passages.
     public var isNormalizingLoudness = false
+    /// Mixes surround sound down to two channels, whatever the output device offers.
+    public var isDownmixingToStereo = false
+    /// Keeps voices at their normal pitch when the speed is changed.
+    public var keepsPitch = true
 
     public init() {}
 
@@ -213,6 +262,9 @@ public struct AudioSettings: Sendable, Equatable {
         return [
             EngineWrite("audio-delay", .double(min(max(delay, Self.delayRange.lowerBound), Self.delayRange.upperBound))),
             EngineWrite("af", .string(filters)),
+            // "auto-safe" is the engine's default: as many channels as the device plays properly.
+            EngineWrite("audio-channels", .string(isDownmixingToStereo ? "stereo" : "auto-safe")),
+            EngineWrite("audio-pitch-correction", .flag(keepsPitch)),
         ]
     }
 }

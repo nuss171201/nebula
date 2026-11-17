@@ -86,6 +86,31 @@ struct VideoSettingsTab: View {
             adjustment("Hue", \.hue)
         }
 
+        SettingsSection(title: "HDR") {
+            Picker("HDR video", selection: $model.video.hdrOutput) {
+                ForEach(VideoSettings.HDROutput.allCases) { output in
+                    Text(output.title).tag(output)
+                }
+            }
+            Picker("Conversion", selection: $model.video.toneMapping) {
+                ForEach(VideoSettings.ToneMapping.allCases) { mapping in
+                    Text(mapping.title).tag(mapping)
+                }
+            }
+            .help("How HDR brightness is fitted to the display when the video is converted to standard range")
+            if model.state.hasMedia {
+                Text(HDRStatus.text(
+                    range: model.state.dynamicRange,
+                    dolbyVisionProfile: model.state.selectedTrack(of: .video)?.dolbyVisionProfile,
+                    isShowingHDR: model.isShowingHDR,
+                    displaySupportsHDR: model.displaySupportsHDR
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+
         SettingsSection(title: "Decoding") {
             Toggle("Hardware decoding", isOn: $model.video.usesHardwareDecoding)
             Toggle("Deinterlace", isOn: $model.video.isDeinterlacing)
@@ -121,5 +146,27 @@ struct VideoSettingsTab: View {
         } set: { value in
             model.speed = PlaybackSpeed(value)
         }
+    }
+}
+
+/// The line under the HDR settings that says what is happening to this video.
+enum HDRStatus {
+    static func text(range: VideoDynamicRange, dolbyVisionProfile: Int?, isShowingHDR: Bool, displaySupportsHDR: Bool) -> String {
+        guard range.isHDR else { return "This video is standard dynamic range." }
+        let format = switch (dolbyVisionProfile, range) {
+        case (.some, _): "Dolby Vision"
+        case (nil, .hlg): "HLG"
+        default: "HDR10"
+        }
+        let outcome = if isShowingHDR {
+            "shown in HDR"
+        } else if displaySupportsHDR {
+            "converted to standard range"
+        } else {
+            "converted to standard range, because this display cannot show HDR"
+        }
+        // The engine reads Dolby Vision's metadata but can only send the display an HDR10-style signal.
+        let note = dolbyVisionProfile != nil && isShowingHDR ? " as HDR10 (a true Dolby Vision signal cannot be produced)" : ""
+        return "\(format), \(outcome)\(note)."
     }
 }

@@ -74,6 +74,7 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
     public let onlineSubtitles: OnlineSubtitlesModel?
     private let bindings: KeyBindings
     private var sizedForVideo: CGSize?
+    private var screenObserver: (any NSObjectProtocol)?
 
     /// - Parameter subtitleService: Where to look for subtitles on the network, if anywhere.
     public init(model: PlayerModel, bindings: KeyBindings = .standard, subtitleService: (any OnlineSubtitleService)? = nil) {
@@ -113,6 +114,23 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
             self?.handle(chord) ?? false
         }
         followModel()
+        updateDisplayCapabilities()
+        // The display's abilities change with its settings too, not only when the window moves.
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.updateDisplayCapabilities()
+            }
+        }
+    }
+
+    /// Tells the player whether the screen the window is on can show HDR.
+    private func updateDisplayCapabilities() {
+        let screen = window.screen ?? NSScreen.main
+        model.displaySupportsHDR = (screen?.maximumPotentialExtendedDynamicRangeColorComponentValue ?? 1) > 1
     }
 
     public var isFullScreen: Bool {
@@ -208,7 +226,15 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - NSWindowDelegate
 
+    public func windowDidChangeScreen(_: Notification) {
+        updateDisplayCapabilities()
+    }
+
     public func windowWillClose(_: Notification) {
+        if let screenObserver {
+            NotificationCenter.default.removeObserver(screenObserver)
+        }
+        screenObserver = nil
         model.shutdown()
         onClose?()
         onClose = nil

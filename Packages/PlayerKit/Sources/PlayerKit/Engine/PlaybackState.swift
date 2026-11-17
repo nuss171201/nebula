@@ -36,6 +36,8 @@ public enum PlayerProperty: Sendable, Equatable {
     /// The chapter the playhead is in; `nil` before the first one.
     case currentChapter(Int?)
     case playlist([PlaylistEntry])
+    /// How the video encodes brightness, by the engine's name (`pq`, `hlg`, `bt.1886`, …).
+    case transferFunction(String?)
 }
 
 /// Everything the player reports, as values.
@@ -84,6 +86,8 @@ public struct PlaybackState: Sendable, Equatable {
     public var currentChapter: Int?
     /// The play queue. Survives from one file to the next.
     public var playlist: [PlaylistEntry] = []
+    /// How the video encodes brightness, by the engine's name; `nil` until the first frame is decoded.
+    public var transferFunction: String?
 
     private var displayWidth: Int?
     private var displayHeight: Int?
@@ -107,6 +111,15 @@ public struct PlaybackState: Sendable, Equatable {
     /// The chapter that contains a position, if the file has chapters.
     public func chapter(at seconds: Double) -> MediaChapter? {
         chapters.last { $0.start <= seconds + 0.001 }
+    }
+
+    /// Whether the video is standard or high dynamic range, and which kind.
+    public var dynamicRange: VideoDynamicRange {
+        switch transferFunction {
+        case "pq": .hdr10
+        case "hlg": .hlg
+        default: .standard
+        }
     }
 
     /// Whether a file is open (playing, paused or sitting on its last frame).
@@ -186,6 +199,7 @@ public struct PlaybackState: Sendable, Equatable {
         case let .chapters(value): chapters = value
         case let .currentChapter(value): currentChapter = value
         case let .playlist(value): playlist = value
+        case let .transferFunction(value): transferFunction = value
         case let .reachedEnd(value):
             if value, phase == .playing {
                 phase = .ended
@@ -194,6 +208,19 @@ public struct PlaybackState: Sendable, Equatable {
                 phase = .playing
             }
         }
+    }
+}
+
+/// The brightness range a video was made for.
+public enum VideoDynamicRange: Sendable, Equatable {
+    case standard
+    /// HDR with the PQ curve: HDR10, HDR10+ and Dolby Vision are all carried this way.
+    case hdr10
+    /// HDR with the hybrid log-gamma curve, used by broadcasters.
+    case hlg
+
+    public var isHDR: Bool {
+        self != .standard
     }
 }
 

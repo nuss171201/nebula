@@ -134,6 +134,17 @@ public final class PlayerSurfaceView: NSView {
         layoutCanvas()
     }
 
+    /// Tells Core Animation whether the canvas carries brightness beyond standard white.
+    /// The renderer sets this itself from its own thread when it switches the canvas to an
+    /// HDR colour space; saying so here, on the main thread, makes sure it takes effect.
+    func setExtendedDynamicRange(_ isExtended: Bool) {
+        guard canvasLayer.wantsExtendedDynamicRangeContent != isExtended else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        canvasLayer.wantsExtendedDynamicRangeContent = isExtended
+        CATransaction.commit()
+    }
+
     /// Centres the canvas in the view and scales it so the video fills as much of the view as it can.
     private func layoutCanvas() {
         let scale = CanvasGeometry.scale(canvas: canvasSize, video: videoSize, view: bounds.size)

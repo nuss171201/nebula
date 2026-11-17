@@ -26,6 +26,8 @@ public struct MediaTrack: Sendable, Hashable, Identifiable {
     public var width: Int?
     public var height: Int?
     public var framesPerSecond: Double?
+    /// Video only: the Dolby Vision profile, when the track carries Dolby Vision.
+    public var dolbyVisionProfile: Int?
 
     public init(
         kind: Kind,
@@ -40,7 +42,8 @@ public struct MediaTrack: Sendable, Hashable, Identifiable {
         channelCount: Int? = nil,
         width: Int? = nil,
         height: Int? = nil,
-        framesPerSecond: Double? = nil
+        framesPerSecond: Double? = nil,
+        dolbyVisionProfile: Int? = nil
     ) {
         self.kind = kind
         self.number = number
@@ -55,6 +58,7 @@ public struct MediaTrack: Sendable, Hashable, Identifiable {
         self.width = width
         self.height = height
         self.framesPerSecond = framesPerSecond
+        self.dolbyVisionProfile = dolbyVisionProfile
     }
 
     public var id: String {
@@ -77,7 +81,8 @@ public struct MediaTrack: Sendable, Hashable, Identifiable {
             channelCount: node["demux-channel-count"]?.integer,
             width: node["demux-w"]?.integer,
             height: node["demux-h"]?.integer,
-            framesPerSecond: node["demux-fps"]?.number
+            framesPerSecond: node["demux-fps"]?.number,
+            dolbyVisionProfile: node["dolby-vision-profile"]?.integer
         )
     }
 

@@ -23,8 +23,18 @@ public final class PlayerModel {
         didSet {
             apply(video.engineWrites(sourceSize: sourceVideoSize), replacing: oldValue.engineWrites(sourceSize: sourceVideoSize))
             updateSurfaceGeometry()
+            updateHDROutput()
         }
     }
+
+    /// Whether the display the player is on can show HDR. Set by whoever owns the window.
+    public var displaySupportsHDR = false {
+        didSet { updateHDROutput() }
+    }
+
+    /// Whether the picture is being sent to the display as HDR right now (rather than
+    /// converted to standard range): the video is HDR, the display can show it, and the user allows it.
+    public private(set) var isShowingHDR = false
 
     /// Sound adjustments, applied on change.
     public var audio = AudioSettings() {
@@ -54,6 +64,8 @@ public final class PlayerModel {
 
     /// A short message to flash over the picture; see `announce(_:)`.
     public internal(set) var notice: PlayerNotice?
+    /// What went wrong with the sound of this file and what was done about it, if anything.
+    public internal(set) var audioProblem: String?
 
     /// The view the video is drawn into; `nil` when the configuration has no video output.
     @ObservationIgnored public let surface: PlayerSurfaceView?
@@ -68,6 +80,8 @@ public final class PlayerModel {
     @ObservationIgnored let userAgent: String
     @ObservationIgnored let screenshotDirectory: URL
     @ObservationIgnored var noticeCount = 0
+    @ObservationIgnored let audioTranscoder: AudioTranscoder?
+    @ObservationIgnored var audioFallback = AudioFallbackState()
     @ObservationIgnored var thumbnailGenerator: ThumbnailGenerator?
     @ObservationIgnored var thumbnailCache: [Int: CGImage] = [:]
     @ObservationIgnored let memory: (any PlayerMemory)?
@@ -89,6 +103,7 @@ public final class PlayerModel {
         self.memory = memory
         userAgent = configuration.userAgent
         screenshotDirectory = configuration.screenshotDirectory
+        audioTranscoder = configuration.audioTranscoder
         trackPreferences = configuration.trackPreferences
 
         let surface = configuration.videoOutput == .surface ? PlayerSurfaceView() : nil
@@ -150,6 +165,8 @@ public final class PlayerModel {
         openedAt = .now
         // Show "loading" at once instead of waiting for the engine to say so.
         state.apply(.startedLoading)
+        // Until the new file shows what it is, it is treated as standard range.
+        updateHDROutput()
         client.set("pause", to: .flag(false))
         client.command(["loadfile", source.engineArgument, "replace"])
     }
@@ -246,11 +263,25 @@ public final class PlayerModel {
         surface?.videoSize = displayedVideoSize
     }
 
+    /// Switches the renderer between HDR output and conversion to standard range.
+    ///
+    /// HDR output is only on while an HDR video is playing: with it on, standard video would be
+    /// tagged with a colour space macOS shows with a different gamma, and look washed out.
+    private func updateHDROutput() {
+        let shouldShowHDR = video.hdrOutput == .automatic && displaySupportsHDR && state.dynamicRange.isHDR
+        guard shouldShowHDR != isShowingHDR else { return }
+        isShowingHDR = shouldShowHDR
+        client.set("target-colorspace-hint", to: .string(shouldShowHDR ? "yes" : "no"))
+        surface?.setExtendedDynamicRange(shouldShowHDR)
+        logger.notice("hdr-output=\(shouldShowHDR ? "on" : "off", privacy: .public)")
+    }
+
     /// Stops playback and releases the engine. The model cannot be used afterwards.
     public func shutdown() {
         guard !hasShutDown else { return }
         hasShutDown = true
         discardThumbnails()
+        resetAudioFallback()
         client.quit()
     }
 
@@ -276,6 +307,7 @@ public final class PlayerModel {
         state.apply(event)
         // The surface shows the part of its canvas the video occupies, so it needs the video's size.
         updateSurfaceGeometry()
+        updateHDROutput()
         // A crop is a ratio; its rectangle depends on the source size, which has just become known or changed.
         if video.crop != .source, sourceVideoSize != previousSourceSize {
             client.set("video-crop", to: .string(VideoSettings.cropValue(video.crop, sourceSize: sourceVideoSize)))
@@ -284,6 +316,7 @@ public final class PlayerModel {
         switch event {
         case .startedLoading:
             discardThumbnails()
+            resetAudioFallback()
             unconfirmedSeek = nil
             // A loop belongs to one file.
             if abLoop != .off {
@@ -297,8 +330,11 @@ public final class PlayerModel {
                let playing = try? PlayableSource(userInput: current.location) {
                 source = playing
             }
+        case .property(.tracks):
+            checkAudioDecoding()
         case .playbackRestarted:
             confirmSeek()
+            checkAudioDecoding()
             if let openedAt, timeToFirstFrame == nil {
                 let elapsed = ContinuousClock.now - openedAt
                 timeToFirstFrame = elapsed

@@ -68,6 +68,9 @@ extension PlayerModel {
         case .audio: "aid"
         case .subtitle: "sid"
         }
+        if kind == .audio, let number {
+            audioFallback.wantedTrack = number
+        }
         client.set(property, to: .string(number.map(String.init) ?? "no"))
     }
 
@@ -88,7 +91,8 @@ extension PlayerModel {
             guard let self, generation == fileGeneration else { return }
             rememberedForCurrentFile = remembered ?? RememberedTracks()
             let selection = TrackSelector.selection(tracks: state.tracks, preferences: trackPreferences, remembered: remembered)
-            if let audio = selection.audio, state.selectedTrack(of: .audio)?.number != audio {
+            // A track that would not decode is not asked for again.
+            if let audio = selection.audio, state.selectedTrack(of: .audio)?.number != audio, !audioFallback.failedTracks.contains(audio) {
                 applyTrack(.audio, number: audio)
             }
             switch selection.subtitle {

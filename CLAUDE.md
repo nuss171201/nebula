@@ -174,12 +174,18 @@ App/ (target MediaCenter)   entry point + composition root + Branding. No featur
 
 | Stage | Decision | Current recommendation |
 |---|---|---|
-| 4 | HDR output | `target-colorspace-hint=yes` switched the layer to PQ / extended range in the spike; not enabled yet. Needs the layer's EDR flag set on the main thread. |
 | 4 | Subtitles in black bars | With the fixed canvas, subtitles are kept inside the picture (`sub-use-margins=no`). Revisit for full screen. |
 | 8 | Engine build | Build libmpv from source with a resize event in the Metal context, replacing the fixed canvas. |
-| 4 | Audio transcode fallback | Bundled ffmpeg helper as the last step of a fallback chain; size/licence to be approved. |
+| 9 | Bundling ffmpeg for the audio fallback | The fallback chain exists and uses an ffmpeg the user has installed. Shipping an LGPL ffmpeg helper inside the app (tens of MB) is the user's call; ask before doing it. |
 | 4 | Picture-in-Picture | Floating always-on-top window with public APIs (no private PIP.framework). |
 | 9 | Notarisation | Needs a paid Developer ID certificate; ask first. |
+
+Decided (Stage 4): **HDR output is on only while an HDR video is on an HDR-capable display**
+(`PlayerModel.updateHDROutput`). `target-colorspace-hint=yes` makes the renderer switch the canvas layer
+to PQ/HLG with extended range, and macOS maps that to the display. It is off for standard video on
+purpose: with the hint on, SDR is tagged BT.709, which macOS shows with a different gamma (washed out).
+The engine option to leave one decoder out (`ad=-name`) does nothing in this build; only an allow-list
+ending in `-` works (`ad=eac3,dca,aac,-`), which is how the audio fallback is tested.
 
 Decided: trailers play in YouTube's embedded player (`TrailerView`), never by extracting streams. The
 page is loaded with `https://<bundle id>` as its origin because YouTube requires embedders to send a referrer.

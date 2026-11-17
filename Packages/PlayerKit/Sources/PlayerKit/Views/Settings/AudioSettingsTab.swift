@@ -6,6 +6,12 @@ struct AudioSettingsTab: View {
     var body: some View {
         SettingsSection(title: "Audio Track") {
             TrackList(model: model, kind: .audio)
+            if let problem = model.audioProblem {
+                Label(problem, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
 
         SettingsSection(title: "Timing") {
@@ -34,6 +40,11 @@ struct AudioSettingsTab: View {
 
         SettingsSection(title: "Loudness") {
             Toggle("Even out loud and quiet passages", isOn: $model.audio.isNormalizingLoudness)
+        }
+
+        SettingsSection(title: "Output") {
+            Toggle("Mix surround sound down to stereo", isOn: $model.audio.isDownmixingToStereo)
+            Toggle("Keep the pitch when changing speed", isOn: $model.audio.keepsPitch)
         }
     }
 

@@ -111,6 +111,8 @@ public struct PlayerConfiguration: Sendable, Equatable {
     public var trackPreferences: TrackPreferences
     /// Where screenshots are saved. Created when the first one is taken.
     public var screenshotDirectory: URL
+    /// Converts audio the engine cannot decode; `nil` when no ffmpeg program is available.
+    public var audioTranscoder: AudioTranscoder?
     /// Further engine options, applied after the built-in ones so they can override them.
     /// Used for the user's own engine configuration and for experiments.
     public var additionalEngineOptions: [EngineOption]
@@ -153,6 +155,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         initialVolume: Double = 100,
         trackPreferences: TrackPreferences = .system(),
         screenshotDirectory: URL = PlayerConfiguration.defaultScreenshotDirectory,
+        audioTranscoder: AudioTranscoder? = .locate(),
         additionalEngineOptions: [EngineOption] = []
     ) {
         self.userAgent = userAgent
@@ -164,6 +167,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         self.initialVolume = min(max(initialVolume, 0), 100)
         self.trackPreferences = trackPreferences
         self.screenshotDirectory = screenshotDirectory
+        self.audioTranscoder = audioTranscoder
         self.additionalEngineOptions = additionalEngineOptions
     }
 
@@ -216,6 +220,8 @@ public struct PlayerConfiguration: Sendable, Equatable {
             options += renderQuality.engineOptions
             options += [
                 ("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"),
+                // HDR output is switched on by the player only while an HDR video is on an HDR display.
+                ("target-colorspace-hint", "no"),
                 // The view shows only the video's rectangle of the canvas, so subtitles must stay
                 // inside the picture instead of using the black bars around it.
                 ("sub-use-margins", "no"), ("sub-ass-force-margins", "no"),
