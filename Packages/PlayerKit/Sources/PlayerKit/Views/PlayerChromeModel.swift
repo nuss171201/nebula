@@ -10,6 +10,17 @@ public final class PlayerChromeModel {
     public typealias Sleep = @Sendable (Duration) async throws -> Void
 
     public private(set) var isVisible = true
+    /// Whether the quick-settings side panel is open. Controls stay up while it is.
+    public var isSettingsPanelVisible = false {
+        didSet {
+            if isSettingsPanelVisible {
+                isVisible = true
+            }
+            scheduleHide()
+        }
+    }
+
+    public var settingsTab = PlayerSettingsTab.video
 
     @ObservationIgnored private let hideDelay: Duration
     @ObservationIgnored private let sleep: Sleep
@@ -42,6 +53,16 @@ public final class PlayerChromeModel {
         scheduleHide()
     }
 
+    /// Opens the settings panel on a tab, or closes it if that tab is already showing.
+    public func toggleSettingsPanel(_ tab: PlayerSettingsTab) {
+        if isSettingsPanelVisible, settingsTab == tab {
+            isSettingsPanelVisible = false
+        } else {
+            settingsTab = tab
+            isSettingsPanelVisible = true
+        }
+    }
+
     /// Waits for the pending hide timer, if any. For tests.
     func waitForPendingHide() async {
         await hideTask?.value
@@ -50,7 +71,7 @@ public final class PlayerChromeModel {
     private func scheduleHide() {
         hideTask?.cancel()
         hideTask = nil
-        guard isVisible, isPlaying, !isPointerOnControls else { return }
+        guard isVisible, isPlaying, !isPointerOnControls, !isSettingsPanelVisible else { return }
         hideTask = Task { [hideDelay, sleep] in
             do {
                 try await sleep(hideDelay)

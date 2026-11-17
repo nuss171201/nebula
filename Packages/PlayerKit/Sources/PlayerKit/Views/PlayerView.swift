@@ -4,7 +4,7 @@ import SwiftUI
 /// The player's content: the video, a status overlay, and controls that fade away during playback.
 public struct PlayerView: View {
     private let model: PlayerModel
-    private let chrome: PlayerChromeModel
+    @Bindable private var chrome: PlayerChromeModel
     private let toggleFullScreen: () -> Void
 
     public init(model: PlayerModel, chrome: PlayerChromeModel, toggleFullScreen: @escaping () -> Void) {
@@ -24,12 +24,20 @@ public struct PlayerView: View {
             VStack {
                 Spacer()
                 if chrome.isVisible {
-                    PlayerControls(model: model, toggleFullScreen: toggleFullScreen)
+                    PlayerControls(model: model, chrome: chrome, toggleFullScreen: toggleFullScreen)
                         .onHover { chrome.pointerIsOnControls($0) }
                         .transition(.opacity)
                 }
             }
+            .padding(.trailing, chrome.isSettingsPanelVisible ? PlayerSettingsPanel.width : 0)
+
+            if chrome.isSettingsPanelVisible {
+                PlayerSettingsPanel(model: model, chrome: chrome)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .transition(.move(edge: .trailing))
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: chrome.isSettingsPanelVisible)
         // The video runs under the title bar; the controls keep clear of it by sitting at the bottom.
         .ignoresSafeArea()
         .contentShape(Rectangle())
@@ -80,6 +88,7 @@ private struct PlayerStatusOverlay: View {
 /// Play/pause, the seek bar with times, volume, and full screen.
 private struct PlayerControls: View {
     let model: PlayerModel
+    let chrome: PlayerChromeModel
     let toggleFullScreen: () -> Void
 
     private var state: PlaybackState {
@@ -98,6 +107,7 @@ private struct PlayerControls: View {
 
             Text(PlaybackTime.format(model.displayPosition))
                 .monospacedDigit()
+                .fixedSize()
 
             Slider(value: positionBinding, in: 0 ... max(state.duration ?? 1, 1)) { isEditing in
                 if !isEditing {
@@ -110,6 +120,7 @@ private struct PlayerControls: View {
 
             Text(state.duration.map(PlaybackTime.format) ?? "--:--")
                 .monospacedDigit()
+                .fixedSize()
 
             Button(action: model.toggleMute) {
                 Image(systemName: volumeSymbol)
@@ -120,6 +131,13 @@ private struct PlayerControls: View {
             Slider(value: volumeBinding, in: 0 ... 100)
                 .frame(width: 84)
                 .accessibilityLabel("Volume")
+
+            Button {
+                chrome.toggleSettingsPanel(chrome.settingsTab)
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+            }
+            .accessibilityLabel("Video, Audio and Subtitle Settings")
 
             Button(action: toggleFullScreen) {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")

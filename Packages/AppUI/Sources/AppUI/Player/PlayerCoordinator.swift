@@ -88,6 +88,12 @@ public final class PlayerCoordinator {
         }
     }
 
+    /// Opens the player's quick-settings panel on a tab, if a player is open.
+    public func showPlayerSettings(_ tab: PlayerSettingsTab) {
+        controller?.chrome.settingsTab = tab
+        controller?.chrome.isSettingsPanelVisible = true
+    }
+
     public func closePlayer() {
         controller?.close()
     }

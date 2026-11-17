@@ -128,7 +128,7 @@ struct PlayerWindowControllerTests {
         #expect(await eventually { controller.window.title == "sdr-h264-1080p.mp4" })
         #expect(await eventually { controller.window.contentAspectRatio == NSSize(width: 1920, height: 1080) })
         let content = controller.window.contentLayoutRect.size
-        #expect(content.width >= 480)
+        #expect(content.width >= 640)
         let frame = controller.window.contentRect(forFrameRect: controller.window.frame).size
         #expect(abs(frame.width / frame.height - 16.0 / 9.0) < 0.01)
     }
@@ -146,6 +146,12 @@ struct PlayerWindowControllerTests {
         #expect(controller.model.state.volume == 60)
         #expect(controller.perform(.toggleMute))
         #expect(controller.model.state.isMuted)
+
+        // The settings shortcuts act on the window's panel; Escape closes it before anything else.
+        #expect(controller.perform(.toggleSettings(.audio)))
+        #expect(controller.chrome.isSettingsPanelVisible && controller.chrome.settingsTab == .audio)
+        #expect(controller.perform(.exitFullScreen))
+        #expect(!controller.chrome.isSettingsPanelVisible)
 
         // Leaving full screen when not in it is not handled, so Escape can fall through.
         #expect(!controller.isFullScreen)
@@ -222,5 +228,78 @@ struct CanvasGeometryTests {
         #expect(abs(scale * 3024 - 600) < 0.001)
         #expect(scale * 1701 < 600)
         #expect(CanvasGeometry.scale(canvas: canvas, video: video, view: .zero) == 1)
+    }
+}
+
+@Suite("Track and value presentation")
+struct TrackPresentationTests {
+    private let english = Locale(identifier: "en")
+
+    @Test("Tracks are named by language, with the title where it adds something")
+    func names() {
+        #expect(MediaTrack(kind: .audio, number: 1, title: "Français", language: "fra").displayName(locale: english) == "French")
+        #expect(MediaTrack(kind: .audio, number: 2, title: "Surround", language: "eng").displayName(locale: english) == "English — Surround")
+        #expect(MediaTrack(kind: .audio, number: 3, title: "English").displayName(locale: english) == "English")
+        #expect(MediaTrack(kind: .audio, number: 4, language: "jpn").displayName(locale: english) == "Japanese")
+        #expect(MediaTrack(kind: .subtitle, number: 5).displayName(locale: english) == "Track 5")
+    }
+
+    @Test("The small print shows codec, layout or size, and flags")
+    func details() {
+        #expect(MediaTrack(kind: .audio, number: 1, codec: "eac3", isDefault: true, channelCount: 6).detail == "E-AC-3 · 5.1 · Default")
+        #expect(MediaTrack(kind: .audio, number: 2, codec: "dts", channelCount: 8).detail == "DTS · 7.1")
+        #expect(MediaTrack(kind: .audio, number: 3, codec: "aac", channelCount: 2).detail == "AAC · Stereo")
+        #expect(MediaTrack(kind: .audio, number: 4, codec: "weird", channelCount: 3).detail == "WEIRD · 3 channels")
+        #expect(MediaTrack(kind: .video, number: 1, codec: "hevc", width: 3840, height: 2160, framesPerSecond: 59.94).detail == "HEVC · 3840×2160 · 59.94 fps")
+        #expect(MediaTrack(kind: .subtitle, number: 1, codec: "subrip", isForced: true, isExternal: true).detail == "SRT · Forced · External")
+        #expect(MediaTrack(kind: .subtitle, number: 2).detail.isEmpty)
+    }
+
+    @Test("Delays are shown with a sign and no trailing zeros", arguments: [
+        (0.0, "0 s"), (0.25, "+0.25 s"), (-1.5, "−1.5 s"), (2.0, "+2 s"), (0.0004, "0 s"),
+    ])
+    func delays(seconds: Double, expected: String) {
+        #expect(formattedDelay(seconds) == expected)
+    }
+}
+
+@MainActor
+@Suite("Settings panel")
+struct SettingsPanelTests {
+    @Test("A tab's shortcut opens the panel on it, switches to it, or closes it")
+    func toggling() {
+        let chrome = PlayerChromeModel(sleep: { _ in })
+        #expect(!chrome.isSettingsPanelVisible)
+        chrome.toggleSettingsPanel(.audio)
+        #expect(chrome.isSettingsPanelVisible && chrome.settingsTab == .audio)
+        chrome.toggleSettingsPanel(.subtitles)
+        #expect(chrome.isSettingsPanelVisible && chrome.settingsTab == .subtitles)
+        chrome.toggleSettingsPanel(.subtitles)
+        #expect(!chrome.isSettingsPanelVisible)
+    }
+
+    @Test("Controls do not hide while the panel is open")
+    func keepsControlsVisible() async {
+        let chrome = PlayerChromeModel(sleep: { _ in })
+        chrome.playbackChanged(isPlaying: true)
+        await chrome.waitForPendingHide()
+        #expect(!chrome.isVisible)
+
+        chrome.isSettingsPanelVisible = true
+        #expect(chrome.isVisible)
+        chrome.userDidInteract()
+        await chrome.waitForPendingHide()
+        #expect(chrome.isVisible)
+
+        chrome.isSettingsPanelVisible = false
+        await chrome.waitForPendingHide()
+        #expect(!chrome.isVisible)
+    }
+
+    @Test("Subtitle colours convert to and from display colours")
+    func colours() {
+        let yellow = SubtitleSettings.Color.yellow
+        #expect(SubtitleSettings.Color(yellow.color) == yellow)
+        #expect(SubtitleSettings.Color(.white) == .white)
     }
 }

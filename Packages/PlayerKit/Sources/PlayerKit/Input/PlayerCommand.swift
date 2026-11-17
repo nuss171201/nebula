@@ -26,6 +26,8 @@ public enum PlayerCommand: Hashable, Sendable {
     case cycleTrack(MediaTrack.Kind)
     /// Saves the current frame.
     case screenshot(includingSubtitles: Bool)
+    /// Opens the settings panel on a tab, or closes it if that tab is showing.
+    case toggleSettings(PlayerSettingsTab)
 }
 
 /// A key press: which key, and which modifier keys were held.
@@ -102,6 +104,9 @@ public struct KeyBindings: Sendable, Equatable {
         KeyChord(.character("x"), .shift): .shiftAudioDelay(0.1),
         KeyChord(.character("z"), .shift): .shiftAudioDelay(-0.1),
         KeyChord(.character("s"), .command): .screenshot(includingSubtitles: true),
-        KeyChord(.character("s"), [.command, .shift]): .screenshot(includingSubtitles: false),
+        KeyChord(.character("s"), [.command, .option]): .screenshot(includingSubtitles: false),
+        KeyChord(.character("v"), [.command, .shift]): .toggleSettings(.video),
+        KeyChord(.character("a"), [.command, .shift]): .toggleSettings(.audio),
+        KeyChord(.character("s"), [.command, .shift]): .toggleSettings(.subtitles),
     ])
 }

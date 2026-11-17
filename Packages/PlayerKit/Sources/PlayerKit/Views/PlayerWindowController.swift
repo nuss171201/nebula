@@ -61,14 +61,15 @@ final class PlayerWindow: NSWindow {
 @MainActor
 public final class PlayerWindowController: NSObject, NSWindowDelegate {
     private static let initialSize = NSSize(width: 1280, height: 720)
-    private static let minimumSize = NSSize(width: 480, height: 270)
+    private static let minimumSize = NSSize(width: 640, height: 360)
 
     public let model: PlayerModel
     /// Called after the window has closed and the player has been told to shut down.
     public var onClose: (@MainActor () -> Void)?
 
     let window: PlayerWindow
-    private let chrome = PlayerChromeModel()
+    /// Which of the window's controls and panels are showing.
+    public let chrome = PlayerChromeModel()
     private let bindings: KeyBindings
     private var sizedForVideo: CGSize?
 
@@ -129,8 +130,16 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
             toggleFullScreen()
             return true
         case .exitFullScreen:
+            // Escape closes the settings panel first, then leaves full screen.
+            if chrome.isSettingsPanelVisible {
+                chrome.isSettingsPanelVisible = false
+                return true
+            }
             guard isFullScreen else { return false }
             toggleFullScreen()
+            return true
+        case let .toggleSettings(tab):
+            chrome.toggleSettingsPanel(tab)
             return true
         default:
             return model.perform(command)
@@ -159,14 +168,15 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Gives the window the video's proportions, as large as the video itself but never
+    /// Gives the window the video's proportions, at one point per video pixel but never
     /// more than most of the screen, keeping it centred where it was.
     private func fitWindow(toVideoOf videoSize: CGSize) {
         window.contentAspectRatio = videoSize
         guard !isFullScreen else { return }
-        let scale = window.backingScaleFactor
         let available = (window.screen ?? NSScreen.main)?.visibleFrame.size ?? Self.initialSize
-        let natural = CGSize(width: videoSize.width / scale, height: videoSize.height / scale)
+        // One video pixel per point: on a Retina screen a 720p video at one pixel per screen
+        // pixel would be a very small window.
+        let natural = videoSize
         let fit = min(1, available.width * 0.8 / natural.width, available.height * 0.8 / natural.height)
         let size = NSSize(
             width: max((natural.width * fit).rounded(), Self.minimumSize.width),

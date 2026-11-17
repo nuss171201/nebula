@@ -13,6 +13,7 @@
     ///     open -g Orbit.app --args -section addons -install http://127.0.0.1:8123/manifest.json
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv      (or an http(s) address)
     ///     open -g Orbit.app --args -silent YES -engine "profile=fast" -play /path/to/file.mkv
+    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -panel audio   (video, audio, subtitles)
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -42,6 +43,9 @@
             }
             if let media = defaults.string(forKey: "play") {
                 model.player.play(userInput: media)
+            }
+            if let panel = defaults.string(forKey: "panel"), let tab = PlayerSettingsTab(rawValue: panel) {
+                model.player.showPlayerSettings(tab)
             }
             if let target = defaults.string(forKey: "open") {
                 let parts = target.split(separator: ":", maxSplits: 1).map(String.init)
