@@ -19,6 +19,7 @@
 #                             s:0 SubRip      lang=spa
 #                             s:1 SubRip      lang=eng
 #   external-subs.en.srt    External subtitle file matching multi-track.mkv.
+#   audio-only.m4a          AAC stereo with a title and an artist and no picture: the mini player's case.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -56,6 +57,13 @@ if needs hdr10-hevc-4k60.mkv; then
         -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc \
         -c:a aac -b:a 128k -ac 2 -metadata:s:a:0 language=eng \
         "$OUT/hdr10-hevc-4k60.mkv"
+fi
+
+if needs audio-only.m4a; then
+    echo "==> audio-only.m4a"
+    "${FF[@]}" -f lavfi -i "sine=frequency=587:sample_rate=48000:duration=10" \
+        -c:a aac -b:a 128k -ac 2 -metadata title="Test Tone" -metadata artist="Signal Generator" \
+        "$OUT/audio-only.m4a"
 fi
 
 cat >"$WORK/es.srt" <<'EOF'

@@ -62,6 +62,12 @@ extension PlayerModel {
         return true
     }
 
+    /// Stops or resumes decoding the picture, without changing which video track is chosen
+    /// when it comes back. The mini player has no picture to show, so it need not be decoded.
+    public func setVideoEnabled(_ isEnabled: Bool) {
+        client.set("vid", to: .string(isEnabled ? "auto" : "no"))
+    }
+
     func applyTrack(_ kind: MediaTrack.Kind, number: Int?) {
         let property = switch kind {
         case .video: "vid"

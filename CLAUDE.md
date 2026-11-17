@@ -75,6 +75,14 @@ player side panel), `-seekPreview <0…1>` (the seek bar's hover preview at that
 (a second file for the queue), `-keys "]]l"` (plain key presses sent through the player's key bindings
 two seconds after launch: the only way to check a binding and its on-screen notice without the keyboard).
 `-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
+`-window pictureInPicture|mini` puts the player window in that mode.
+
+**Debug arguments that touch the player are applied one main-queue turn after launch**, not in
+`makeModel()`: that runs while SwiftUI is creating the app's `@State`, and resizing a window from there
+re-enters SwiftUI's update and aborts (this crashed the app twice in Stage 4, with a crash dialog on the
+user's screen each time). For the same reason the player window is resized through the animator, never
+with the blocking `setFrame(_:display:animate:)`. Before trying a new launch argument in the app, check
+`ls ~/Library/Logs/DiagnosticReports | grep Orbit` afterwards.
 
 **Never make macOS ask the user for permission during a check.** Do not point the app at files in
 `~/Documents`, `~/Desktop` or `~/Downloads` (this repository is in Documents): macOS shows a

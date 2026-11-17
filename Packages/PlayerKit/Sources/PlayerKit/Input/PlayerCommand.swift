@@ -28,6 +28,13 @@ public enum PlayerCommand: Hashable, Sendable {
     case screenshot(includingSubtitles: Bool)
     /// Opens the settings panel on a tab, or closes it if that tab is showing.
     case toggleSettings(PlayerSettingsTab)
+    /// A small window that floats above everything, or back to the normal one.
+    case togglePictureInPicture
+    /// A compact window with controls and no picture, or back to the normal one.
+    case toggleMiniPlayer
+    case toggleAlwaysOnTop
+    /// Closes the player window and stops playback.
+    case closePlayer
 }
 
 /// A key press: which key, and which modifier keys were held.
@@ -108,5 +115,8 @@ public struct KeyBindings: Sendable, Equatable {
         KeyChord(.character("v"), [.command, .shift]): .toggleSettings(.video),
         KeyChord(.character("a"), [.command, .shift]): .toggleSettings(.audio),
         KeyChord(.character("s"), [.command, .shift]): .toggleSettings(.subtitles),
+        KeyChord(.character("p"), [.command, .control]): .togglePictureInPicture,
+        KeyChord(.character("m"), [.command, .control]): .toggleMiniPlayer,
+        KeyChord(.character("t"), [.command, .control]): .toggleAlwaysOnTop,
     ])
 }

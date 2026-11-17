@@ -122,6 +122,11 @@ public struct PlaybackState: Sendable, Equatable {
         }
     }
 
+    /// Whether what is open is sound without moving pictures (a cover picture does not count).
+    public var isAudioOnly: Bool {
+        hasMedia && !tracks.isEmpty && !tracks.contains { $0.kind == .video && !$0.isCoverArt }
+    }
+
     /// Whether a file is open (playing, paused or sitting on its last frame).
     public var hasMedia: Bool {
         phase == .playing || phase == .ended

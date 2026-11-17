@@ -131,6 +131,11 @@ public final class PlayerCoordinator {
         online.searchTitles()
     }
 
+    /// Puts the player window into a mode (normal, picture in picture, mini), if a player is open.
+    public func setWindowMode(_ mode: PlayerWindowMode) {
+        controller?.setMode(mode)
+    }
+
     /// Opens the player's queue panel, if a player is open.
     public func showQueue() {
         controller?.chrome.isQueueVisible = true

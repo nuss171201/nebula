@@ -13,11 +13,13 @@ guard CommandLine.arguments.count == 2, let pid = Int(CommandLine.arguments[1]) 
 let windows = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
 let candidates = windows.compactMap { window -> (id: Int, width: Double, height: Double)? in
     guard window[kCGWindowOwnerPID as String] as? Int == pid,
-          window[kCGWindowLayer as String] as? Int == 0,
+          // Normal windows, and floating ones (picture in picture, always on top).
+          let layer = window[kCGWindowLayer as String] as? Int, layer == 0 || layer == 3,
           let id = window[kCGWindowNumber as String] as? Int,
           let bounds = window[kCGWindowBounds as String] as? [String: Any],
           let width = bounds["Width"] as? Double, let height = bounds["Height"] as? Double,
-          width > 200, height > 200
+          // The mini player is only about 120 points tall.
+          width > 200, height > 100
     else { return nil }
     return (id, width, height)
 }

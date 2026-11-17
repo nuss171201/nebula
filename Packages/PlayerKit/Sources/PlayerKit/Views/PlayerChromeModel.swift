@@ -39,6 +39,9 @@ public final class PlayerChromeModel {
     }
 
     public var settingsTab = PlayerSettingsTab.video
+    /// Which kind of window the player is in. Set by the window's controller.
+    public internal(set) var windowMode = PlayerWindowMode.standard
+    public internal(set) var isAlwaysOnTop = false
     /// Where along the seek bar the pointer is, as a fraction of its width; `nil` when not over it.
     public var seekHoverFraction: Double?
 

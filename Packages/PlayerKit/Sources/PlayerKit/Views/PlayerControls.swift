@@ -5,7 +5,7 @@ import SwiftUI
 struct PlayerControls: View {
     @Bindable var model: PlayerModel
     let chrome: PlayerChromeModel
-    let toggleFullScreen: () -> Void
+    let perform: (PlayerCommand) -> Void
 
     private var state: PlaybackState {
         model.state
@@ -49,7 +49,9 @@ struct PlayerControls: View {
                 }
                 .accessibilityLabel("Video, Audio and Subtitle Settings")
                 .help("Video, Audio and Subtitle Settings")
-                Button(action: toggleFullScreen) {
+                Button {
+                    perform(.toggleFullScreen)
+                } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                 }
                 .accessibilityLabel("Toggle Full Screen")
@@ -178,12 +180,25 @@ struct PlayerControls: View {
                     Text(mode.title).tag(mode)
                 }
             }
+            Section("Window") {
+                Button("Picture in Picture") {
+                    perform(.togglePictureInPicture)
+                }
+                Button("Mini Player") {
+                    perform(.toggleMiniPlayer)
+                }
+                Toggle("Always on Top", isOn: Binding {
+                    chrome.isAlwaysOnTop
+                } set: { _ in
+                    perform(.toggleAlwaysOnTop)
+                })
+            }
         } label: {
             Image(systemName: model.abLoop == .off && model.repeatMode == .off ? "ellipsis.circle" : "ellipsis.circle.fill")
         }
         .fixedSize()
         .accessibilityLabel("More Playback Controls")
-        .help("Loop, Frame Step, Screenshot, Repeat")
+        .help("Loop, Frame Step, Screenshot, Repeat, Window")
     }
 
     private var loopActionTitle: String {

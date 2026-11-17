@@ -18,6 +18,7 @@
     ///     open -g Orbit.app --args -silent YES -play /path/a.mkv -enqueue /path/b.mkv -panel queue
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -keys "]]l"   (plain keys, after 2 s)
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -subtitleSearch "a film's name"
+    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -window pictureInPicture   (or mini)
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -45,7 +46,12 @@
                 model.addons.addressInput = address
                 Task { await model.addons.fetchPendingInstall() }
             }
-            applyPlayerOptions(to: model.player, defaults: defaults)
+            // Not now: this runs while SwiftUI is still creating the app's state, and anything
+            // that lays out a window from here (resizing the player's, for one) re-enters
+            // SwiftUI's update and aborts the app.
+            Task { @MainActor in
+                applyPlayerOptions(to: model.player, defaults: defaults)
+            }
             if let target = defaults.string(forKey: "open") {
                 let parts = target.split(separator: ":", maxSplits: 1).map(String.init)
                 if parts.count == 2 {
@@ -69,6 +75,9 @@
                 } else if panel == "queue" {
                     player.showQueue()
                 }
+            }
+            if let name = defaults.string(forKey: "window"), let mode = PlayerWindowMode(rawValue: name) {
+                player.setWindowMode(mode)
             }
             if let name = defaults.string(forKey: "subtitleSearch") {
                 Task {

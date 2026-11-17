@@ -25,6 +25,9 @@ enum SeekBarGeometry {
 struct SeekBar: View {
     let model: PlayerModel
     let chrome: PlayerChromeModel
+    /// Whether hovering shows a still frame, chapter and time above the bar. Off in the small
+    /// windows, which have no room above the bar.
+    var showsPreview = true
 
     @State private var isDragging = false
     @State private var preview: CGImage?
@@ -77,7 +80,7 @@ struct SeekBar: View {
             }
             // The preview's bottom edge sits a little above the bar's top edge.
             .overlay(alignment: .bottomLeading) {
-                if let hoverX {
+                if showsPreview, let hoverX {
                     let time = SeekBarGeometry.time(atX: hoverX, width: width, duration: duration)
                     SeekPreview(time: time, chapter: model.state.chapter(at: time)?.title, image: preview, width: Self.previewWidth)
                         .offset(

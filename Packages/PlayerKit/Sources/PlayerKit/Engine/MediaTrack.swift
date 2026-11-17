@@ -28,6 +28,8 @@ public struct MediaTrack: Sendable, Hashable, Identifiable {
     public var framesPerSecond: Double?
     /// Video only: the Dolby Vision profile, when the track carries Dolby Vision.
     public var dolbyVisionProfile: Int?
+    /// Video only: a still picture attached to an audio file (its cover), not moving video.
+    public var isCoverArt: Bool
 
     public init(
         kind: Kind,
@@ -43,7 +45,8 @@ public struct MediaTrack: Sendable, Hashable, Identifiable {
         width: Int? = nil,
         height: Int? = nil,
         framesPerSecond: Double? = nil,
-        dolbyVisionProfile: Int? = nil
+        dolbyVisionProfile: Int? = nil,
+        isCoverArt: Bool = false
     ) {
         self.kind = kind
         self.number = number
@@ -59,6 +62,7 @@ public struct MediaTrack: Sendable, Hashable, Identifiable {
         self.height = height
         self.framesPerSecond = framesPerSecond
         self.dolbyVisionProfile = dolbyVisionProfile
+        self.isCoverArt = isCoverArt
     }
 
     public var id: String {
@@ -82,7 +86,8 @@ public struct MediaTrack: Sendable, Hashable, Identifiable {
             width: node["demux-w"]?.integer,
             height: node["demux-h"]?.integer,
             framesPerSecond: node["demux-fps"]?.number,
-            dolbyVisionProfile: node["dolby-vision-profile"]?.integer
+            dolbyVisionProfile: node["dolby-vision-profile"]?.integer,
+            isCoverArt: node["albumart"]?.isTrue ?? false
         )
     }
 
