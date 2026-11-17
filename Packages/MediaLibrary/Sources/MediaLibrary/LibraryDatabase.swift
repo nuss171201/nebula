@@ -48,6 +48,18 @@ public struct LibraryDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v2-addons") { db in
+            try db.create(table: "addon") { table in
+                // The manifest URL: two configurations of one add-on are separate rows.
+                table.primaryKey("address", .text)
+                table.column("manifest", .text).notNull()
+                table.column("position", .integer).notNull()
+                table.column("isEnabled", .boolean).notNull().defaults(to: true)
+                table.column("installedAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull()
+            }
+        }
+
         return migrator
     }
 }
