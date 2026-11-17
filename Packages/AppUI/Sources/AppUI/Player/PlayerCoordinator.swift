@@ -82,6 +82,25 @@ public final class PlayerCoordinator {
         }
     }
 
+    /// Adds a file path or web address to the end of the queue; with no player open, plays it.
+    /// Returns whether it was accepted.
+    @discardableResult
+    public func enqueue(userInput: String) -> Bool {
+        do {
+            let source = try PlayableSource(userInput: userInput)
+            if let controller {
+                errorMessage = nil
+                controller.model.enqueue(source)
+            } else {
+                play(source)
+            }
+            return true
+        } catch {
+            errorMessage = error.userMessage
+            return false
+        }
+    }
+
     private func show(_ controller: PlayerWindowController) {
         if presentsWindow {
             controller.show()
@@ -92,6 +111,19 @@ public final class PlayerCoordinator {
     public func showPlayerSettings(_ tab: PlayerSettingsTab) {
         controller?.chrome.settingsTab = tab
         controller?.chrome.isSettingsPanelVisible = true
+    }
+
+    /// Opens the player's queue panel, if a player is open.
+    public func showQueue() {
+        controller?.chrome.isQueueVisible = true
+    }
+
+    /// Types plain keys into the player window, as if on the keyboard. For checking key
+    /// bindings and their on-screen notices without taking the keyboard.
+    public func pressKeys(_ characters: String) {
+        for character in characters.lowercased() {
+            controller?.press(KeyChord(.character(character)))
+        }
     }
 
     /// Shows the seek bar's hover preview at a fraction of the file, as if the pointer were there.

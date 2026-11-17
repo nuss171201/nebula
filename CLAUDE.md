@@ -69,8 +69,10 @@ Always launch it in the **background** (`open -g`, which the scripts above do) a
 `open` without `-g` brings the window to the front; the user was working and quit it (⌘Q) both times
 during Stage 1. Debug builds accept launch arguments that open a given state
 (`App/DebugLaunchOptions.swift`): `-section`, `-search`, `-open <type>:<id>`, `-install <address>`,
-`-play <path or URL>`, `-silent YES`, `-engine "name=value,…"`, `-panel video|audio|subtitles` (the
-player's settings panel), `-seekPreview <0…1>` (the seek bar's hover preview at that fraction).
+`-play <path or URL>`, `-silent YES`, `-engine "name=value,…"`, `-panel video|audio|subtitles|queue` (a
+player side panel), `-seekPreview <0…1>` (the seek bar's hover preview at that fraction), `-enqueue <path>`
+(a second file for the queue), `-keys "]]l"` (plain key presses sent through the player's key bindings
+two seconds after launch: the only way to check a binding and its on-screen notice without the keyboard).
 
 **Never make macOS ask the user for permission during a check.** Do not point the app at files in
 `~/Documents`, `~/Desktop` or `~/Downloads` (this repository is in Documents): macOS shows a

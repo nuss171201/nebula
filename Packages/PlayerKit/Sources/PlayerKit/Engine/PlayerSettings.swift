@@ -313,3 +313,29 @@ public enum ABLoop: Sendable, Equatable {
         }
     }
 }
+
+/// What happens when a file, or the queue, reaches its end.
+public enum RepeatMode: String, Sendable, Equatable, CaseIterable, Identifiable {
+    case off
+    /// Play the current file again and again.
+    case one
+    /// Start the queue again after its last file.
+    case all
+
+    public var id: Self { self }
+
+    public var title: String {
+        switch self {
+        case .off: "Off"
+        case .one: "This File"
+        case .all: "Whole Queue"
+        }
+    }
+
+    var engineWrites: [EngineWrite] {
+        [
+            EngineWrite("loop-file", .string(self == .one ? "inf" : "no")),
+            EngineWrite("loop-playlist", .string(self == .all ? "inf" : "no")),
+        ]
+    }
+}

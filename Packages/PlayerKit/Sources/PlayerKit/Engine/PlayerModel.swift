@@ -47,6 +47,14 @@ public final class PlayerModel {
 
     public internal(set) var abLoop = ABLoop.off
 
+    /// What happens at the end of a file or of the queue. Applied on change.
+    public var repeatMode = RepeatMode.off {
+        didSet { apply(repeatMode.engineWrites, replacing: oldValue.engineWrites) }
+    }
+
+    /// A short message to flash over the picture; see `announce(_:)`.
+    public internal(set) var notice: PlayerNotice?
+
     /// The view the video is drawn into; `nil` when the configuration has no video output.
     @ObservationIgnored public let surface: PlayerSurfaceView?
     /// Called once, after the engine has shut down.
@@ -58,6 +66,8 @@ public final class PlayerModel {
     @ObservationIgnored private var openedAt: ContinuousClock.Instant?
     @ObservationIgnored private var hasShutDown = false
     @ObservationIgnored let userAgent: String
+    @ObservationIgnored let screenshotDirectory: URL
+    @ObservationIgnored var noticeCount = 0
     @ObservationIgnored var thumbnailGenerator: ThumbnailGenerator?
     @ObservationIgnored var thumbnailCache: [Int: CGImage] = [:]
     @ObservationIgnored let memory: (any PlayerMemory)?
@@ -78,6 +88,7 @@ public final class PlayerModel {
         self.logger = logger
         self.memory = memory
         userAgent = configuration.userAgent
+        screenshotDirectory = configuration.screenshotDirectory
         trackPreferences = configuration.trackPreferences
 
         let surface = configuration.videoOutput == .surface ? PlayerSurfaceView() : nil
@@ -205,34 +216,6 @@ public final class PlayerModel {
     /// Closes the current file but keeps the player ready for another.
     public func stop() {
         client.command(["stop"])
-    }
-
-    /// Runs a command that only concerns playback. Window commands return `false`
-    /// so the caller (the window) can handle them.
-    @discardableResult
-    public func perform(_ command: PlayerCommand) -> Bool {
-        switch command {
-        case .togglePause: togglePause()
-        case let .seekBy(seconds): seek(by: seconds)
-        case let .changeVolumeBy(amount): setVolume(state.volume + amount)
-        case .toggleMute: toggleMute()
-        case .stepFrameForward: stepFrameForward()
-        case .stepFrameBackward: stepFrameBackward()
-        case .speedUp: speed = speed.steppedUp()
-        case .slowDown: speed = speed.steppedDown()
-        case .resetSpeed: speed = .normal
-        case .nextChapter: nextChapter()
-        case .previousChapter: previousChapter()
-        case .playNext: playNext()
-        case .playPrevious: playPrevious()
-        case .cycleABLoop: cycleABLoop()
-        case .toggleSubtitles: subtitles.isVisible.toggle()
-        case let .shiftAudioDelay(seconds): audio.delay = ((audio.delay + seconds) * 1000).rounded() / 1000
-        case let .shiftSubtitleDelay(seconds): subtitles.delay = ((subtitles.delay + seconds) * 1000).rounded() / 1000
-        case let .cycleTrack(kind): cycleTrack(kind)
-        default: return false
-        }
-        return true
     }
 
     /// Checks that an absolute seek landed where it was aimed, and repeats it once if not.

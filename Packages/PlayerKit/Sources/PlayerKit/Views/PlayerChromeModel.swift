@@ -14,10 +14,28 @@ public final class PlayerChromeModel {
     public var isSettingsPanelVisible = false {
         didSet {
             if isSettingsPanelVisible {
+                // One side panel at a time.
+                isQueueVisible = false
                 isVisible = true
             }
             scheduleHide()
         }
+    }
+
+    /// Whether the queue side panel is open. Controls stay up while it is.
+    public var isQueueVisible = false {
+        didSet {
+            if isQueueVisible {
+                isSettingsPanelVisible = false
+                isVisible = true
+            }
+            scheduleHide()
+        }
+    }
+
+    /// Whether either side panel is taking up the trailing edge.
+    public var isSidePanelVisible: Bool {
+        isSettingsPanelVisible || isQueueVisible
     }
 
     public var settingsTab = PlayerSettingsTab.video
@@ -73,7 +91,7 @@ public final class PlayerChromeModel {
     private func scheduleHide() {
         hideTask?.cancel()
         hideTask = nil
-        guard isVisible, isPlaying, !isPointerOnControls, !isSettingsPanelVisible else { return }
+        guard isVisible, isPlaying, !isPointerOnControls, !isSidePanelVisible else { return }
         hideTask = Task { [hideDelay, sleep] in
             do {
                 try await sleep(hideDelay)

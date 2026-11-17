@@ -130,9 +130,10 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
             toggleFullScreen()
             return true
         case .exitFullScreen:
-            // Escape closes the settings panel first, then leaves full screen.
-            if chrome.isSettingsPanelVisible {
+            // Escape closes a side panel first, then leaves full screen.
+            if chrome.isSidePanelVisible {
                 chrome.isSettingsPanelVisible = false
+                chrome.isQueueVisible = false
                 return true
             }
             guard isFullScreen else { return false }
@@ -144,6 +145,13 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
         default:
             return model.perform(command)
         }
+    }
+
+    /// Acts on a key press as if it had been typed in the player window. Returns whether a
+    /// binding matched and its command was handled.
+    @discardableResult
+    public func press(_ chord: KeyChord) -> Bool {
+        handle(chord)
     }
 
     private func handle(_ chord: KeyChord) -> Bool {

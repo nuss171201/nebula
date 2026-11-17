@@ -109,9 +109,18 @@ public struct PlayerConfiguration: Sendable, Equatable {
     public var initialVolume: Double
     /// Which languages to pick for sound and subtitles when a file opens.
     public var trackPreferences: TrackPreferences
+    /// Where screenshots are saved. Created when the first one is taken.
+    public var screenshotDirectory: URL
     /// Further engine options, applied after the built-in ones so they can override them.
     /// Used for the user's own engine configuration and for experiments.
     public var additionalEngineOptions: [EngineOption]
+
+    /// A "Screenshots" folder in the user's Pictures folder.
+    public static var defaultScreenshotDirectory: URL {
+        let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Pictures", isDirectory: true)
+        return pictures.appendingPathComponent("Screenshots", isDirectory: true)
+    }
 
     public struct EngineOption: Sendable, Equatable {
         public var name: String
@@ -143,6 +152,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         playsAudio: Bool = true,
         initialVolume: Double = 100,
         trackPreferences: TrackPreferences = .system(),
+        screenshotDirectory: URL = PlayerConfiguration.defaultScreenshotDirectory,
         additionalEngineOptions: [EngineOption] = []
     ) {
         self.userAgent = userAgent
@@ -153,6 +163,7 @@ public struct PlayerConfiguration: Sendable, Equatable {
         self.playsAudio = playsAudio
         self.initialVolume = min(max(initialVolume, 0), 100)
         self.trackPreferences = trackPreferences
+        self.screenshotDirectory = screenshotDirectory
         self.additionalEngineOptions = additionalEngineOptions
     }
 

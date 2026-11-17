@@ -28,12 +28,12 @@ quit_app() {
     while pgrep -f "$BINARY" >/dev/null 2>&1; do sleep 0.2; done
 }
 
-# A file given to -play is swapped for a copy outside ~/Documents, so that macOS does not
+# A file given to -play or -enqueue is swapped for a copy outside ~/Documents, so that macOS does not
 # ask the user whether the app may read their Documents folder (see Scripts/stage-media.sh).
 ARGS=()
 previous=""
 for argument in "$@"; do
-    if [[ "$previous" == "-play" ]]; then
+    if [[ "$previous" == "-play" || "$previous" == "-enqueue" ]]; then
         argument="$(Scripts/stage-media.sh "$argument")"
     fi
     ARGS+=("$argument")

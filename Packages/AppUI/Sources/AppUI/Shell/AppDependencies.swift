@@ -95,6 +95,10 @@ public struct AppDependencies: Sendable {
                 userAgent: branding.userAgent,
                 logSubsystem: branding.bundleIdentifier,
                 playsAudio: playsAudio,
+                // Pictures/<app name>, so the folder says where its contents came from.
+                screenshotDirectory: PlayerConfiguration.defaultScreenshotDirectory
+                    .deletingLastPathComponent()
+                    .appendingPathComponent(branding.name, isDirectory: true),
                 additionalEngineOptions: additionalEngineOptions
             ),
             startupWarning: warning

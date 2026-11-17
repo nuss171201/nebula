@@ -94,16 +94,23 @@ extension PlayerModel {
 
     /// Selects the next track of a kind, wrapping round; subtitles also pass through "off".
     func cycleTrack(_ kind: MediaTrack.Kind) {
-        let tracks = state.tracks(of: kind)
-        guard !tracks.isEmpty else { return }
-        let current = tracks.firstIndex { $0.isSelected }
-        switch (kind, current) {
-        case (_, nil):
-            selectTrack(kind, number: tracks[0].number)
-        case let (.subtitle, index?) where index == tracks.count - 1:
-            selectTrack(kind, number: nil)
-        case let (_, index?):
-            selectTrack(kind, number: tracks[(index + 1) % tracks.count].number)
+        let name = switch kind {
+        case .video: "Video"
+        case .audio: "Audio"
+        case .subtitle: "Subtitles"
         }
+        let tracks = state.tracks(of: kind)
+        guard !tracks.isEmpty else {
+            announce("\(name): None in This File")
+            return
+        }
+        let current = tracks.firstIndex { $0.isSelected }
+        let next: MediaTrack? = switch (kind, current) {
+        case (_, nil): tracks[0]
+        case let (.subtitle, index?) where index == tracks.count - 1: nil
+        case let (_, index?): tracks[(index + 1) % tracks.count]
+        }
+        selectTrack(kind, number: next?.number)
+        announce("\(name): \(next?.displayName() ?? "Off")")
     }
 }
