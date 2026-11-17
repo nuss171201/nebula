@@ -73,7 +73,6 @@ struct AppModelTests {
         let sections = AppSection.allCases
         #expect(Set(sections.map(\.title)).count == sections.count)
         #expect(Set(sections.map(\.systemImage)).count == sections.count)
-        #expect(sections.allSatisfy { !$0.emptyStateMessage.isEmpty })
     }
 
     @Test("Screens follow the installed add-ons, from first launch through later changes")

@@ -137,6 +137,8 @@ public struct ManifestCatalog: Codable, Sendable, Hashable {
     public static let searchExtra = "search"
     public static let skipExtra = "skip"
     public static let genreExtra = "genre"
+    /// Takes a comma-separated list of series ids and answers with their recent and upcoming episodes.
+    public static let calendarExtra = "calendarVideosIds"
 
     public var type: MediaType
     public var id: String

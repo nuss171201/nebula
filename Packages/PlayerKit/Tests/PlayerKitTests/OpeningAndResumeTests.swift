@@ -210,3 +210,65 @@ struct PlaybackOptionsTests {
         #expect(PlaybackOptions(httpHeaders: ["X-Bad": "a\nb"]).headerOption == nil)
     }
 }
+
+@MainActor
+@Suite("One file after another", .enabled(if: TestMedia.isAvailable, "run Scripts/make-test-media.sh first"), .serialized)
+struct ConsecutiveFileTests {
+    private func eventually(within timeout: Duration = .seconds(10), _ condition: @MainActor () -> Bool) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if condition() {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
+    @Test("A file that follows one of the same size and length still reports its size, length and tracks", arguments: 0 ..< 3)
+    func sameShape(run _: Int) async throws {
+        // Two copies of one sample: everything about them is equal except their address.
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("twins-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let first = folder.appendingPathComponent("one.mp4")
+        let second = folder.appendingPathComponent("two.mp4")
+        try FileManager.default.copyItem(at: TestMedia.sdr, to: first)
+        try FileManager.default.copyItem(at: TestMedia.sdr, to: second)
+
+        let player = try PlayerModel(configuration: PlayerConfiguration(
+            userAgent: "PlayerKitTests/1.0",
+            logSubsystem: "test.playerkit",
+            videoOutput: .surface,
+            playsAudio: false
+        ))
+        defer { player.shutdown() }
+        try player.open(PlayableSource(url: first))
+        #expect(await eventually { player.state.hasShownFirstFrame && player.state.videoSize != nil })
+        // Run to the end, as an episode does before the next one starts.
+        player.seek(to: 9.7)
+        #expect(await eventually { player.state.phase == .ended })
+
+        try player.open(PlayableSource(url: second))
+        #expect(await eventually { player.state.phase == .playing && player.title == "two.mp4" })
+        #expect(await eventually { player.state.hasShownFirstFrame })
+        #expect(await eventually { player.state.videoSize == CGSize(width: 1920, height: 1080) })
+        #expect(await eventually { player.state.duration != nil })
+        #expect(player.state.tracks.count == 2)
+        #expect(player.surface?.videoSize == CGSize(width: 1920, height: 1080))
+        // And it starts at its beginning: the seek near the end of the first file is not repeated in it.
+        #expect(player.state.position < 5)
+        #expect(player.state.phase == .playing)
+    }
+
+    @Test("A restart reported while the next file is still loading does not count as its first frame")
+    func staleRestart() {
+        var state = PlaybackState()
+        state.apply(.startedLoading)
+        state.apply(.playbackRestarted)
+        #expect(!state.hasShownFirstFrame)
+        state.apply(.fileLoaded)
+        state.apply(.playbackRestarted)
+        #expect(state.hasShownFirstFrame)
+    }
+}

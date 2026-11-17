@@ -52,6 +52,8 @@ public actor StreamServer {
     private var resources: [String: Resource] = [:]
     private var connections: [UUID: Task<Void, Never>] = [:]
     public private(set) var port = 0
+    /// What the last requests asked for and how each ended, newest last. For diagnosing.
+    public private(set) var recentRequests: [String] = []
 
     public init(logSubsystem: String = "stream.engine") {
         logger = Logger(subsystem: logSubsystem, category: "server")
@@ -150,7 +152,7 @@ public actor StreamServer {
     }
 
     /// Number of requests being served. For tests.
-    var activeConnectionCount: Int {
+    public var activeConnectionCount: Int {
         connections.count
     }
 
@@ -203,28 +205,56 @@ public actor StreamServer {
             contentType: resource.contentType,
             rangeHeader: request.headers["range"]
         )
-        guard await box.send(response.head.serialized), request.method == "GET", let range = response.body else { return }
+        guard await box.send(response.head.serialized), request.method == "GET", let range = response.body else {
+            note("\(request.method) \(request.headers["range"] ?? "whole") → \(response.head.status), no body")
+            return
+        }
 
         // The player closes the connection when it seeks or stops; stop fetching for it at once.
         let serving = Task {
             await Self.sendBody(of: resource.source, range: range, reader: id, to: box)
         }
         box.onClose = { serving.cancel() }
-        await withTaskCancellationHandler {
+        let outcome = await withTaskCancellationHandler {
             await serving.value
         } onCancel: {
             serving.cancel()
         }
         await resource.source.close(reader: id)
+        note("GET \(request.headers["range"] ?? "whole") → \(response.head.status), sent \(outcome.sent) of \(range.count): \(outcome.ending)")
     }
 
-    private static func sendBody(of source: any ByteSource, range: ClosedRange<Int64>, reader: UUID, to box: ConnectionBox) async {
+    private func note(_ line: String) {
+        recentRequests.append(line)
+        if recentRequests.count > 40 {
+            recentRequests.removeFirst(recentRequests.count - 40)
+        }
+    }
+
+    /// Sends the range chunk by chunk. Returns how much went out and why it stopped.
+    private static func sendBody(
+        of source: any ByteSource,
+        range: ClosedRange<Int64>,
+        reader: UUID,
+        to box: ConnectionBox
+    ) async -> (sent: Int64, ending: String) {
         var offset = range.lowerBound
-        while offset <= range.upperBound, !Task.isCancelled {
+        while offset <= range.upperBound {
+            if Task.isCancelled {
+                return (offset - range.lowerBound, "the player hung up")
+            }
             let wanted = Int(min(Int64(chunkSize), range.upperBound - offset + 1))
-            guard let chunk = try? await source.read(at: offset, maxLength: wanted, reader: reader), !chunk.isEmpty, await box.send(chunk) else { return }
+            let chunk: Data
+            do {
+                chunk = try await source.read(at: offset, maxLength: wanted, reader: reader)
+            } catch {
+                return (offset - range.lowerBound, "the source failed: \(error)")
+            }
+            guard !chunk.isEmpty else { return (offset - range.lowerBound, "the source ran dry") }
+            guard await box.send(chunk) else { return (offset - range.lowerBound, "sending failed") }
             offset += Int64(chunk.count)
         }
+        return (offset - range.lowerBound, "complete")
     }
 }
 

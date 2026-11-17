@@ -73,3 +73,17 @@ struct VideoFileHashTests {
         #expect(VideoFileHash.fingerprint(ofFileAt: directory.appendingPathComponent("missing.bin")) == nil)
     }
 }
+
+@Suite("Process limits")
+struct ProcessLimitsTests {
+    @Test("The open-file limit is raised to what is wanted when it is lower, and never lowered")
+    func openFiles() {
+        var before = rlimit()
+        getrlimit(RLIMIT_NOFILE, &before)
+        let after = ProcessLimits.raiseOpenFileLimit()
+        #expect(after >= before.rlim_cur)
+        #expect(after >= min(ProcessLimits.wantedOpenFiles, before.rlim_max, rlim_t(OPEN_MAX)))
+        // Asking for less than there is changes nothing.
+        #expect(ProcessLimits.raiseOpenFileLimit(to: 16) == after)
+    }
+}

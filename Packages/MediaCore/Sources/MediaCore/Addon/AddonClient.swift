@@ -43,6 +43,12 @@ public struct AddonClient: Sendable {
         return CatalogPage(items: envelope.metas, hasMore: envelope.hasMore)
     }
 
+    /// A catalog that answers with full metadata for several titles at once, as the
+    /// "calendar" catalogs do: each title comes with its recent and upcoming videos.
+    public func detailedCatalog(_ request: CatalogRequest, from address: AddonTransportURL) async throws(AddonError) -> [MetaItem] {
+        try await fetch(request.path, from: address, as: DetailedCatalogEnvelope.self).metas
+    }
+
     public func meta(type: MediaType, id: String, from address: AddonTransportURL) async throws(AddonError) -> MetaItem {
         let path = AddonResourcePath(resource: ManifestResource.meta, type: type, id: id)
         let envelope: MetaEnvelope
@@ -117,6 +123,26 @@ private struct CatalogEnvelope: Decodable {
         }
         metas = container.lenientArray(.metas)
         hasMore = try? container.decodeIfPresent(Bool.self, forKey: .hasMore)
+    }
+}
+
+/// `{"metasDetailed": […]}`; some add-ons answer the same request with plain `metas`.
+private struct DetailedCatalogEnvelope: Decodable {
+    let metas: [MetaItem]
+
+    private enum CodingKeys: String, CodingKey {
+        case metasDetailed, metas
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.metasDetailed) {
+            metas = container.lenientArray(.metasDetailed)
+        } else if container.contains(.metas) {
+            metas = container.lenientArray(.metas)
+        } else {
+            throw DecodingError.keyNotFound(CodingKeys.metasDetailed, .init(codingPath: [], debugDescription: "No metas"))
+        }
     }
 }
 

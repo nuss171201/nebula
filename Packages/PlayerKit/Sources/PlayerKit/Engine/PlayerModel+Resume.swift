@@ -48,7 +48,9 @@ extension PlayerModel {
 
     /// Stores where the open file is now. Called when pausing, and before leaving the file.
     func savePosition() {
-        guard let memory, let key = resume.key, state.hasMedia else { return }
+        // Not once the player is closing: the engine then reports an empty state, and saving that
+        // would overwrite where the file really was left.
+        guard !hasShutDown, let memory, let key = resume.key, state.hasMedia else { return }
         let point = state.phase == .ended ? .finished : ResumeState.point(for: state.position, duration: state.duration)
         resume.lastSaved = state.position
         let duration = state.duration

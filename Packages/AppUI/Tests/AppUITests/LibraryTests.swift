@@ -328,7 +328,7 @@ struct WatchingTests {
         let history = WatchHistoryStore(database: database)
         let center = LibraryCenter(library: LibraryStore(database: database), history: history)
         let coordinator = PlayerCoordinator(
-            configuration: PlayerConfiguration(userAgent: "AppUITests/1.0", logSubsystem: "test.appui", playsAudio: false),
+            configuration: PlayerConfiguration(userAgent: "AppUITests/1.0", logSubsystem: "test.appui", videoOutput: .none, playsAudio: false),
             memory: LibraryPlayerMemory(
                 store: PlaybackMemoryStore(database: database),
                 settings: SettingsStore(database: database),

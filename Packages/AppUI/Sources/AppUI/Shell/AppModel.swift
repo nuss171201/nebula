@@ -21,6 +21,7 @@ public final class AppModel {
     public let continueWatching: ContinueWatchingModel
     public let libraryScreen: LibraryModel
     public let nextEpisode: NextEpisodeController
+    public let calendar: CalendarModel
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -75,6 +76,7 @@ public final class AppModel {
         self.library = library
         continueWatching = ContinueWatchingModel(library: library, client: client)
         libraryScreen = LibraryModel(library: library)
+        calendar = CalendarModel(library: library, client: client)
         player = PlayerCoordinator(
             configuration: dependencies.playerConfiguration,
             memory: LibraryPlayerMemory(
@@ -161,6 +163,20 @@ public final class AppModel {
         return true
     }
 
+    /// Saves the title on the detail page that was opened last to the library, as its button
+    /// would. For checking the app without the pointer.
+    public func saveShownTitleToLibrary() async {
+        guard let detail = latestDetail, !detail.isInLibrary else { return }
+        await detail.toggleLibrary()
+    }
+
+    /// Marks an episode (or, with the title's own id, the film) on the detail page that was
+    /// opened last as watched. For checking the app without the pointer.
+    public func markShownVideoWatched(withID videoID: String) async {
+        guard let detail = latestDetail else { return }
+        await detail.setWatched(true, video: detail.meta?.videos.first { $0.id == videoID })
+    }
+
     /// Shows the streams of an episode on the detail page that was opened last, as a click on it would.
     @discardableResult
     public func showStreamsOfEpisode(withID videoID: String) -> Bool {
@@ -183,6 +199,7 @@ public final class AppModel {
         home.update(addons: addons)
         continueWatching.update(addons: addons)
         nextEpisode.update(addons: addons)
+        calendar.update(addons: addons)
         discover.update(addons: addons)
         search.update(addons: addons)
         dependencies.subtitleService.update(addons: addons)

@@ -139,8 +139,9 @@ public struct AppDependencies: Sendable {
                 screenshotDirectory: PlayerConfiguration.defaultScreenshotDirectory
                     .deletingLastPathComponent()
                     .appendingPathComponent(branding.name, isDirectory: true),
-                // A silent run is a check, and a check starts every file from the beginning.
-                resumesPlayback: playsAudio,
+                // A silent run is a check, and a check starts every file from the beginning, unless
+                // it has a profile of its own, where what it leaves behind is its own business.
+                resumesPlayback: playsAudio || profileDirectory != nil,
                 additionalEngineOptions: additionalEngineOptions
             ),
             usesSystemNowPlaying: playsAudio,

@@ -101,22 +101,9 @@ public struct RootView: View {
             case .library:
                 LibraryView(model: model.libraryScreen, library: model.library) { model.open($0) }
             case .calendar:
-                SectionPlaceholderView(section: model.currentSection)
+                CalendarView(model: model.calendar, library: model.library, registry: model.registry) { model.open($0) }
             }
         }
-    }
-}
-
-/// Empty state for a section whose content has not been built yet.
-struct SectionPlaceholderView: View {
-    let section: AppSection
-
-    var body: some View {
-        ContentUnavailableView(
-            section.title,
-            systemImage: section.systemImage,
-            description: Text(section.emptyStateMessage)
-        )
     }
 }
 

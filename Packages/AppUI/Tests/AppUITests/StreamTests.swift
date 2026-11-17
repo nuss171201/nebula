@@ -236,7 +236,7 @@ struct StreamPlayerTests {
 
     private func makeCoordinator() -> PlayerCoordinator {
         PlayerCoordinator(
-            configuration: PlayerConfiguration(userAgent: "AppUITests/1.0", logSubsystem: "test.appui", playsAudio: false),
+            configuration: PlayerConfiguration(userAgent: "AppUITests/1.0", logSubsystem: "test.appui", videoOutput: .none, playsAudio: false),
             presentsWindow: false
         )
     }

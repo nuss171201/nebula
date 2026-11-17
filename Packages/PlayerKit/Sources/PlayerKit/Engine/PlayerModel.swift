@@ -78,7 +78,7 @@ public final class PlayerModel {
     @ObservationIgnored let logger: Logger
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var openedAt: ContinuousClock.Instant?
-    @ObservationIgnored private var hasShutDown = false
+    @ObservationIgnored private(set) var hasShutDown = false
     @ObservationIgnored let userAgent: String
     @ObservationIgnored let screenshotDirectory: URL
     @ObservationIgnored var noticeCount = 0
@@ -96,6 +96,10 @@ public final class PlayerModel {
     @ObservationIgnored var sourcesWithoutThumbnails: Set<String> = []
     /// Titles given by whoever opened a source (by engine argument), which win over the file's own.
     @ObservationIgnored var givenTitles: [String: String] = [:]
+    /// When set, every engine event is appended here (playhead updates left out). A debugging
+    /// aid for working out what the engine did in which order; off unless someone turns it on.
+    @ObservationIgnored public var eventTrace: [String]?
+    @ObservationIgnored private let traceStart = ContinuousClock.now
     /// What is remembered for the file that is open, once it has been looked up.
     @ObservationIgnored var rememberedForCurrentFile = RememberedTracks()
     /// Counts files, so work started for one file is dropped if another has replaced it.
@@ -185,10 +189,15 @@ public final class PlayerModel {
         // Before the state is reset for the new file.
         savePosition()
         resume = ResumeState()
+        // A seek in the old file that has not been confirmed yet must not be repeated in the new
+        // one: its confirmation can still arrive after this point, and would be taken for a
+        // seek that missed (this threw the next episode to its last seconds).
+        unconfirmedSeek = nil
         self.source = source
         timeToFirstFrame = nil
         openedAt = .now
         // Show "loading" at once instead of waiting for the engine to say so.
+        eventTrace?.append("\(Int((ContinuousClock.now - traceStart) / .milliseconds(1))):open(\(source.displayName))")
         state.apply(.startedLoading)
         // Until the new file shows what it is, it is treated as standard range.
         updateHDROutput()
@@ -309,8 +318,9 @@ public final class PlayerModel {
     /// Stops playback and releases the engine. The model cannot be used afterwards.
     public func shutdown() {
         guard !hasShutDown else { return }
-        hasShutDown = true
+        // Where it was left is written now; nothing the engine says while closing may change it.
         savePosition()
+        hasShutDown = true
         discardThumbnails()
         resetAudioFallback()
         client.quit()
@@ -333,7 +343,24 @@ public final class PlayerModel {
 
     // MARK: - Events
 
+    /// Adds an event to `eventTrace`, if tracing is on, with the milliseconds since the player
+    /// was made; at the moments that matter, also where the engine itself says it is.
+    private func trace(_ event: PlayerEvent) {
+        guard eventTrace != nil else { return }
+        if event.isWorthTracing {
+            let milliseconds = Int((ContinuousClock.now - traceStart) / .milliseconds(1))
+            eventTrace?.append("\(milliseconds):\(event.traceDescription)")
+        }
+        if event == .playbackRestarted || event == .fileLoaded || event == .property(.reachedEnd(true)) {
+            let details = ["time-pos", "aid", "current-ao", "audio-pts", "pause", "speed"]
+                .map { "\($0)=\(client.string($0) ?? "-")" }
+                .joined(separator: " ")
+            eventTrace?.append("[\(details)]")
+        }
+    }
+
     private func handle(_ event: PlayerEvent) {
+        trace(event)
         let previousSourceSize = sourceVideoSize
         if event == .startedLoading {
             // The engine is moving on by itself (next in queue): note where this file was left.

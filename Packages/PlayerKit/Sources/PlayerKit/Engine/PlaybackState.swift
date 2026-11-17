@@ -52,6 +52,27 @@ public enum PlayerEvent: Sendable, Equatable {
     case shutdown
 }
 
+extension PlayerEvent {
+    /// Playhead and buffer updates arrive many times a second and would drown a trace.
+    var isWorthTracing: Bool {
+        switch self {
+        case .property(.position), .property(.bufferedAhead): false
+        default: true
+        }
+    }
+
+    /// The event in a few words, without the bulk of track lists and the like.
+    var traceDescription: String {
+        switch self {
+        case let .property(.tracks(tracks)): "tracks(\(tracks.count))"
+        case let .property(.chapters(chapters)): "chapters(\(chapters.count))"
+        case let .property(.playlist(entries)): "playlist(\(entries.count))"
+        case let .property(property): "\(property)"
+        default: "\(self)"
+        }
+    }
+}
+
 /// What the player is doing, derived purely from the events it has reported.
 public struct PlaybackState: Sendable, Equatable {
     public enum Phase: Sendable, Equatable {
@@ -163,7 +184,11 @@ public struct PlaybackState: Sendable, Equatable {
             phase = .playing
 
         case .playbackRestarted:
-            hasShownFirstFrame = true
+            // Only for a file that is open: a restart of the previous file can still arrive
+            // while the next one is loading, and says nothing about the new one.
+            if hasMedia {
+                hasShownFirstFrame = true
+            }
 
         case let .ended(reason):
             switch reason {

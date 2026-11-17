@@ -22,6 +22,7 @@
     ///     open -g Orbit.app --args -profile /tmp/scratch -installNow http://127.0.0.1:8123/manifest.json -open movie:tt0063350
     ///     open -g Orbit.app --args -silent YES -profile /tmp/scratch -open movie:tt0063350 -stream 0   (plays the first listed stream)
     ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -episode tt0386676:1:1
+    ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -addToLibrary YES -markWatched tt0386676:1:1
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -55,6 +56,24 @@
                 model.addons.addressInput = address
                 Task { await model.addons.fetchPendingInstall() }
             }
+            applyLibraryOptions(to: model, defaults: defaults)
+            // Not now: this runs while SwiftUI is still creating the app's state, and anything
+            // that lays out a window from here (resizing the player's, for one) re-enters
+            // SwiftUI's update and aborts the app.
+            Task { @MainActor in
+                applyPlayerOptions(to: model.player, defaults: defaults)
+            }
+            if let target = defaults.string(forKey: "open") {
+                let parts = target.split(separator: ":", maxSplits: 1).map(String.init)
+                if parts.count == 2 {
+                    model.path = [MediaRoute(type: MediaType(rawValue: parts[0]), id: parts[1])]
+                }
+            }
+        }
+
+        /// The arguments that install an add-on, change the library or pick a stream, as clicks would.
+        @MainActor
+        private static func applyLibraryOptions(to model: AppModel, defaults: UserDefaults) {
             if let address = defaults.string(forKey: "installNow"), profileDirectory != nil {
                 // Without the confirmation, and therefore only ever into a scratch profile.
                 Task {
@@ -64,6 +83,18 @@
                     }
                     if let addon = try? await model.registry.preview(address: address) {
                         try? await model.registry.install(addon)
+                    }
+                }
+            }
+            if defaults.bool(forKey: "addToLibrary") || defaults.string(forKey: "markWatched") != nil, profileDirectory != nil {
+                // Once the detail page has loaded. Only ever in a scratch profile.
+                Task {
+                    try? await Task.sleep(for: .seconds(4))
+                    if defaults.bool(forKey: "addToLibrary") {
+                        await model.saveShownTitleToLibrary()
+                    }
+                    if let videoID = defaults.string(forKey: "markWatched") {
+                        await model.markShownVideoWatched(withID: videoID)
                     }
                 }
             }
@@ -80,18 +111,6 @@
                 Task {
                     try? await Task.sleep(for: .seconds(5))
                     model.playListedStream(at: index)
-                }
-            }
-            // Not now: this runs while SwiftUI is still creating the app's state, and anything
-            // that lays out a window from here (resizing the player's, for one) re-enters
-            // SwiftUI's update and aborts the app.
-            Task { @MainActor in
-                applyPlayerOptions(to: model.player, defaults: defaults)
-            }
-            if let target = defaults.string(forKey: "open") {
-                let parts = target.split(separator: ":", maxSplits: 1).map(String.init)
-                if parts.count == 2 {
-                    model.path = [MediaRoute(type: MediaType(rawValue: parts[0]), id: parts[1])]
                 }
             }
         }

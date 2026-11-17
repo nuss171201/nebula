@@ -49,6 +49,8 @@ struct NextEpisodeTests {
 
     /// A series whose first season has two episodes, each with a stream in two qualities,
     /// served from this machine. `sleep` is how the countdown waits.
+    ///
+    /// The player has no video output: these tests are about what plays next, not about drawing it.
     private func makeFixture(
         secondEpisodeGroups: [String] = ["grp|720", "grp|1080"],
         sleep: @escaping NextEpisodeController.Sleep = { _ in }
@@ -77,7 +79,7 @@ struct NextEpisodeTests {
         let history = WatchHistoryStore(database: harness.database)
         let center = LibraryCenter(library: LibraryStore(database: harness.database), history: history)
         let coordinator = PlayerCoordinator(
-            configuration: PlayerConfiguration(userAgent: "AppUITests/1.0", logSubsystem: "test.appui", playsAudio: false),
+            configuration: PlayerConfiguration(userAgent: "AppUITests/1.0", logSubsystem: "test.appui", videoOutput: .none, playsAudio: false),
             memory: LibraryPlayerMemory(
                 store: PlaybackMemoryStore(database: harness.database),
                 settings: SettingsStore(database: harness.database),
@@ -112,8 +114,13 @@ struct NextEpisodeTests {
         return await condition()
     }
 
-    /// Starts the first episode from its 1080p stream and runs it to its end.
-    private func watchFirstEpisodeToTheEnd(_ fixture: Fixture) async throws -> PlayerModel {
+    /// Starts the first episode from its 1080p stream and sends it to its last moments.
+    ///
+    /// It does not wait for the end: with a countdown that takes no time, the finished state
+    /// lasts a few milliseconds before the next episode replaces it, and a test that polls for
+    /// it can miss it (and then waits for the *next* episode to end). Each test waits for what
+    /// it expects instead.
+    private func watchFirstEpisodeToTheEnd(_ fixture: Fixture, tracing: Bool = false) async throws -> PlayerModel {
         let address = try #require(fixture.addresses[1])
         let stream = try JSONDecoder().decode(
             StreamItem.self,
@@ -126,26 +133,33 @@ struct NextEpisodeTests {
         )
         fixture.streamPlayer.play(choice, for: video)
         let player = try #require(fixture.coordinator.player)
+        if tracing {
+            player.eventTrace = []
+        }
         #expect(await eventually { player.state.phase == .playing && player.state.hasShownFirstFrame })
         player.seek(to: 9.6)
-        #expect(await eventually { player.state.phase == .ended })
         return player
     }
 
     @Test("When an episode ends, the next is offered with a countdown and then starts from the same kind of stream")
     func autoplays() async throws {
         let fixture = try await makeFixture()
-        let player = try await watchFirstEpisodeToTheEnd(fixture)
-        await fixture.controller.waitForOffer()
+        let player = try await watchFirstEpisodeToTheEnd(fixture, tracing: true)
 
-        // The countdown (which does not really wait in this test) has run out: the second episode is on.
+        // The countdown (which does not really wait in this test) runs out: the second episode is on.
         #expect(await eventually { fixture.streamPlayer.nowPlaying?.videoID == "tt0000042:1:2" })
         #expect(player.upNext == nil)
         #expect(player.source?.url == fixture.addresses[2])
         #expect(player.title == "Example Show — 2. Second")
         // The 1080p stream was chosen again, not the first in the list.
         #expect(fixture.streamPlayer.nowPlayingChoice?.stream.behaviorHints.bingeGroup == "grp|1080")
-        #expect(await eventually { player.state.phase == .playing && player.state.hasShownFirstFrame })
+        let started = await eventually { player.state.phase == .playing && player.state.hasShownFirstFrame && player.state.position < 5 }
+        if !started {
+            await Issue.record("""
+            the second episode did not start. Engine events: \((player.eventTrace ?? []).suffix(30).joined(separator: " | "))
+            Server: \(fixture.server.recentRequests.joined(separator: " | "))
+            """)
+        }
         // The first episode counts as watched; the second is in the history as begun.
         #expect(await eventually { await fixture.center.entries(type: .series, titleID: "tt0000042")["tt0000042:1:1"]?.isWatched == true })
         #expect(await fixture.center.entries(type: .series, titleID: "tt0000042")["tt0000042:1:2"] != nil)
@@ -197,6 +211,7 @@ struct NextEpisodeTests {
     func noOffer() async throws {
         let different = try await makeFixture(secondEpisodeGroups: ["other|480"])
         let player = try await watchFirstEpisodeToTheEnd(different)
+        #expect(await eventually { player.state.phase == .ended })
         await different.controller.waitForOffer()
         try await Task.sleep(for: .milliseconds(200))
         #expect(player.upNext == nil && different.streamPlayer.nowPlaying?.videoID == "tt0000042:1:1")
@@ -205,6 +220,7 @@ struct NextEpisodeTests {
         let off = try await makeFixture()
         off.controller.isEnabled = false
         let other = try await watchFirstEpisodeToTheEnd(off)
+        #expect(await eventually { other.state.phase == .ended })
         try await Task.sleep(for: .milliseconds(300))
         #expect(other.upNext == nil && off.streamPlayer.nowPlaying?.videoID == "tt0000042:1:1")
         await off.tearDown()

@@ -63,6 +63,16 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         }
     }
 
+    /// The per-file values to report again after a lifecycle event: what is known once the file
+    /// is open, and what is known once its first frame has been decoded.
+    static func restated(after event: PlayerEvent) -> [ObservedProperty] {
+        switch event {
+        case .fileLoaded: [.duration, .mediaTitle, .trackList, .chapterList]
+        case .playbackRestarted: [.duration, .displayWidth, .displayHeight, .videoTransfer, .hardwareDecoder]
+        default: []
+        }
+    }
+
     /// Values that change many times a second and are only needed for display.
     var isHighFrequency: Bool {
         self == .timePosition || self == .cacheDuration
@@ -348,6 +358,15 @@ private final class Core: @unchecked Sendable {
             default:
                 if let lifecycle = Self.lifecycleEvent(for: event) {
                     continuation.yield(lifecycle)
+                    // The engine only reports a value when it differs from the one it reported
+                    // last. The app forgets a file's values when the next file starts, so a value
+                    // the two files share (the size of two episodes, say) would never come back:
+                    // say the per-file ones again.
+                    for observed in ObservedProperty.restated(after: lifecycle) {
+                        if let property = observed.property(for: Self.currentValue(of: observed, handle: handle)) {
+                            continuation.yield(.property(property))
+                        }
+                    }
                 }
             }
         }
@@ -380,6 +399,32 @@ private final class Core: @unchecked Sendable {
         case MPV_EVENT_END_FILE:
             guard let data = event.data?.assumingMemoryBound(to: mpv_event_end_file.self).pointee else { return nil }
             return .ended(endReason(data))
+        default:
+            return nil
+        }
+    }
+
+    /// Reads a property's value now. `nil` when it is unavailable.
+    private static func currentValue(of property: ObservedProperty, handle: OpaquePointer) -> MPVValue? {
+        switch property.format {
+        case MPV_FORMAT_FLAG:
+            var value: CInt = 0
+            return mpv_get_property(handle, property.name, MPV_FORMAT_FLAG, &value) >= 0 ? .flag(value != 0) : nil
+        case MPV_FORMAT_DOUBLE:
+            var value = 0.0
+            return mpv_get_property(handle, property.name, MPV_FORMAT_DOUBLE, &value) >= 0 ? .double(value) : nil
+        case MPV_FORMAT_INT64:
+            var value: Int64 = 0
+            return mpv_get_property(handle, property.name, MPV_FORMAT_INT64, &value) >= 0 ? .int(value) : nil
+        case MPV_FORMAT_STRING:
+            guard let text = mpv_get_property_string(handle, property.name) else { return nil }
+            defer { mpv_free(text) }
+            return .string(String(cString: text))
+        case MPV_FORMAT_NODE:
+            var node = mpv_node()
+            guard mpv_get_property(handle, property.name, MPV_FORMAT_NODE, &node) >= 0 else { return nil }
+            defer { mpv_free_node_contents(&node) }
+            return .node(MPVNode(node))
         default:
             return nil
         }

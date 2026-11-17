@@ -1,4 +1,5 @@
 import AppUI
+import MediaCore
 import PlayerKit
 import SwiftUI
 
@@ -29,6 +30,7 @@ struct MediaCenterApp: App {
     }
 
     private static func makeModel() -> AppModel {
+        ProcessLimits.raiseOpenFileLimit()
         var playsAudio = true
         var engineOptions: [PlayerConfiguration.EngineOption] = []
         var profile: URL?

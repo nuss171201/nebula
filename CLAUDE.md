@@ -79,7 +79,9 @@ two seconds after launch: the only way to check a binding and its on-screen noti
 `-window pictureInPicture|mini` puts the player window in that mode.
 `-profile <folder>` keeps the database and caches in a scratch folder and keeps the stream engine to
 this machine; with it, `-installNow <address>` installs an add-on without the confirmation click,
-`-episode <video id>` shows an episode's streams and `-stream <n>` plays the nth listed stream.
+`-episode <video id>` shows an episode's streams, `-stream <n>` plays the nth listed stream,
+`-addToLibrary YES` saves the shown title and `-markWatched <video id>` marks a video watched.
+A scratch profile is also the only way a silent check records watch history and resumes.
 
 **Debug arguments that touch the player are applied one main-queue turn after launch**, not in
 `makeModel()`: that runs while SwiftUI is creating the app's `@State`, and resizing a window from there
@@ -224,6 +226,29 @@ StreamPlayer ─┬─ web address ───────────────
   closes; what is playing is never removed. The budget becomes a setting in Stage 7.
 - **Neutrality**: with no stream add-on installed the detail page says so and suggests nothing.
 
+### How the library fits together (Stage 6)
+
+- **Two tables, both sync-ready** (migration `v4-library-and-history`): `libraryItem` (saved titles;
+  removing sets `removedAt` instead of deleting) and `watchEntry` (one row per video: position, length,
+  watched, last watched, and the title's name and poster so that lists need no network).
+- **`LibraryCenter` is what the screens talk to.** Every write bumps `revision`; a screen that shows
+  library or history data reloads in a `.task(id: library.revision)`. The player writes through
+  `LibraryPlayerMemory`, which calls `noteChange()`.
+- **One source of truth for where a video was left.** Videos played from a detail page are remembered
+  under `video:<type>:<id>` (`WatchKey`); for those keys `LibraryPlayerMemory` reads and writes the watch
+  history. Local files and plain addresses stay in `playbackMemory`. The player reports a `ResumePoint`:
+  not started (first 10 s), a position, or finished (last 10 s or last twentieth, at most six minutes).
+- **Continue Watching** (`ContinueWatching`, pure): per title, its most recently watched video; resume it
+  if unfinished, else offer the next *aired* episode (needs the series' episode list, fetched once).
+  A card opens the title's page on that episode with its streams showing; it does not start playback.
+- **Next-episode autoplay** (`NextEpisodeController`): when an episode played from a stream ends, the
+  next aired episode is offered in the player with a countdown, but only if one of its streams is like
+  the one being watched (`LastStreamChoice.bestMatch`). The player only shows the offer (`UpNextOffer`);
+  the app counts down and acts on Play Now / Cancel.
+- **Calendar** (`CalendarBuilder`, pure): saved series' episodes from a week back to 90 days ahead, by
+  day in the user's time zone. Fetched through an add-on's calendar catalog where there is one (one
+  request for up to 100 series, answer under `metasDetailed`), else series by series.
+
 ### Decisions still to be made (with the stage that decides them)
 
 | Stage | Decision | Current recommendation |
@@ -277,7 +302,7 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - [x] **3. Player core** — libmpv embedding, Metal view, basic controls, file + HTTP playback
 - [x] **4. Player features** — everything in spec section 3B (the shortcut editor and mpv.conf/input.conf are Stage 7)
 - [x] **5. Streams + torrent engine** — stream list, libtorrent bridge, local HTTP server, cache
-- [ ] **6. Library** — Continue Watching, resume, next-episode autoplay, calendar
+- [x] **6. Library** — Continue Watching, resume, next-episode autoplay, calendar
 - [ ] **7. Settings + polish** — shortcuts, mpv.conf/input.conf, accessibility
 - [ ] **8. Performance pass** — measure every target in spec section 4
 - [ ] **9. Packaging** — signed .app + .dmg, Sparkle, README
@@ -410,6 +435,50 @@ Carried over or not verified in Stage 5:
   settings for Stage 7. Subtitles that come attached to a stream are not loaded yet.
 - The cache's trimming was tested with small files only.
 
+### Stage 6 contents
+
+| Where | Added | Tests |
+|---|---|---|
+| MediaLibrary | migration `v4-library-and-history`, `LibraryStore`, `WatchHistoryStore` | 19 |
+| MediaCore | `AddonClient.detailedCatalog`, `ProcessLimits` | 61 |
+| PlayerKit | `ResumePoint`, `UpNextOffer` and its card, accept/decline commands, `eventTrace`; fixes below | 163 |
+| StreamEngine | `StreamServer.recentRequests` (a request log for diagnosing) | 41 |
+| AppUI, App | `LibraryCenter`, `LibraryModel` + view, `ContinueWatching` + model + row, detail-page library and watched controls, `NextEpisodeController`, `CalendarBuilder` + model + view | 96 |
+
+Three bugs found while testing this stage, each now covered by a test:
+
+- **A file that followed one of the same size had no size.** The engine only reports a value when it
+  changes, and the app forgets a file's values when the next one starts; two episodes of the same
+  resolution left the second without a size (shown inset with black borders, no hover previews).
+  `MPVClient` now states the per-file values again after a file loads and after its first frame.
+- **A seek not yet confirmed was repeated in the next file**, which could throw it to its last seconds.
+  `open` now drops it, and a restart that arrives while the next file is loading no longer counts as
+  that file's first frame.
+- **A position could be saved after the player had shut down**, with the engine's empty state,
+  overwriting where the file was left. Saving stops at shutdown.
+
+A lesson from the same investigation: a test that polls for a state must not rely on a state that
+something else ends within milliseconds. `NextEpisodeTests` once waited for "ended" while an instant
+countdown replaced the file; when the poll missed it, the test waited for the *next* file's end and
+failed in ways that looked like engine bugs. `PlayerModel.eventTrace` (engine events with timestamps)
+is what showed it; turn it on before theorising.
+
+Carried over or not verified in Stage 6:
+
+- Seen in the running app with a scratch profile and a stand-in add-on, driven by debug arguments:
+  watched marks, In Library, Continue Watching (a resume card and a next-episode card), the Library's
+  Saved tab, the calendar, the up-next card with its countdown, and the next episode starting by itself.
+  **Nothing was clicked**: the buttons, context menus, the History tab, Clear History and the season
+  button are covered by view-model tests only.
+- Continue Watching and the calendar ask the catalog add-on about each series; with many series this is
+  one request per series for Continue Watching (the calendar batches). Not measured with a large library.
+- Autoplay is on with a 10-second countdown; switching it off and changing the delay are settings for
+  Stage 7. Local files in a folder do not get "next episode" (the queue already plays them in order).
+- `ImagePipelineTests` ("a second request is served from memory") failed once in some twenty Xcode runs
+  of the AppUI tests during this stage. Not reproduced, not investigated.
+- The app raises its open-file limit to 4096 at launch (`ProcessLimits`); whether libtorrent ever needed
+  more than the default 256 was not measured.
+
 ## Performance log
 
 Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K HDR < 600 MB;
@@ -454,6 +523,10 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 5 | Release, universal | Idle memory, Home loaded (the stream engine starts only when a torrent is played) | 67 MB |
 | 2026-11-17 | 5 | Release, universal | App bundle size (libtorrent and OpenSSL add 30 MB across both architectures, unstripped) | 124 MB |
 | 2026-11-17 | 5 | Debug, in a test | Torrent stream, from choosing it to the first frame, peer on this machine (engine, server and player all starting cold) | 1.7 s |
+
+| 2026-11-17 | 6 | Release, universal | Launch to first screen / Home content, warm, median of 5 (Home now also reads the watch history) | 181 ms / 341 ms |
+| 2026-11-17 | 6 | Release, universal | Idle memory, Home loaded; app bundle size | 68 MB; 126 MB |
+| 2026-11-17 | 6 | Debug app | Next episode after the countdown: first frame of the following file | 78 ms |
 
 **The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
 10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)
