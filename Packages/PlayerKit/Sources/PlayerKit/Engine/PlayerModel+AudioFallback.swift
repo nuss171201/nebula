@@ -52,6 +52,12 @@ extension PlayerModel {
 
     private func recover(from failed: MediaTrack, generation: Int) async {
         audioFallback.failedTracks.insert(failed.number)
+        if audioFallback.convertedFiles[failed.number] != nil {
+            // This track was converted and the result would not play either. Converting again,
+            // or converting another track, would end the same way; without this the player
+            // converted the same track over and over for as long as the file was open.
+            audioFallback.convertedSoundFailed = true
+        }
         let codec = MediaTrack.codecName(failed.codec) ?? "This audio format"
         logger.error("audio track \(failed.number, privacy: .public) (\(failed.codec ?? "?", privacy: .public)) could not be decoded")
 
@@ -59,7 +65,7 @@ extension PlayerModel {
             failed: failed,
             tracks: state.tracks,
             failedTracks: audioFallback.failedTracks,
-            canConvert: audioTranscoder != nil && source != nil
+            canConvert: audioTranscoder != nil && source != nil && !audioFallback.convertedSoundFailed
         )
         switch step {
         case let .switchTo(number):
@@ -94,6 +100,9 @@ extension PlayerModel {
     private func giveUp(codec: String) {
         audioProblem = "\(codec) sound cannot be played on this Mac, and this file has no other sound."
         announce("\(codec) Sound Cannot Be Played")
+        // Nothing is left to try. Until the user picks a track themselves, stop looking:
+        // otherwise this would be said again every time the check came round.
+        audioFallback.wantedTrack = nil
     }
 
     /// Converts the track and plays the result as an extra track. Returns whether it worked.
@@ -107,6 +116,8 @@ extension PlayerModel {
         let output = FileManager.default.temporaryDirectory
             .appendingPathComponent("converted-audio-\(UUID().uuidString)")
             .appendingPathExtension("mka")
+        // Which program does it is worth a line: the app's own helper, or one found on the machine.
+        logger.notice("converting audio track \(failed.number, privacy: .public) with \(audioTranscoder.executable.path, privacy: .public)")
         do {
             try await audioTranscoder.transcode(source: source, audioIndex: index, to: output)
         } catch {

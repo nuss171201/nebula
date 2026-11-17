@@ -51,6 +51,13 @@ targets:
       - path: Vendor/Licenses
         type: folder
         buildPhase: resources
+      # The audio conversion helper (Scripts/build-ffmpeg-helper.sh), next to the app's own binary,
+      # which is where AudioTranscoder looks for it.
+      - path: Vendor/Helpers/ffmpeg
+        buildPhase:
+          copyFiles:
+            destination: executables
+        attributes: [CodeSignOnCopy]
     dependencies:
       - package: MediaCore
       - package: PlayerKit

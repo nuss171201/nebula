@@ -46,6 +46,20 @@ struct AudioFallbackLogicTests {
     }
 }
 
+/// The converters there are to try: the helper the app carries, as built by
+/// `Scripts/build-ffmpeg-helper.sh`, and an ffmpeg installed on this machine.
+private let availableTranscoders: [AudioTranscoder] = {
+    let helper = TestMedia.directory.deletingLastPathComponent().appending(path: "Vendor/Helpers/ffmpeg")
+    var found: [AudioTranscoder] = []
+    if FileManager.default.isExecutableFile(atPath: helper.path) {
+        found.append(AudioTranscoder(executable: helper))
+    }
+    if let installed = AudioTranscoder.locate() {
+        found.append(installed)
+    }
+    return found
+}()
+
 @MainActor
 @Suite("Audio fallback through the engine", .enabled(if: TestMedia.isAvailable, "run Scripts/make-test-media.sh first"), .serialized)
 struct AudioFallbackEngineTests {
@@ -97,11 +111,12 @@ struct AudioFallbackEngineTests {
     }
 
     @Test(
-        "With ffmpeg available, the track is converted and played in the same language",
-        .enabled(if: AudioTranscoder.locate() != nil, "needs an installed ffmpeg")
+        "With a converter (the app's own helper, or an installed ffmpeg), the track is converted and played in the same language",
+        .enabled(if: !availableTranscoders.isEmpty, "needs Scripts/build-ffmpeg-helper.sh to have run, or an installed ffmpeg"),
+        arguments: availableTranscoders.map(\.executable.path)
     )
-    func converts() async throws {
-        let player = try makePlayer(transcoder: AudioTranscoder.locate())
+    func converts(executable: String) async throws {
+        let player = try makePlayer(transcoder: AudioTranscoder(executable: URL(fileURLWithPath: executable)))
         defer { player.shutdown() }
         try player.open(PlayableSource(url: TestMedia.multiTrack))
         #expect(await eventually { player.state.selectedTrack(of: .audio)?.isExternal == true })
@@ -116,6 +131,37 @@ struct AudioFallbackEngineTests {
         // The converted file belongs to this file only: it is removed when another one opens.
         try player.open(PlayableSource(url: TestMedia.sdr))
         #expect(await eventually { !FileManager.default.fileExists(atPath: converted.path) })
+    }
+
+    @Test(
+        "If even the converted sound will not play, it is converted once, not for ever, and the player says there is no sound",
+        .enabled(if: !availableTranscoders.isEmpty, "needs Scripts/build-ffmpeg-helper.sh to have run, or an installed ffmpeg")
+    )
+    func convertedSoundFails() async throws {
+        // No audio decoder at all: every track fails, and so does anything converted.
+        let player = try PlayerModel(configuration: PlayerConfiguration(
+            userAgent: "PlayerKitTests/1.0",
+            logSubsystem: "test.playerkit",
+            videoOutput: .none,
+            playsAudio: false,
+            trackPreferences: TrackPreferences(audioLanguages: ["fr"], subtitleLanguages: [], subtitleMode: .off),
+            audioTranscoder: availableTranscoders.first,
+            additionalEngineOptions: [.init("ad", "-")]
+        ))
+        defer { player.shutdown() }
+        try player.open(PlayableSource(url: TestMedia.multiTrack))
+        #expect(await eventually { player.audioProblem?.hasSuffix("and this file has no other sound.") == true })
+        #expect(player.audioFallback.convertedFiles.count == 1)
+        #expect(player.audioFallback.convertedSoundFailed)
+        #expect(player.audioFallback.failedTracks == [1, 2, 3, 4, 5])
+
+        // And it stays that way: nothing more is converted or announced while the file plays on.
+        let notice = player.notice?.id
+        try await Task.sleep(for: .milliseconds(1200))
+        #expect(player.audioFallback.convertedFiles.count == 1)
+        #expect(player.audioFallback.task == nil)
+        #expect(player.notice?.id == notice || player.notice == nil)
+        #expect(player.state.phase == .playing)
     }
 
     @Test("A transcoder that fails falls through to another track")

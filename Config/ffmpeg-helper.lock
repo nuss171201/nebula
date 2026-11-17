@@ -1,0 +1,11 @@
+# The source Scripts/build-ffmpeg-helper.sh compiles into the `ffmpeg` program the app carries for
+# converting sound the player cannot play directly (Contents/MacOS/ffmpeg).
+#
+# FFmpeg's own release archive, the same version as the playback engine's FFmpeg
+# (Config/mpv-libraries.lock). Built LGPL: without --enable-gpl, --enable-version3 or
+# --enable-nonfree, and with no external libraries except the system's zlib and Secure Transport.
+# The hash is of the archive as first downloaded from ffmpeg.org (its PGP signature was not
+# checked: gpg is not installed here).
+#
+# Format: <name> <sha256> <url>. The script refuses a download whose hash differs.
+ffmpeg 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz

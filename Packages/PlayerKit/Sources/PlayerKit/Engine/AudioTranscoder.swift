@@ -3,8 +3,9 @@ import Foundation
 /// Converts one audio track of a file to AAC with an `ffmpeg` program, for the rare track
 /// the playback engine cannot decode itself.
 ///
-/// The app does not ship ffmpeg: this uses a helper inside the app bundle if one is ever
-/// added, otherwise an ffmpeg the user has installed. With neither, there is no transcoder.
+/// The app carries a small ffmpeg of its own for this (`Scripts/build-ffmpeg-helper.sh`: built
+/// from source, LGPL, audio only), next to its own binary. A copy of the app without it falls
+/// back to an ffmpeg the user has installed; with neither, there is no transcoder.
 public struct AudioTranscoder: Sendable, Equatable {
     public enum Failure: Error, Sendable, Equatable {
         case couldNotStart(String)
@@ -100,6 +101,8 @@ struct AudioFallbackState {
     var failedTracks: Set<Int> = []
     /// Converted tracks by the number of the track they replace.
     var convertedFiles: [Int: URL] = [:]
+    /// Whether a converted track turned out not to play either, which rules out converting.
+    var convertedSoundFailed = false
     var task: Task<Void, Never>?
 
     /// The next thing to try for a track that will not decode, in order of preference: another

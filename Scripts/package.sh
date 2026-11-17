@@ -18,7 +18,8 @@
 # Nothing here makes or stores a credential: both come from the keychain, put there by you.
 #
 # What it does, in order: copies the Release app, strips local symbols (the dSYMs are kept in
-# build/dist/dSYMs), signs every piece of code from the inside out with the hardened runtime,
+# build/dist/dSYMs), signs every piece of code (the updater's helpers, the playback engine, the audio conversion
+# helper, the app) from the inside out with the hardened runtime,
 # checks the result (signature, entitlements, both architectures, that it starts), builds the
 # disk image, signs and notarises it when it can, and checks the image by mounting it.
 set -euo pipefail
@@ -72,6 +73,8 @@ ditto "$BUILT" "$APP"
 find "$PRODUCTS" -maxdepth 1 -name '*.dSYM' -exec cp -R {} "$DIST/dSYMs/" \;
 BINARY="$APP/Contents/MacOS/$EXECUTABLE"
 ENGINE="$APP/Contents/Frameworks/Libmpv.framework"
+HELPER="$APP/Contents/MacOS/ffmpeg"
+[[ -x "$HELPER" ]] || fail "the audio conversion helper is not in the app; run Scripts/build-ffmpeg-helper.sh and build again"
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
 
 # The licence texts must go out with the app.
@@ -83,6 +86,7 @@ step "Strip local symbols"
 BEFORE="$(du -sm "$APP" | cut -f1)"
 strip -x "$BINARY" 2>/dev/null
 strip -x "$ENGINE/Versions/A/Libmpv" 2>/dev/null
+strip -x "$HELPER" 2>/dev/null
 echo "$BEFORE MB -> $(du -sm "$APP" | cut -f1) MB"
 
 step "Sign, from the inside out"
@@ -99,6 +103,8 @@ sign "$SPARKLE/Autoupdate"
 sign "$SPARKLE/Updater.app"
 sign "$APP/Contents/Frameworks/Sparkle.framework"
 sign "$ENGINE"
+# A program of its own, started by the app: no entitlements.
+sign "$HELPER"
 if [[ "$KIND" == "ad-hoc" ]]; then
     # No Team ID to tie the app to its frameworks: see Config/LocalSigning.entitlements.
     sign --entitlements Config/LocalSigning.entitlements "$APP"
@@ -114,10 +120,11 @@ if [[ "$KIND" != "ad-hoc" && "$ENTITLEMENTS" == *disable-library-validation* ]];
 fi
 DETAILS="$(codesign -d --verbose=2 "$APP" 2>&1)"
 [[ "$DETAILS" =~ flags=[^[:space:]]*runtime ]] || fail "the hardened runtime is not on"
-for code in "$BINARY" "$ENGINE/Versions/A/Libmpv"; do
+for code in "$BINARY" "$ENGINE/Versions/A/Libmpv" "$HELPER"; do
     ARCHS="$(lipo -archs "$code")"
     [[ "$ARCHS" == *arm64* && "$ARCHS" == *x86_64* ]] || fail "$(basename "$code") is not universal ($ARCHS)"
 done
+"$HELPER" -hide_banner -version >/dev/null 2>&1 || fail "the audio conversion helper does not run"
 # Run it as the loader will: a framework it refuses shows up here, in a log, not as a crash dialog.
 "$BINARY" >"$DIST/first-run.log" 2>&1 &
 RUN_PID=$!

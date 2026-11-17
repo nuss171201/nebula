@@ -1,5 +1,5 @@
 {
-  "sourceNote": "The playback engine is a separate dynamic library inside the app (Contents/Frameworks/Libmpv.framework), so that it can be replaced with a build of your own, as the LGPL asks. It is linked from prebuilt libraries published by the MPVKit project (github.com/mpvkit), LGPL configuration; the exact files, with their hashes, are listed in Config/mpv-libraries.lock in the app's source, and each of MPVKit's build repositories names the upstream source release it was built from. An app signed by a developer only loads libraries signed by the same developer: after replacing the framework, sign the app again yourself (codesign --force --deep --sign - <app>).",
+  "sourceNote": "The playback engine is a separate dynamic library inside the app (Contents/Frameworks/Libmpv.framework), so that it can be replaced with a build of your own, as the LGPL asks. It is linked from prebuilt libraries published by the MPVKit project (github.com/mpvkit), LGPL configuration; the exact files, with their hashes, are listed in Config/mpv-libraries.lock in the app's source, and each of MPVKit's build repositories names the upstream source release it was built from. An app signed by a developer only loads libraries signed by the same developer: after replacing the framework, sign the app again yourself (codesign --force --deep --sign - <app>). The audio conversion helper is built from FFmpeg's own release archive (its address and hash are in Config/ffmpeg-helper.lock) with the configuration in Scripts/build-ffmpeg-helper.sh, which the program also prints with -version; it can be replaced in the same way.",
   "groups": [
     {
       "title": "Playback engine",
@@ -35,6 +35,13 @@
         {"name": "libtorrent", "version": "2.0.15", "license": "BSD 3-Clause", "url": "https://libtorrent.org", "files": ["libtorrent-LICENSE.txt"]},
         {"name": "Boost", "version": "1.92", "license": "Boost Software License 1.0", "url": "https://www.boost.org", "files": ["Boost-LICENSE_1_0.txt"]},
         {"name": "OpenSSL", "version": "3.3.5", "license": "Apache 2.0", "url": "https://www.openssl.org", "files": ["OpenSSL-LICENSE.txt"]}
+      ]
+    },
+    {
+      "title": "Audio conversion helper",
+      "note": "A separate program inside the app (Contents/MacOS/ffmpeg), used only to convert sound the player cannot play directly.",
+      "components": [
+        {"name": "FFmpeg", "version": "9.0.2", "license": "LGPL 2.1 or later", "url": "https://ffmpeg.org", "files": ["FFmpeg-LICENSE.md", "FFmpeg-COPYING.LGPLv2.1.txt"]}
       ]
     },
     {

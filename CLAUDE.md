@@ -42,6 +42,7 @@ cd Packages/AppUI && LIVE_ADDON_TESTS=1 swift test --filter LiveSubtitleServiceT
 # Prerequisites that ci.sh runs for you (both skip work that is already done):
 Scripts/build-mpv-framework.sh    # Packages/PlayerKit/Vendor/Libmpv.xcframework from Config/mpv-libraries.lock
 Scripts/build-torrent-framework.sh  # Packages/StreamEngine/Vendor/Libtorrent.xcframework from Config/torrent-libraries.lock (needs cmake, ninja)
+Scripts/build-ffmpeg-helper.sh    # Vendor/Helpers/ffmpeg from Config/ffmpeg-helper.lock: audio-only, LGPL, universal (about 2 minutes)
 Scripts/collect-licenses.sh       # Vendor/Licenses/ from Config/licenses.lock (hash-verified); bundled as Resources/Licenses
 Scripts/make-test-media.sh        # TestMedia/: 1080p H.264, 4K HDR10 HEVC, multi-track MKV, external subs
 
@@ -347,6 +348,19 @@ StreamPlayer ─┬─ web address ───────────────
   libtorrent's and Boost's from their source archives, and fails if the files and
   `Config/ThirdParty.json` disagree in either direction (a test checks the same). The app shows them in
   its Acknowledgements window (`AcknowledgementsModel`), under the app menu.
+- **The audio conversion helper** is an `ffmpeg` of our own build in `Contents/MacOS`, where
+  `AudioTranscoder.locate` looks first (`Bundle.url(forAuxiliaryExecutable:)`).
+  `Scripts/build-ffmpeg-helper.sh` compiles FFmpeg's release archive (pinned by hash in
+  `Config/ffmpeg-helper.lock`) for both architectures with `--disable-everything` plus what the one
+  job needs: all demuxers, parsers and bitstream filters, the audio decoders (read from the source's
+  own list, so the build does not depend on an installed ffmpeg), the AAC encoder, the Matroska muxer,
+  seven audio filters, and file/http/https input through the system's Secure Transport. The script
+  refuses a configuration that FFmpeg itself calls GPL, version 3 or non-free, a binary that links
+  anything outside the system, or one that does not report itself as LGPL 2.1 or later. It is the same
+  FFmpeg version as the engine's, so it decodes what the engine decodes: its use is that conversion no
+  longer depends on what the user has installed. `nasm` is not installed, so the Intel half has no
+  hand-written assembly. **Downloading that archive needed the user's explicit go-ahead** (the
+  permission system refused it until then): ask before fetching anything new from a new place.
 - **Disk image by `hdiutil`**, not `create-dmg`: nothing to install, and no Finder scripting (which
   would open windows on the user's screen). The image has no background picture or icon layout.
 
@@ -357,7 +371,7 @@ StreamPlayer ─┬─ web address ───────────────
 | later | Shortcuts in the menus | The Playback menu shows no key equivalents, because the keys are the user's to change and live in `KeyBindings`. Showing the current key next to each menu item needs the menu to read the bindings. Not done in Stage 8. |
 | later | Subtitles in black bars | With the fixed canvas, subtitles are kept inside the picture (`sub-use-margins=no`). Goes with the engine build. |
 | later | Engine build | Building libmpv from source (meson, with MPVKit's patches plus a resize event) is **the user's call and was not started**: every target is met without it. It would buy a surface that follows the window (about 55 MB less in a 1280×720 window, nothing in full screen), subtitles in the black bars, and a chance to find the fixed 190 MB of GPU memory described in the performance log. It costs a long from-source build as a prerequisite and a patch to maintain. Adapting MPVKit's patches means checking their licence and telling the user first. |
-| user | Bundling ffmpeg for the audio fallback | Not bundled. The fallback chain uses an ffmpeg the user has installed. Shipping an LGPL ffmpeg helper inside the app (tens of MB, and one more thing to provide source for) is the user's call; ask before doing it. |
+| done | Bundling ffmpeg for the audio fallback | Bundled, on the user's decision (and their go-ahead for downloading FFmpeg's source and building it here): see "The audio conversion helper" below. |
 | user | Developer ID and notarisation | `package.sh` is ready for both but neither has run: the keychain holds an Apple Development identity only. A Developer ID needs the paid Apple Developer Program; the user decides. Until then a disk image from here opens on another Mac only after its owner allows it by hand. |
 | user | Update feed | Where the appcast is hosted, and making the Sparkle key pair (it lives in the user's keychain), are the user's to do; see the README. |
 | user | The app's own licence | None chosen; the README says all rights are reserved until one is. |
@@ -491,8 +505,9 @@ How the pieces relate:
   volume, positions) and an `OnlineSubtitleService`; AppUI implements both.
 - **Three window modes in one window** (`PlayerWindowMode`): normal, picture in picture (floating, all
   Spaces, public APIs), mini (no picture decoded). Sound without a picture gets the mini player by itself.
-- **The audio fallback needs an ffmpeg program and none is shipped.** `AudioTranscoder.locate()` looks for
-  a helper in the app bundle, then Homebrew's. Without one the chain is: same-language track, any track.
+- **The audio fallback needs an ffmpeg program.** `AudioTranscoder.locate()` looks for a helper in the app
+  bundle (there is one since Stage 9), then Homebrew's. Without one the chain is: same-language track,
+  any track.
 
 Carried over or not verified in Stage 4:
 
@@ -680,10 +695,13 @@ Carried over or not verified in Stage 8:
 |---|---|---|
 | Scripts, Config | `package.sh`, `collect-licenses.sh`, `licenses.lock`, `ThirdParty.json`, update settings in `Branding.xcconfig`, Sparkle 2.10.1 in `project.yml` | — |
 | AppUI | `ThirdPartyCatalog`, `AcknowledgementsModel` + view + menu command, `UpdateConfiguration` | 133 |
-| App | `AppUpdater` + "Check for Updates…", the Acknowledgements window, licence resources, `-acknowledgements` | — |
+| App | `AppUpdater` + "Check for Updates…", the Acknowledgements window, licence resources, `-acknowledgements`, the bundled `ffmpeg` helper | — |
+| Scripts, Config | `build-ffmpeg-helper.sh`, `ffmpeg-helper.lock` | — |
+| PlayerKit | the fallback converts once only; its engine test runs with the built helper and with an installed ffmpeg | 180 |
 | Repository | `README.md` | — |
 
-What was produced and checked: `build/dist/Orbit-0.1.0.dmg`, 44 MB, holding a 101 MB universal app,
+What was produced and checked: `build/dist/Orbit-0.1.0.dmg`, 52 MB, holding a 116 MB universal app
+(44 MB and 101 MB before the audio conversion helper was added),
 ad-hoc signed with the hardened runtime. The script verified the signature (deep, strict), both
 architectures of the app and of the engine, that the binary starts, the image's checksum, and the app
 inside the mounted image. The app was also launched from the mounted image in the background and drew
@@ -708,7 +726,13 @@ Carried over or not verified in Stage 9:
 - Nothing in the Acknowledgements window was clicked; its list and texts are tested through the model.
 - The icon is still the generated placeholder. The disk image has no background or layout.
 - Left to the user (see the decisions table): Developer ID and notarisation, the update feed and key,
-  bundling ffmpeg, the app's own licence, and providing source for the LGPL libraries when distributing.
+  the app's own licence, and providing source for the LGPL libraries and the helper when distributing.
+- **The helper's Intel half has never run** (built, checked with `lipo`). Its source archive's PGP
+  signature was not checked (no `gpg` here); the hash is of the archive as first downloaded.
+- **A bug the helper's in-app check turned up, now fixed and tested**: if even the converted sound would
+  not play, the player converted the same track again and again (seven times in seven seconds), and a
+  file with no playable sound at all was announced as such on every pass. It now converts once, says
+  there is no sound, and stops until the user picks a track.
 
 ## Performance log
 
@@ -782,6 +806,7 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 9 | Release, universal | Launch to first screen / Home content, first run after the build (with Sparkle linked) | 179 ms / 344 ms |
 | 2026-11-17 | 9 | Packaged app | App bundle as built / after stripping local symbols; disk image | 132 MB / 102 MB; 44 MB |
 | 2026-11-17 | 9 | Packaged app | Idle memory, launched from the mounted disk image | 70 MB |
+| 2026-11-17 | 9 | Packaged app | With the audio conversion helper (15 MB): app as built / stripped; disk image | 147 MB / 117 MB; 52 MB |
 
 **The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
 10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)

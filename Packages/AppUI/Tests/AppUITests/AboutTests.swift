@@ -11,7 +11,7 @@ struct ThirdPartyCatalogTests {
     @Test("The shipped list reads, names a licence and a file for everything, and links only to web pages")
     func shippedList() throws {
         let catalog = try #require(ThirdPartyCatalog.load(from: repository.appending(path: "Config")))
-        #expect(catalog.groups.map(\.title) == ["Playback engine", "Stream engine", "App"])
+        #expect(catalog.groups.map(\.title) == ["Playback engine", "Stream engine", "Audio conversion helper", "App"])
         #expect(!catalog.sourceNote.isEmpty)
         let components = catalog.groups.flatMap(\.components)
         #expect(components.count >= 25)

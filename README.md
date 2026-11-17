@@ -44,7 +44,7 @@ Scripts/ci.sh
 ```
 
 The first run takes a while. It downloads and verifies the prebuilt playback libraries, builds
-libtorrent from source, collects the licence texts, generates small test videos with ffmpeg, generates
+libtorrent and a small audio-only ffmpeg from source, collects the licence texts, generates small test videos with ffmpeg, generates
 the Xcode project, checks formatting and lint, builds with warnings as errors, and runs every test.
 
 The app is then at `build/DerivedData/Build/Products/Debug/Orbit.app`. To work in Xcode:
@@ -158,7 +158,9 @@ Scripts/    CI, framework builds, packaging, measuring
 
 - Dolby Vision is tone-mapped or shown as HDR10; a true Dolby Vision signal cannot be produced.
 - The picture is always rendered at the screen's resolution, whatever the window's size.
-- Audio that the output cannot play is converted by an `ffmpeg` you have installed; none is bundled.
+- An audio track the player cannot decode is converted to AAC by a small `ffmpeg` inside the app. It is
+  the same FFmpeg version as the player's own, so it rescues little that the player could not play
+  anyway; it is there so that the conversion does not depend on what is installed on the Mac.
 - The first time a torrent plays, macOS may ask whether to allow incoming connections and access to the
   local network.
 - A file in Documents, Desktop or Downloads makes macOS ask for permission the first time.
@@ -173,15 +175,20 @@ by its author.
 
 **Third-party code** is listed, with its licence texts, in the app under Orbit → Acknowledgements and in
 `Config/ThirdParty.json`. The versions and hashes of everything prebuilt are pinned in
-`Config/mpv-libraries.lock`, `Config/torrent-libraries.lock` and `Config/licenses.lock`.
+`Config/mpv-libraries.lock`, `Config/torrent-libraries.lock`, `Config/ffmpeg-helper.lock` and
+`Config/licenses.lock`.
 
 The playback engine (mpv, FFmpeg, libplacebo and their dependencies) is under the LGPL. It is built as a
 separate dynamic library, `Libmpv.framework`, so that it can be replaced with a build of your own; after
 replacing it, sign the app again (`codesign --force --deep --sign - Orbit.app`). GPL-only parts of those
 libraries are deliberately left out.
 
-**If you distribute this app**, the LGPL also asks you to make the source of those libraries available
-to the people you give it to, or to offer it in writing. The binaries here come from the
+The app also carries a small `ffmpeg` program for converting audio (`Contents/MacOS/ffmpeg`), built from
+FFmpeg's release archive under the LGPL 2.1 or later with the configuration in
+`Scripts/build-ffmpeg-helper.sh`; the archive's address and hash are in `Config/ffmpeg-helper.lock`.
+
+**If you distribute this app**, the LGPL also asks you to make the source of those libraries and of
+that program available to the people you give it to, or to offer it in writing. The binaries here come from the
 [MPVKit](https://github.com/mpvkit) project's releases, which name the upstream source each was built
 from; pointing at someone else's download is not a substitute for providing the source yourself. Take
 advice if you are unsure: this file is not legal advice.
