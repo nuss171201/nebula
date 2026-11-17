@@ -50,6 +50,8 @@ public final class DiscoverModel {
     public private(set) var items: [MetaItem] = []
     public private(set) var phase: Phase = .idle
     public private(set) var canLoadMore = false
+    /// Whether any installed add-on offers something to browse.
+    public private(set) var hasCatalogs = false
 
     @ObservationIgnored private let client: AddonClient
     @ObservationIgnored private var sources: [CatalogSource] = []
@@ -60,17 +62,13 @@ public final class DiscoverModel {
         self.client = client
     }
 
-    /// Whether any installed add-on offers something to browse.
-    public var hasCatalogs: Bool {
-        !sources.isEmpty
-    }
-
     // MARK: - Intents
 
     public func update(addons: [InstalledAddon]) {
         let browsable = addons.catalogSources.filter(\.catalog.isBrowsable)
         guard browsable != sources else { return }
         sources = browsable
+        hasCatalogs = !browsable.isEmpty
         types = Array(Set(browsable.map(\.catalog.type))).sorted(by: MediaType.displayOrder)
 
         let type = selectedType.flatMap { types.contains($0) ? $0 : nil } ?? types.first

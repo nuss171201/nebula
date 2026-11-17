@@ -38,6 +38,8 @@ targets:
     platform: macOS
     sources:
       - path: App
+      - path: Config/DefaultAddons.json
+        buildPhase: resources
     dependencies:
       - package: MediaCore
       - package: AppUI

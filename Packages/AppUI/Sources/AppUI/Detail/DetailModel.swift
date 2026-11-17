@@ -52,8 +52,14 @@ public final class DetailModel {
         meta?.trailers.first
     }
 
-    public static func seasonTitle(_ season: Int) -> String {
+    public nonisolated static func seasonTitle(_ season: Int) -> String {
         season == 0 ? "Specials" : "Season \(season)"
+    }
+
+    /// An episode's date, marked as upcoming when it has not aired yet.
+    public nonisolated static func releaseText(for released: Date, now: Date = Date()) -> String {
+        let date = released.formatted(date: .abbreviated, time: .omitted)
+        return released > now ? "Airs \(date)" : date
     }
 
     /// Asks each add-on that serves metadata for this title, in order, until one answers.

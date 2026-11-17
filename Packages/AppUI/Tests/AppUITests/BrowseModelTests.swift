@@ -2,6 +2,8 @@ import AddonTestSupport
 @testable import AppUI
 import Foundation
 import MediaCore
+import Observation
+import os
 import Testing
 
 @MainActor
@@ -211,5 +213,39 @@ struct DiscoverModelTests {
         #expect(!model.hasCatalogs)
         #expect(model.phase == .idle)
         #expect(model.types.isEmpty)
+    }
+}
+
+@MainActor
+@Suite("Observation")
+struct ObservationTests {
+    /// Runs `change` and reports whether reading `read` beforehand was notified of it.
+    private func isNotified(of read: @MainActor () -> Void, when change: @MainActor () -> Void) -> Bool {
+        let notified = OSAllocatedUnfairLock(initialState: false)
+        withObservationTracking(read) {
+            notified.withLock { $0 = true }
+        }
+        change()
+        return notified.withLock { $0 }
+    }
+
+    @Test("Views are told when add-ons make browsing and searching possible")
+    func availabilityFlagsAreObservable() async throws {
+        let harness = try await AddonHarness.make()
+        let addon = try await harness.installedAddon()
+
+        let discover = DiscoverModel(client: harness.client)
+        let discoverNotified = isNotified(of: { _ = discover.hasCatalogs }, when: { discover.update(addons: [addon]) })
+        #expect(discoverNotified)
+        #expect(discover.hasCatalogs)
+
+        let search = SearchModel(client: harness.client)
+        let searchNotified = isNotified(of: { _ = search.hasSearchableAddons }, when: { search.update(addons: [addon]) })
+        #expect(searchNotified)
+        #expect(search.hasSearchableAddons)
+
+        let home = HomeModel(client: harness.client)
+        let homeNotified = isNotified(of: { _ = home.rows }, when: { home.update(addons: [addon]) })
+        #expect(homeNotified)
     }
 }

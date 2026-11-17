@@ -42,6 +42,8 @@ public final class SearchModel {
     public private(set) var phase: Phase = .idle
     /// Add-ons whose search failed for the current query.
     public private(set) var failedAddonNames: [String] = []
+    /// Whether any installed add-on can be searched at all.
+    public private(set) var hasSearchableAddons = false
 
     @ObservationIgnored private let client: AddonClient
     @ObservationIgnored private let debounce: Duration
@@ -70,15 +72,11 @@ public final class SearchModel {
         !trimmedQuery.isEmpty
     }
 
-    /// Whether any installed add-on can be searched at all.
-    public var hasSearchableAddons: Bool {
-        !sources.isEmpty
-    }
-
     public func update(addons: [InstalledAddon]) {
         let searchable = addons.catalogSources.filter(\.catalog.isSearchable)
         guard searchable != sources else { return }
         sources = searchable
+        hasSearchableAddons = !searchable.isEmpty
         if isActive {
             queryDidChange()
         }

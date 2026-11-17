@@ -12,6 +12,8 @@ struct RemoteImage: View {
     /// The longest edge of the frame this image is shown in, in points.
     let maxPointSize: CGFloat
     var placeholderSystemImage = "photo"
+    /// Posters fill and crop; logos fit inside the frame.
+    var contentMode: ContentMode = .fill
 
     @Environment(\.imagePipeline) private var pipeline
     @Environment(\.displayScale) private var displayScale
@@ -32,7 +34,7 @@ struct RemoteImage: View {
             if let loaded, loaded.url == url {
                 Image(decorative: loaded.image, scale: displayScale)
                     .resizable()
-                    .scaledToFill()
+                    .aspectRatio(contentMode: contentMode)
                     .transition(.opacity)
             } else {
                 Image(systemName: placeholderSystemImage)
