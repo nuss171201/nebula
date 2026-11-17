@@ -174,6 +174,7 @@ struct EngineMappingTests {
         #expect(table["ytdl"] == "no")
         #expect(table["keep-open"] == "yes")
         #expect(table["ao"] == nil)
+        #expect(table["volume"] == "100.0")
 
         let quiet = PlayerConfiguration(
             userAgent: "x",

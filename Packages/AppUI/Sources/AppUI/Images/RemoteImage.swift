@@ -35,7 +35,6 @@ struct RemoteImage: View {
                 Image(decorative: loaded.image, scale: displayScale)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
-                    .transition(.opacity)
             } else {
                 Image(systemName: placeholderSystemImage)
                     .font(.title2)
@@ -59,8 +58,8 @@ struct RemoteImage: View {
         guard let image = try? await pipeline.image(for: url, maxPixelSize: maxPixelSize), !Task.isCancelled else {
             return
         }
-        withAnimation(.easeOut(duration: 0.15)) {
-            loaded = LoadedImage(url: url, image: image)
-        }
+        // No fade: with dozens of posters arriving together, per-image animations multiply the
+        // number of display updates, and each update re-evaluates hover tracking under the pointer.
+        loaded = LoadedImage(url: url, image: image)
     }
 }

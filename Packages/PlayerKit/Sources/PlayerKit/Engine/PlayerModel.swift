@@ -36,8 +36,8 @@ public final class PlayerModel {
         self.surface = surface
         client = try MPVClient(
             options: configuration.engineOptions,
-            windowID: surface.map { Int64(Int(bitPattern: Unmanaged.passUnretained($0.metalLayer).toOpaque())) },
-            keepAlive: surface?.metalLayer,
+            windowID: surface.map { Int64(Int(bitPattern: Unmanaged.passUnretained($0.canvasLayer).toOpaque())) },
+            keepAlive: surface?.canvasLayer,
             logger: logger
         )
 
@@ -159,11 +159,17 @@ public final class PlayerModel {
         client.string(name)
     }
 
+    /// Writes an engine property as text. For tests, until the feature has a proper intent.
+    func setEngineProperty(_ name: String, to value: String) {
+        client.set(name, to: .string(value))
+    }
+
     // MARK: - Events
 
     private func handle(_ event: PlayerEvent) {
-        // While dragging, the seek bar shows the drag position; do not let the playhead fight it.
         state.apply(event)
+        // The surface shows the part of its canvas the video occupies, so it needs the video's size.
+        surface?.videoSize = state.videoSize
 
         switch event {
         case .playbackRestarted:

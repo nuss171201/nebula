@@ -207,12 +207,50 @@ struct PlayerEngineTests {
         let dropped = player.engineProperty("frame-drop-count").flatMap(Int.init) ?? -1
         #expect(dropped >= 0 && dropped < 30)
 
-        // The layer follows the view through a resize.
+        // The canvas keeps its size; only its on-screen scale follows the view. With a 16:9
+        // video in a 16:9 view, the video's rectangle exactly fills the view at any size.
+        let canvas = surface.canvasSize
+        #expect(surface.canvasLayer.drawableSize == canvas)
+        #expect(player.engineProperty("osd-width").flatMap(Double.init) == Double(canvas.width))
+        let videoRect = CanvasGeometry.videoRect(canvas: canvas, video: player.state.videoSize)
+        #expect(await eventually { abs(surface.canvasLayer.affineTransform().a - 960 / videoRect.width) < 0.0001 })
+
         window.setContentSize(NSSize(width: 640, height: 360))
-        let scale = surface.metalLayer.contentsScale
-        #expect(surface.metalLayer.drawableSize == CGSize(width: 640 * scale, height: 360 * scale))
+        #expect(abs(surface.canvasLayer.affineTransform().a - 640 / videoRect.width) < 0.0001)
+        #expect(surface.canvasLayer.position == CGPoint(x: 320, y: 180))
+        #expect(surface.canvasLayer.drawableSize == canvas)
         let afterResize = player.state.position
         #expect(await eventually { player.state.position > afterResize + 0.5 })
+        #expect(player.engineProperty("osd-width").flatMap(Double.init) == Double(canvas.width))
+    }
+
+    @Test("Opens the system audio output and decodes AC-3, E-AC-3 and DTS (at zero volume, so nothing is heard)")
+    func audioOutput() async throws {
+        let player = try PlayerModel(configuration: PlayerConfiguration(
+            userAgent: "PlayerKitTests/1.0",
+            logSubsystem: "test.playerkit",
+            videoOutput: .none,
+            playsAudio: true,
+            initialVolume: 0
+        ))
+        defer { player.shutdown() }
+        #expect(player.engineProperty("volume").flatMap(Double.init) == 0)
+
+        try await open(TestMedia.multiTrack, in: player)
+        // A real system output, not the discard one. This engine build prefers AVFoundation.
+        #expect(await eventually { player.engineProperty("current-ao") != nil })
+        let output = player.engineProperty("current-ao") ?? "none"
+        #expect(["avfoundation", "coreaudio"].contains(output), "audio output was \(output)")
+        #expect(player.state.volume == 0)
+
+        // The file's first three audio tracks are AC-3, E-AC-3 and DTS; each must decode.
+        for (track, codec) in [("1", "ac3"), ("2", "eac3"), ("3", "dts")] {
+            player.setEngineProperty("aid", to: track)
+            #expect(await eventually { player.engineProperty("audio-codec-name") == codec })
+            let position = player.state.position
+            #expect(await eventually { player.state.position > position + 0.3 })
+            #expect(player.engineProperty("audio-params/channel-count") == "6")
+        }
     }
 
     @Test("Shutting down ends the event stream and reports once")

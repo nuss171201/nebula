@@ -12,6 +12,7 @@ public struct RootView: View {
 
     public var body: some View {
         @Bindable var search = model.search
+        @Bindable var player = model.player
 
         NavigationSplitView {
             List(AppSection.allCases, selection: $model.selection) { section in
@@ -37,6 +38,9 @@ public struct RootView: View {
             }
         }
         .searchable(text: $search.query, placement: .toolbar, prompt: "Search")
+        .sheet(isPresented: $player.isOpenLocationPresented) {
+            OpenLocationView(coordinator: model.player)
+        }
         .environment(\.imagePipeline, model.dependencies.imagePipeline)
         .frame(minWidth: 900, minHeight: 560)
         .onAppear {

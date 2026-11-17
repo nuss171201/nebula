@@ -10,9 +10,16 @@
     ///     open -g Orbit.app --args -search "the office"
     ///     open -g Orbit.app --args -open series:tt0386676
     ///     open -g Orbit.app --args -section addons -install http://127.0.0.1:8123/manifest.json
+    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv      (or an http(s) address)
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
+        /// `-silent YES`: the player decodes audio but plays nothing. Use whenever `-play` is
+        /// used for a check, so the app never makes a sound the user did not ask for.
+        static var isSilent: Bool {
+            UserDefaults.standard.bool(forKey: "silent")
+        }
+
         @MainActor
         static func apply(to model: AppModel, defaults: UserDefaults = .standard) {
             if let name = defaults.string(forKey: "section"), let section = AppSection(rawValue: name) {
@@ -25,6 +32,9 @@
                 // Stops at the confirmation sheet; nothing is installed without a click.
                 model.addons.addressInput = address
                 Task { await model.addons.fetchPendingInstall() }
+            }
+            if let media = defaults.string(forKey: "play") {
+                model.player.play(userInput: media)
             }
             if let target = defaults.string(forKey: "open") {
                 let parts = target.split(separator: ":", maxSplits: 1).map(String.init)

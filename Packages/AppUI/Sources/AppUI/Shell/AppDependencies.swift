@@ -1,6 +1,7 @@
 import Foundation
 import MediaCore
 import MediaLibrary
+import PlayerKit
 
 /// The long-lived services the UI is built from. Created once by the app target.
 public struct AppDependencies: Sendable {
@@ -11,6 +12,7 @@ public struct AppDependencies: Sendable {
     public let imagePipeline: ImagePipeline
     /// Manifest addresses installed on first launch.
     public let defaultAddonAddresses: [String]
+    public let playerConfiguration: PlayerConfiguration
     /// Set when something went wrong during startup that the user should know about.
     public let startupWarning: String?
 
@@ -20,6 +22,7 @@ public struct AppDependencies: Sendable {
         database: LibraryDatabase,
         imagePipeline: ImagePipeline,
         defaultAddonAddresses: [String],
+        playerConfiguration: PlayerConfiguration? = nil,
         startupWarning: String? = nil
     ) {
         self.branding = branding
@@ -28,12 +31,22 @@ public struct AppDependencies: Sendable {
         settings = SettingsStore(database: database)
         self.imagePipeline = imagePipeline
         self.defaultAddonAddresses = defaultAddonAddresses
+        self.playerConfiguration = playerConfiguration ?? PlayerConfiguration(
+            userAgent: branding.userAgent,
+            logSubsystem: branding.bundleIdentifier
+        )
         self.startupWarning = startupWarning
     }
 
     /// The real thing: database in Application Support, caches in Caches, both in a
     /// folder named after the bundle identifier.
-    public static func live(branding: AppBranding, defaultAddonAddresses: [String]) -> AppDependencies {
+    ///
+    /// - Parameter playsAudio: `false` discards the player's audio (used when checking the app silently).
+    public static func live(
+        branding: AppBranding,
+        defaultAddonAddresses: [String],
+        playsAudio: Bool = true
+    ) -> AppDependencies {
         let files = FileManager.default
         let support = files.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent(branding.bundleIdentifier, isDirectory: true)
@@ -73,6 +86,11 @@ public struct AppDependencies: Sendable {
                 directory: caches?.appendingPathComponent("Images", isDirectory: true)
             ),
             defaultAddonAddresses: defaultAddonAddresses,
+            playerConfiguration: PlayerConfiguration(
+                userAgent: branding.userAgent,
+                logSubsystem: branding.bundleIdentifier,
+                playsAudio: playsAudio
+            ),
             startupWarning: warning
         )
     }
@@ -88,7 +106,12 @@ public struct AppDependencies: Sendable {
             addonClient: AddonClient(http: http),
             database: inMemoryDatabase(),
             imagePipeline: ImagePipeline(http: http, directory: nil),
-            defaultAddonAddresses: defaultAddonAddresses
+            defaultAddonAddresses: defaultAddonAddresses,
+            playerConfiguration: PlayerConfiguration(
+                userAgent: branding.userAgent,
+                logSubsystem: branding.bundleIdentifier,
+                playsAudio: false
+            )
         )
     }
 

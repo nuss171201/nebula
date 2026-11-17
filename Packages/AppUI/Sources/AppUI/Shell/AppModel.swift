@@ -13,6 +13,7 @@ public final class AppModel {
     public let discover: DiscoverModel
     public let search: SearchModel
     public let addons: AddonsModel
+    public let player: PlayerCoordinator
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -55,6 +56,7 @@ public final class AppModel {
         discover = DiscoverModel(client: client)
         search = SearchModel(client: client)
         addons = AddonsModel(registry: registry)
+        player = PlayerCoordinator(configuration: dependencies.playerConfiguration)
         selection = initialSection
         currentSection = initialSection
         let subsystem = dependencies.branding.bundleIdentifier

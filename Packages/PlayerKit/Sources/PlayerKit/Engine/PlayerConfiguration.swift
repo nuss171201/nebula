@@ -85,19 +85,23 @@ public struct PlayerConfiguration: Sendable, Equatable {
     public var usesHardwareDecoding: Bool
     /// `false` discards audio instead of playing it. For tests and silent checks.
     public var playsAudio: Bool
+    /// The volume the player starts at, 0–100.
+    public var initialVolume: Double
 
     public init(
         userAgent: String,
         logSubsystem: String,
         videoOutput: VideoOutput = .surface,
         usesHardwareDecoding: Bool = true,
-        playsAudio: Bool = true
+        playsAudio: Bool = true,
+        initialVolume: Double = 100
     ) {
         self.userAgent = userAgent
         self.logSubsystem = logSubsystem
         self.videoOutput = videoOutput
         self.usesHardwareDecoding = usesHardwareDecoding
         self.playsAudio = playsAudio
+        self.initialVolume = min(max(initialVolume, 0), 100)
     }
 
     /// The engine options this configuration translates to, in the order they are applied.
@@ -123,13 +127,19 @@ public struct PlayerConfiguration: Sendable, Equatable {
             ("resume-playback", "no"),
             ("save-position-on-quit", "no"),
             ("volume-max", "100"),
+            ("volume", String(initialVolume)),
             ("user-agent", userAgent),
             ("network-timeout", "30"),
             ("hwdec", usesHardwareDecoding ? "videotoolbox" : "no"),
         ]
         switch videoOutput {
         case .surface:
-            options += [("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk")]
+            options += [
+                ("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"),
+                // The view shows only the video's rectangle of the canvas, so subtitles must stay
+                // inside the picture instead of using the black bars around it.
+                ("sub-use-margins", "no"), ("sub-ass-force-margins", "no"),
+            ]
         case .none:
             options += [("vo", "null")]
         }

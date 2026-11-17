@@ -9,6 +9,7 @@
 #   Scripts/screenshot.sh /tmp/detail.png 8 -open series:tt0386676
 #   KEEP_RUNNING=1 Scripts/screenshot.sh ...     leave the app running afterwards
 #
+# Every window of the app is captured: the largest as <output>, the rest as <output>-2 and so on.
 # Limitation: a window that has a sheet attached cannot be captured this way.
 set -euo pipefail
 
@@ -41,6 +42,16 @@ done
 [[ -n "$PID" ]] || { echo "app did not start" >&2; exit 1; }
 
 sleep "$WAIT"
-WINDOW="$(swift Scripts/window-id.swift "$PID")"
-screencapture -x -o -l "$WINDOW" "$OUTPUT"
-echo "saved $OUTPUT (pid $PID, window $WINDOW)"
+# Largest window first. The first is saved as OUTPUT; any others (the player window,
+# for example) as OUTPUT with -2, -3 … before the extension.
+index=1
+swift Scripts/window-id.swift "$PID" | while read -r window size; do
+    target="$OUTPUT"
+    [[ "$index" -gt 1 ]] && target="${OUTPUT%.*}-$index.${OUTPUT##*.}"
+    if screencapture -x -o -l "$window" "$target" 2>/dev/null; then
+        echo "saved $target (window $window, $size)"
+    else
+        echo "could not capture window $window ($size)" >&2
+    fi
+    index=$((index + 1))
+done

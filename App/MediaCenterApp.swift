@@ -12,6 +12,9 @@ struct MediaCenterApp: App {
             RootView(model: model)
         }
         .defaultSize(width: 1280, height: 800)
+        .commands {
+            PlaybackCommands(model: model)
+        }
 
         Settings {
             SettingsView()
@@ -19,10 +22,15 @@ struct MediaCenterApp: App {
     }
 
     private static func makeModel() -> AppModel {
+        var playsAudio = true
+        #if DEBUG
+            playsAudio = !DebugLaunchOptions.isSilent
+        #endif
         let model = AppModel(
             dependencies: .live(
                 branding: Branding.current,
-                defaultAddonAddresses: DefaultAddons.addresses(in: .main)
+                defaultAddonAddresses: DefaultAddons.addresses(in: .main),
+                playsAudio: playsAudio
             )
         )
         #if DEBUG
