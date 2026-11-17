@@ -6,12 +6,14 @@ struct DetailScreen: View {
     @State private var model: DetailModel
     private let registry: AddonRegistry
     private let streamPlayer: StreamPlayer
+    private let library: LibraryCenter
     private let appIdentifier: String
 
     init(route: MediaRoute, appModel: AppModel) {
         _model = State(initialValue: appModel.detailModel(for: route))
         registry = appModel.registry
         streamPlayer = appModel.streamPlayer
+        library = appModel.library
         appIdentifier = appModel.branding.bundleIdentifier
     }
 
@@ -25,6 +27,10 @@ struct DetailScreen: View {
         })
         .task(id: registry.addons.map(\.id)) {
             await model.load(addons: registry.addons)
+        }
+        // Watched marks and progress change while the page is up: the player saves as it goes.
+        .task(id: library.revision) {
+            await model.refreshLibraryState()
         }
     }
 }
@@ -119,15 +125,32 @@ struct DetailView: View {
 
     // MARK: - Body sections
 
-    @ViewBuilder private var actions: some View {
-        if let video = model.trailer.flatMap({ YouTubeVideoID($0.youTubeID) }) {
-            Button {
-                trailer = video
-            } label: {
-                Label("Watch Trailer", systemImage: "play.rectangle")
+    private var actions: some View {
+        HStack(spacing: 10) {
+            if let video = model.trailer.flatMap({ YouTubeVideoID($0.youTubeID) }) {
+                Button {
+                    trailer = video
+                } label: {
+                    Label("Watch Trailer", systemImage: "play.rectangle")
+                }
             }
-            .controlSize(.large)
+            Button {
+                Task { await model.toggleLibrary() }
+            } label: {
+                Label(model.isInLibrary ? "In Library" : "Add to Library", systemImage: model.isInLibrary ? "checkmark" : "plus")
+            }
+            .accessibilityHint(model.isInLibrary ? "Removes this title from your library" : "Saves this title to your library")
+            .disabled(model.meta == nil)
+            if model.isSingleVideo {
+                Button {
+                    Task { await model.setWatched(!model.isTitleWatched) }
+                } label: {
+                    Label(model.isTitleWatched ? "Watched" : "Mark as Watched", systemImage: model.isTitleWatched ? "eye.fill" : "eye")
+                }
+                .accessibilityHint(model.isTitleWatched ? "Marks this as not watched" : "Marks this as watched")
+            }
         }
+        .controlSize(.large)
     }
 
     @ViewBuilder private var credits: some View {
@@ -173,12 +196,17 @@ struct DetailView: View {
     @ViewBuilder private var videos: some View {
         if !model.seasons.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Season", selection: $model.selectedSeason) {
-                    ForEach(model.seasons, id: \.self) { season in
-                        Text(DetailModel.seasonTitle(season)).tag(Optional(season))
+                HStack {
+                    Picker("Season", selection: $model.selectedSeason) {
+                        ForEach(model.seasons, id: \.self) { season in
+                            Text(DetailModel.seasonTitle(season)).tag(Optional(season))
+                        }
+                    }
+                    .fixedSize()
+                    Button(model.isSeasonWatched ? "Mark Season as Not Watched" : "Mark Season as Watched") {
+                        Task { await model.setSeasonWatched(!model.isSeasonWatched) }
                     }
                 }
-                .fixedSize()
 
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(model.episodes) { episode in
@@ -199,14 +227,20 @@ struct DetailView: View {
     @ViewBuilder
     private func episodeRow(_ video: MetaVideo) -> some View {
         let isSelected = model.selectedVideoID == video.id
+        let isWatched = model.isWatched(video)
         Button {
             model.toggleStreams(for: video)
         } label: {
-            EpisodeRow(video: video)
+            EpisodeRow(video: video, isWatched: isWatched, progress: model.progress(of: video))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(isWatched ? "Mark as Not Watched" : "Mark as Watched") {
+                Task { await model.setWatched(!isWatched, video: video) }
+            }
+        }
         .accessibilityHint(isSelected ? "Hides this episode's streams" : "Shows this episode's streams")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         if isSelected {
@@ -219,17 +253,33 @@ struct DetailView: View {
 
 private struct EpisodeRow: View {
     let video: MetaVideo
+    var isWatched = false
+    /// How far through it is, if it was started and not finished.
+    var progress: Double?
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             RemoteImage(url: video.thumbnail, maxPointSize: 176, placeholderSystemImage: "play.tv")
                 .frame(width: 176, height: 99)
+                .overlay(alignment: .bottom) {
+                    if let progress {
+                        ProgressBar(fraction: progress)
+                    }
+                }
                 .clipShape(.rect(cornerRadius: 6))
+                .opacity(isWatched ? 0.55 : 1)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(video.numberedTitle)
-                    .font(.headline)
+                HStack(spacing: 6) {
+                    Text(video.numberedTitle)
+                        .font(.headline)
+                    if isWatched {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Watched")
+                    }
+                }
                 if let released = video.released {
                     Text(DetailModel.releaseText(for: released))
                         .font(.caption)
@@ -245,5 +295,23 @@ private struct EpisodeRow: View {
             .frame(maxWidth: 640, alignment: .leading)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A thin bar along the bottom of a picture showing how much of it has been watched.
+struct ProgressBar: View {
+    let fraction: Double
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Rectangle().fill(.black.opacity(0.5))
+                Rectangle().fill(.tint).frame(width: geometry.size.width * min(max(fraction, 0), 1))
+            }
+        }
+        .frame(height: 4)
+        .accessibilityElement()
+        .accessibilityLabel("Watched")
+        .accessibilityValue("\(Int((fraction * 100).rounded())) percent")
     }
 }

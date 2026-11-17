@@ -176,8 +176,13 @@ actor FakePlayerMemory: PlayerMemory {
         positions[key]
     }
 
-    func remember(position: Double?, for key: String) async {
-        positions[key] = position
+    private(set) var points: [String: ResumePoint] = [:]
+    private(set) var durations: [String: Double] = [:]
+
+    func remember(_ point: ResumePoint, duration: Double?, for key: String) async {
+        points[key] = point
+        positions[key] = point.position
+        durations[key] = duration
     }
 
     func rememberedTracks(forAnyOf keys: [String]) async -> RememberedTracks? {

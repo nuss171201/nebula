@@ -12,14 +12,15 @@ struct ResumeState {
     /// The position last written, to save only when it has moved on.
     var lastSaved: Double?
 
-    /// What to store for a file left at `position`: the position, or `nil` (forget it) when the
-    /// file has only just begun or is as good as finished.
-    static func positionWorthKeeping(_ position: Double, duration: Double?) -> Double? {
-        guard position >= margin else { return nil }
-        if let duration, position > duration - max(margin, duration * 0.03) {
-            return nil
+    /// What a file left at `position` counts as: not started within the first seconds,
+    /// finished within the last ten seconds or the last twentieth (the credits, at most six
+    /// minutes), and otherwise somewhere to come back to.
+    static func point(for position: Double, duration: Double?) -> ResumePoint {
+        guard position >= margin else { return .notStarted }
+        if let duration, position > duration - max(margin, min(duration * 0.05, 360)) {
+            return .finished
         }
-        return position
+        return .at(position)
     }
 }
 
@@ -48,10 +49,11 @@ extension PlayerModel {
     /// Stores where the open file is now. Called when pausing, and before leaving the file.
     func savePosition() {
         guard let memory, let key = resume.key, state.hasMedia else { return }
-        let position = state.phase == .ended ? nil : ResumeState.positionWorthKeeping(state.position, duration: state.duration)
-        resume.lastSaved = position ?? state.position
+        let point = state.phase == .ended ? .finished : ResumeState.point(for: state.position, duration: state.duration)
+        resume.lastSaved = state.position
+        let duration = state.duration
         Task {
-            await memory.remember(position: position, for: key)
+            await memory.remember(point, duration: duration, for: key)
         }
     }
 }

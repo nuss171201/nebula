@@ -420,7 +420,10 @@ struct DetailStreamTests {
         await model.streams.waitForLoad()
         #expect(model.isSingleVideo)
         #expect(model.streams.choices.map(\.title) == ["1080p"])
-        #expect(model.streamVideo == StreamVideo(type: .movie, videoID: "tt0000001", titleID: "tt0000001", title: "Example Movie"))
+        let video = try #require(model.streamVideo)
+        #expect(video.videoID == "tt0000001" && video.titleID == "tt0000001" && video.title == "Example Movie" && video.type == .movie)
+        // The film's poster goes along, for the watch history.
+        #expect(video.poster == model.meta?.poster)
     }
 
     @Test("An episode's streams show when it is chosen and go when it is chosen again; only one episode at a time")

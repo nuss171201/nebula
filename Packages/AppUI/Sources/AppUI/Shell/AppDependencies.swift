@@ -11,6 +11,8 @@ public struct AppDependencies: Sendable {
     public let addonStore: AddonStore
     public let settings: SettingsStore
     public let playbackMemory: PlaybackMemoryStore
+    public let libraryStore: LibraryStore
+    public let watchHistory: WatchHistoryStore
     public let imagePipeline: ImagePipeline
     /// Manifest addresses installed on first launch.
     public let defaultAddonAddresses: [String]
@@ -43,6 +45,8 @@ public struct AppDependencies: Sendable {
         addonStore = AddonStore(database: database)
         settings = SettingsStore(database: database)
         playbackMemory = PlaybackMemoryStore(database: database)
+        libraryStore = LibraryStore(database: database)
+        watchHistory = WatchHistoryStore(database: database)
         self.imagePipeline = imagePipeline
         self.defaultAddonAddresses = defaultAddonAddresses
         self.playerConfiguration = playerConfiguration ?? PlayerConfiguration(

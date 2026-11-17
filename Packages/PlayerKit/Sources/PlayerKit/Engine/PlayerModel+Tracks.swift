@@ -114,8 +114,8 @@ extension PlayerModel {
         }
     }
 
-    /// Waits for the automatic track selection of the open file. For tests.
-    func waitForTrackSelection() async {
+    /// Waits until the open file's tracks have been chosen and its position restored. For tests.
+    public func waitForTrackSelection() async {
         await selectionTask?.value
     }
 

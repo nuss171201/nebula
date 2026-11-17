@@ -69,6 +69,46 @@ public struct LibraryDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v4-library-and-history") { db in
+            // Titles the user saved. Removing one keeps the row with `removedAt` set, so that a
+            // future sync can tell "removed here" from "never added there".
+            try db.create(table: "libraryItem") { table in
+                table.column("type", .text).notNull()
+                table.column("id", .text).notNull()
+                table.column("name", .text).notNull()
+                table.column("poster", .text)
+                table.column("posterShape", .text)
+                table.column("releaseInfo", .text)
+                table.column("addedAt", .datetime).notNull()
+                table.column("removedAt", .datetime)
+                table.column("updatedAt", .datetime).notNull()
+                table.primaryKey(["type", "id"])
+            }
+            // One row per video (a film, or one episode) that has been started or marked watched.
+            // The title's name and poster are kept here too, so that Continue Watching and the
+            // history need no network.
+            try db.create(table: "watchEntry") { table in
+                table.column("type", .text).notNull()
+                table.column("videoID", .text).notNull()
+                table.column("titleID", .text).notNull()
+                table.column("titleName", .text).notNull()
+                table.column("poster", .text)
+                table.column("season", .integer)
+                table.column("episode", .integer)
+                table.column("videoTitle", .text)
+                table.column("position", .double).notNull().defaults(to: 0)
+                table.column("duration", .double)
+                table.column("isWatched", .boolean).notNull().defaults(to: false)
+                // Taken off the Continue Watching row by the user; watching again brings it back.
+                table.column("isDismissed", .boolean).notNull().defaults(to: false)
+                table.column("lastWatchedAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull()
+                table.primaryKey(["type", "videoID"])
+            }
+            try db.create(index: "watchEntry_title", on: "watchEntry", columns: ["type", "titleID"])
+            try db.create(index: "watchEntry_recent", on: "watchEntry", columns: ["lastWatchedAt"])
+        }
+
         return migrator
     }
 }

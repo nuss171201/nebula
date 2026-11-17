@@ -15,12 +15,12 @@ struct LibraryPlayerMemoryTests {
     func positions() async throws {
         let memory = try makeMemory()
         #expect(await memory.rememberedPosition(for: "file:/films/a.mkv") == nil)
-        await memory.remember(position: 1234.5, for: "file:/films/a.mkv")
-        await memory.remember(position: 60, for: "file:/films/b.mkv")
+        await memory.remember(.at(1234.5), duration: nil, for: "file:/films/a.mkv")
+        await memory.remember(.at(60), duration: nil, for: "file:/films/b.mkv")
         #expect(await memory.rememberedPosition(for: "file:/films/a.mkv") == 1234.5)
         #expect(await memory.rememberedPosition(for: "file:/films/b.mkv") == 60)
 
-        await memory.remember(position: nil, for: "file:/films/a.mkv")
+        await memory.remember(.finished, duration: nil, for: "file:/films/a.mkv")
         #expect(await memory.rememberedPosition(for: "file:/films/a.mkv") == nil)
         #expect(await memory.rememberedPosition(for: "file:/films/b.mkv") == 60)
     }
@@ -30,9 +30,9 @@ struct LibraryPlayerMemoryTests {
         let memory = try makeMemory()
         let tracks = RememberedTracks(audio: TrackDescriptor(language: "fra"))
         await memory.remember(tracks, for: ["file:/films/a.mkv"])
-        await memory.remember(position: 90, for: "file:/films/a.mkv")
+        await memory.remember(.at(90), duration: nil, for: "file:/films/a.mkv")
         #expect(await memory.rememberedTracks(forAnyOf: ["file:/films/a.mkv"]) == tracks)
-        await memory.remember(position: nil, for: "file:/films/a.mkv")
+        await memory.remember(.finished, duration: nil, for: "file:/films/a.mkv")
         #expect(await memory.rememberedTracks(forAnyOf: ["file:/films/a.mkv"]) == tracks)
     }
 }

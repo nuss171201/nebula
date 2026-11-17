@@ -1,5 +1,6 @@
 import Foundation
 import MediaCore
+import MediaLibrary
 import Observation
 
 /// The detail page of one title: full metadata, and for series the seasons and episodes.
@@ -23,15 +24,103 @@ public final class DetailModel {
     public let streams: StreamListModel
     /// The episode whose streams are showing, if any.
     public private(set) var selectedVideoID: String?
+    /// Whether the title is saved in the library.
+    public private(set) var isInLibrary = false
+    /// What has been watched of this title, by video id.
+    public private(set) var watchEntries: [String: WatchEntry] = [:]
 
+    /// An episode to show the streams of as soon as the page has loaded.
+    @ObservationIgnored public var initialVideoID: String?
     @ObservationIgnored private let client: AddonClient
+    @ObservationIgnored private let library: LibraryCenter?
     @ObservationIgnored private var addons: [InstalledAddon] = []
 
-    public init(route: MediaRoute, client: AddonClient, streamMemory: (any StreamChoiceMemory)? = nil) {
+    public init(
+        route: MediaRoute,
+        client: AddonClient,
+        streamMemory: (any StreamChoiceMemory)? = nil,
+        library: LibraryCenter? = nil
+    ) {
         self.route = route
         self.client = client
+        self.library = library
         streams = StreamListModel(client: client, memory: streamMemory)
         meta = route.preview
+    }
+
+    // MARK: - Library and watched marks
+
+    /// Reads again whether the title is saved and what has been watched of it.
+    public func refreshLibraryState() async {
+        guard let library else { return }
+        isInLibrary = await library.isSaved(type: route.type, id: route.id)
+        watchEntries = await library.entries(type: route.type, titleID: route.id)
+    }
+
+    /// Saves the title to the library, or takes it out.
+    public func toggleLibrary() async {
+        guard let library, let meta else { return }
+        if isInLibrary {
+            await library.remove(type: route.type, id: route.id)
+        } else {
+            await library.save(meta)
+        }
+        await refreshLibraryState()
+    }
+
+    public func isWatched(_ video: MetaVideo) -> Bool {
+        watchEntries[video.id]?.isWatched ?? false
+    }
+
+    /// How far through an episode is, 0 to 1, if it was started and not finished.
+    public func progress(of video: MetaVideo) -> Double? {
+        guard let entry = watchEntries[video.id], entry.isInProgress else { return nil }
+        return entry.progress
+    }
+
+    /// Whether the film itself (a title that is one video) has been watched.
+    public var isTitleWatched: Bool {
+        watchEntries[route.id]?.isWatched ?? false
+    }
+
+    /// Whether every episode of the selected season that has aired is watched.
+    public var isSeasonWatched: Bool {
+        let aired = airedEpisodesOfSelectedSeason
+        return !aired.isEmpty && aired.allSatisfy(isWatched)
+    }
+
+    /// Marks an episode as watched or not; `nil` means the film itself.
+    public func setWatched(_ isWatched: Bool, video: MetaVideo? = nil) async {
+        guard let library, let watchVideo = watchVideo(for: video) else { return }
+        await library.setWatched(isWatched, videos: [watchVideo])
+        await refreshLibraryState()
+    }
+
+    /// Marks every episode of the selected season that has aired.
+    public func setSeasonWatched(_ isWatched: Bool) async {
+        guard let library else { return }
+        await library.setWatched(isWatched, videos: airedEpisodesOfSelectedSeason.compactMap { watchVideo(for: $0) })
+        await refreshLibraryState()
+    }
+
+    private var airedEpisodesOfSelectedSeason: [MetaVideo] {
+        let now = Date()
+        return episodes.filter { ($0.released ?? .distantPast) <= now }
+    }
+
+    /// A video of this title as the watch history files it; `nil` (the film) before the page has loaded.
+    func watchVideo(for video: MetaVideo?) -> WatchVideo? {
+        guard let meta else { return nil }
+        return WatchVideo(
+            type: route.type,
+            videoID: video?.id ?? route.id,
+            titleID: route.id,
+            titleName: meta.name,
+            poster: meta.poster,
+            season: video?.season,
+            episode: video?.episode,
+            videoTitle: video?.title
+        )
     }
 
     /// Whether the title is one video (a film, a channel) rather than a list of episodes.
@@ -44,7 +133,17 @@ public final class DetailModel {
         guard let videoID = streams.videoID else { return nil }
         let episode = meta?.videos.first { $0.id == videoID }
         let name = [title, episode?.numberedTitle].compactMap(\.self).joined(separator: " — ")
-        return StreamVideo(type: route.type, videoID: videoID, titleID: route.id, title: name)
+        return StreamVideo(
+            type: route.type,
+            videoID: videoID,
+            titleID: route.id,
+            title: name,
+            titleName: title,
+            poster: meta?.poster,
+            season: episode?.season,
+            episode: episode?.episode,
+            episodeTitle: episode?.title
+        )
     }
 
     /// Shows an episode's streams under it, or hides them if they are showing.
@@ -96,6 +195,7 @@ public final class DetailModel {
     public func load(addons: [InstalledAddon]) async {
         self.addons = addons
         phase = .loading
+        await refreshLibraryState()
         let providers = addons.serving(resource: ManifestResource.meta, type: route.type, id: route.id)
         guard !providers.isEmpty else {
             phase = .failed("None of your add-ons provides details for this title.")
@@ -124,6 +224,12 @@ public final class DetailModel {
         seasons = numbers.filter { $0 != 0 }.sorted() + (numbers.contains(0) ? [0] : [])
         if selectedSeason.map(seasons.contains) != true {
             selectedSeason = seasons.first
+        }
+        if let wanted = initialVideoID, let video = full.videos.first(where: { $0.id == wanted }) {
+            // Opened for this episode: show its season, and its streams below.
+            initialVideoID = nil
+            selectedSeason = video.season ?? selectedSeason
+            selectedVideoID = wanted
         }
         phase = .loaded
         if full.videos.isEmpty {

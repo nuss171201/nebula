@@ -88,12 +88,19 @@ public struct RootView: View {
         } else {
             switch model.currentSection {
             case .home:
-                HomeView(model: model.home, registry: model.registry)
+                HomeView(
+                    model: model.home,
+                    registry: model.registry,
+                    continueWatching: model.continueWatching,
+                    library: model.library
+                ) { model.open($0) }
             case .discover:
                 DiscoverView(model: model.discover, registry: model.registry)
             case .addons:
                 AddonsView(model: model.addons)
-            case .library, .calendar:
+            case .library:
+                LibraryView(model: model.libraryScreen, library: model.library) { model.open($0) }
+            case .calendar:
                 SectionPlaceholderView(section: model.currentSection)
             }
         }

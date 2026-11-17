@@ -15,18 +15,47 @@ public struct StreamVideo: Sendable, Hashable {
     public var titleID: String
     /// What to call it while it is being prepared.
     public var title: String
+    /// The film's or series' own name and poster, for the watch history.
+    public var titleName: String
+    public var poster: URL?
+    public var season: Int?
+    public var episode: Int?
+    public var episodeTitle: String?
 
-    public init(type: MediaType, videoID: String, titleID: String, title: String) {
+    public init(
+        type: MediaType,
+        videoID: String,
+        titleID: String,
+        title: String,
+        titleName: String? = nil,
+        poster: URL? = nil,
+        season: Int? = nil,
+        episode: Int? = nil,
+        episodeTitle: String? = nil
+    ) {
         self.type = type
         self.videoID = videoID
         self.titleID = titleID
         self.title = title
+        self.titleName = titleName ?? title
+        self.poster = poster
+        self.season = season
+        self.episode = episode
+        self.episodeTitle = episodeTitle
+    }
+
+    /// The video as the watch history files it.
+    public var watchVideo: WatchVideo {
+        WatchVideo(
+            type: type, videoID: videoID, titleID: titleID, titleName: titleName,
+            poster: poster, season: season, episode: episode, videoTitle: episodeTitle
+        )
     }
 
     /// Names the player remembers this video's tracks and position under. A stream's address
     /// changes every time, so the video's identity is used instead: the episode, then the series.
     var memoryKeys: [String] {
-        ["video:\(type.rawValue):\(videoID)", "title:\(type.rawValue):\(titleID)"]
+        [WatchKey.make(type: type, videoID: videoID), "title:\(type.rawValue):\(titleID)"]
     }
 }
 
@@ -63,6 +92,11 @@ public final class StreamPlayer {
 
     @ObservationIgnored private let coordinator: PlayerCoordinator
     @ObservationIgnored private let manager: StreamManager
+    @ObservationIgnored private let library: LibraryCenter?
+    /// The video that was last handed to the player, for whoever decides what comes after it.
+    public private(set) var nowPlaying: StreamVideo?
+    /// The stream it was played from.
+    public private(set) var nowPlayingChoice: StreamChoice?
     @ObservationIgnored private let openExternal: @MainActor (URL) -> Void
     @ObservationIgnored private var prepareTask: Task<Void, Never>?
     @ObservationIgnored private var activeURL: URL?
@@ -71,10 +105,12 @@ public final class StreamPlayer {
     public init(
         coordinator: PlayerCoordinator,
         manager: StreamManager,
+        library: LibraryCenter? = nil,
         openExternal: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
     ) {
         self.coordinator = coordinator
         self.manager = manager
+        self.library = library
         self.openExternal = openExternal
         watchPlayer()
     }
@@ -120,6 +156,7 @@ public final class StreamPlayer {
         do {
             let source = try PlayableSource(url: url)
             closeActiveTorrent()
+            noteStarted(video, choice: choice)
             coordinator.play(source, options: PlaybackOptions(
                 memoryKeys: video.memoryKeys,
                 httpHeaders: choice.stream.behaviorHints.requestHeaders,
@@ -160,11 +197,20 @@ public final class StreamPlayer {
                 }
                 return
             }
-            finishPreparing(result, infoHash: source.infoHash, video: video)
+            finishPreparing(result, infoHash: source.infoHash, video: video, choice: choice)
         }
     }
 
-    private func finishPreparing(_ result: Result<OpenedStream, any Error>, infoHash: String, video: StreamVideo) {
+    /// Files the video in the watch history before the player asks where it was left.
+    private func noteStarted(_ video: StreamVideo, choice: StreamChoice) {
+        nowPlaying = video
+        nowPlayingChoice = choice
+        if let library {
+            Task { await library.begin(video.watchVideo) }
+        }
+    }
+
+    private func finishPreparing(_ result: Result<OpenedStream, any Error>, infoHash: String, video: StreamVideo, choice: StreamChoice) {
         switch result {
         case let .success(stream):
             guard let playable = try? PlayableSource(url: stream.url) else {
@@ -177,6 +223,7 @@ public final class StreamPlayer {
             activeTorrent = infoHash
             activeURL = stream.url
             phase = .idle
+            noteStarted(video, choice: choice)
             // No seek-bar stills: they would open a second reader far from the playhead and
             // take pieces from what is about to be watched.
             coordinator.play(playable, options: PlaybackOptions(memoryKeys: video.memoryKeys, generatesThumbnails: false, title: video.title))
@@ -217,6 +264,10 @@ public final class StreamPlayer {
         }
         if activeTorrent != nil, !isOpen || (playing != nil && playing != activeURL) {
             closeActiveTorrent()
+        }
+        if !isOpen {
+            nowPlaying = nil
+            nowPlayingChoice = nil
         }
     }
 

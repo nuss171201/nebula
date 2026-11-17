@@ -14,6 +14,11 @@ struct LibraryPlayerMemory: PlayerMemory {
 
     let store: PlaybackMemoryStore
     let settings: SettingsStore
+    /// Where videos from a catalog keep their position, with what Continue Watching needs.
+    /// Local files and plain web addresses use `store`.
+    var history: WatchHistoryStore?
+    /// Called after the watch history has been written to.
+    var historyChanged: (@Sendable () async -> Void)?
 
     // Failing to read or write memory must never get in the way of playback, so errors
     // degrade to "nothing remembered".
@@ -35,11 +40,23 @@ struct LibraryPlayerMemory: PlayerMemory {
     }
 
     func rememberedPosition(for key: String) async -> Double? {
-        try? await store.value(forAnyOf: [Self.positionKey(key)], as: Double.self)
+        if let history, let video = WatchKey.parse(key) {
+            guard let entry = try? await history.entry(type: video.type, videoID: video.videoID), entry.isInProgress else { return nil }
+            return entry.position
+        }
+        return try? await store.value(forAnyOf: [Self.positionKey(key)], as: Double.self)
     }
 
-    func remember(position: Double?, for key: String) async {
-        if let position {
+    func remember(_ point: ResumePoint, duration: Double?, for key: String) async {
+        if let history, let video = WatchKey.parse(key) {
+            let watchPoint: WatchPoint = switch point {
+            case .notStarted: .notStarted
+            case let .at(position): .at(position)
+            case .finished: .finished
+            }
+            try? await history.record(watchPoint, duration: duration, type: video.type, videoID: video.videoID)
+            await historyChanged?()
+        } else if let position = point.position {
             try? await store.set(position, for: [Self.positionKey(key)])
         } else {
             try? await store.remove(keys: [Self.positionKey(key)])

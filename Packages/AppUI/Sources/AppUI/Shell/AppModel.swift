@@ -1,5 +1,6 @@
 import Foundation
 import MediaCore
+import MediaLibrary
 import Observation
 import PlayerKit
 
@@ -16,6 +17,9 @@ public final class AppModel {
     public let addons: AddonsModel
     public let player: PlayerCoordinator
     public let streamPlayer: StreamPlayer
+    public let library: LibraryCenter
+    public let continueWatching: ContinueWatchingModel
+    public let libraryScreen: LibraryModel
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -42,6 +46,8 @@ public final class AppModel {
     @ObservationIgnored private var hasStarted = false
     /// The detail page opened most recently, while it is on screen.
     @ObservationIgnored private weak var latestDetail: DetailModel?
+    /// Episodes to show the streams of when their series' page opens, by series id.
+    @ObservationIgnored private var pendingEpisodes: [String: String] = [:]
 
     public init(
         dependencies: AppDependencies,
@@ -60,13 +66,26 @@ public final class AppModel {
         discover = DiscoverModel(client: client)
         search = SearchModel(client: client)
         addons = AddonsModel(registry: registry)
+        let library = LibraryCenter(
+            library: dependencies.libraryStore,
+            history: dependencies.watchHistory,
+            logSubsystem: dependencies.branding.bundleIdentifier
+        )
+        self.library = library
+        continueWatching = ContinueWatchingModel(library: library, client: client)
+        libraryScreen = LibraryModel(library: library)
         player = PlayerCoordinator(
             configuration: dependencies.playerConfiguration,
-            memory: LibraryPlayerMemory(store: dependencies.playbackMemory, settings: dependencies.settings),
+            memory: LibraryPlayerMemory(
+                store: dependencies.playbackMemory,
+                settings: dependencies.settings,
+                history: dependencies.watchHistory,
+                historyChanged: { [weak library] in await library?.noteChange() }
+            ),
             subtitleService: dependencies.subtitleService,
             usesSystemNowPlaying: dependencies.usesSystemNowPlaying
         )
-        streamPlayer = StreamPlayer(coordinator: player, manager: dependencies.streamManager)
+        streamPlayer = StreamPlayer(coordinator: player, manager: dependencies.streamManager, library: library)
         selection = initialSection
         currentSection = initialSection
         let subsystem = dependencies.branding.bundleIdentifier
@@ -112,10 +131,21 @@ public final class AppModel {
         let model = DetailModel(
             route: route,
             client: dependencies.addonClient,
-            streamMemory: LibraryStreamChoiceMemory(store: dependencies.playbackMemory)
+            streamMemory: LibraryStreamChoiceMemory(store: dependencies.playbackMemory),
+            library: library
         )
+        // Arriving from Continue Watching: go straight to the episode in question.
+        model.initialVideoID = pendingEpisodes.removeValue(forKey: route.id)
         latestDetail = model
         return model
+    }
+
+    /// Opens the page of a video from Continue Watching or the history, with its streams showing.
+    public func open(_ video: WatchVideo) {
+        if video.videoID != video.titleID {
+            pendingEpisodes[video.titleID] = video.videoID
+        }
+        path.append(MediaRoute(type: video.type, id: video.titleID))
     }
 
     /// Plays one of the streams listed on the detail page that was opened last, as a click on
@@ -149,6 +179,7 @@ public final class AppModel {
             }
         }
         home.update(addons: addons)
+        continueWatching.update(addons: addons)
         discover.update(addons: addons)
         search.update(addons: addons)
         dependencies.subtitleService.update(addons: addons)

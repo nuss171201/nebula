@@ -22,10 +22,12 @@ public protocol PlayerMemory: Sendable {
     func remember(_ tracks: RememberedTracks, for keys: [String]) async
     func rememberedVolume() async -> RememberedVolume?
     func remember(_ volume: RememberedVolume) async
-    /// Where the user stopped watching the thing stored under `key`, in seconds.
+    /// Where the user stopped watching the thing stored under `key`, in seconds; `nil` if it
+    /// should start from the beginning.
     func rememberedPosition(for key: String) async -> Double?
-    /// Stores where the user stopped; `nil` forgets it (the file was watched to the end).
-    func remember(position: Double?, for key: String) async
+    /// Stores where the user left it.
+    /// - Parameter duration: The file's length in seconds, when known.
+    func remember(_ point: ResumePoint, duration: Double?, for key: String) async
 }
 
 public extension PlayerMemory {
@@ -33,7 +35,25 @@ public extension PlayerMemory {
         nil
     }
 
-    func remember(position _: Double?, for _: String) async {}
+    func remember(_: ResumePoint, duration _: Double?, for _: String) async {}
+}
+
+/// Where a file was left when the player let go of it.
+public enum ResumePoint: Sendable, Equatable {
+    /// Barely begun: next time it starts from the beginning.
+    case notStarted
+    /// Seconds from the start, to come back to.
+    case at(Double)
+    /// Watched to the end (or into the credits).
+    case finished
+
+    /// The position to resume from, if any.
+    public var position: Double? {
+        if case let .at(position) = self {
+            return position
+        }
+        return nil
+    }
 }
 
 public extension PlayableSource {

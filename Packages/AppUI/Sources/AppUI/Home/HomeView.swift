@@ -1,25 +1,37 @@
+import MediaLibrary
 import SwiftUI
 
-/// The Home board: one row per catalog.
+/// The Home board: what to carry on with, then one row per catalog.
 struct HomeView: View {
     let model: HomeModel
     let registry: AddonRegistry
+    let continueWatching: ContinueWatchingModel
+    let library: LibraryCenter
+    /// Opens a video's page with its streams showing.
+    let open: (WatchVideo) -> Void
 
     var body: some View {
-        if !registry.isReady {
-            ProgressView("Loading add-ons…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if model.rows.isEmpty {
-            emptyState
-        } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 26) {
-                    ForEach(model.rows) { row in
-                        CatalogRowView(row: row)
+        Group {
+            if !registry.isReady {
+                ProgressView("Loading add-ons…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.rows.isEmpty, continueWatching.items.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 26) {
+                        ContinueWatchingRow(model: continueWatching, open: open)
+                        ForEach(model.rows) { row in
+                            CatalogRowView(row: row)
+                        }
                     }
+                    .padding(.vertical, 20)
                 }
-                .padding(.vertical, 20)
             }
+        }
+        // What was watched changes while the app is open; so do the add-ons that can say what comes next.
+        .task(id: "\(library.revision)|\(registry.addons.count)") {
+            await continueWatching.reload()
         }
     }
 

@@ -10,7 +10,7 @@ struct SettingsStoreTests {
     @Test("A fresh database has the schema applied")
     func migrations() async throws {
         let database = try LibraryDatabase.inMemory()
-        #expect(try await database.appliedMigrations() == ["v1-settings", "v2-addons", "v3-playback-memory"])
+        #expect(try await database.appliedMigrations() == ["v1-settings", "v2-addons", "v3-playback-memory", "v4-library-and-history"])
     }
 
     @Test("Unset keys read as their default")
@@ -56,7 +56,7 @@ struct SettingsStoreTests {
         }
 
         let reopened = try LibraryDatabase(fileURL: fileURL)
-        #expect(try await reopened.appliedMigrations() == ["v1-settings", "v2-addons", "v3-playback-memory"])
+        #expect(try await reopened.appliedMigrations() == ["v1-settings", "v2-addons", "v3-playback-memory", "v4-library-and-history"])
         #expect(try await SettingsStore(database: reopened).value(for: Self.cacheLimit) == 42)
     }
 }

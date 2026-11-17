@@ -65,26 +65,30 @@ struct MediaFilesTests {
 
 @Suite("Where to resume (pure)")
 struct ResumeLogicTests {
-    @Test("Only the middle of a file is worth going back to", arguments: [
-        (5.0, 3600.0, Double?.none),
-        (10.0, 3600.0, 10.0),
-        (1800.0, 3600.0, 1800.0),
-        // The last 3 % of a long film are the credits.
-        (3500.0, 3600.0, nil),
-        (3480.0, 3600.0, 3480.0),
-        // At least the last ten seconds of anything.
-        (85.0, 90.0, nil),
-        (79.0, 90.0, 79.0),
-        (12.0, 20.0, nil),
+    @Test("The first seconds count as not started, the credits as finished, and the middle is somewhere to return to", arguments: [
+        (5.0, 3600.0, ResumePoint.notStarted),
+        (10.0, 3600.0, .at(10)),
+        (1800.0, 3600.0, .at(1800)),
+        // The last twentieth of a film is the credits.
+        (3500.0, 3600.0, .finished),
+        (3400.0, 3600.0, .at(3400)),
+        // But never more than six minutes, however long it is.
+        (13900.0, 14400.0, .at(13900)),
+        (14100.0, 14400.0, .finished),
+        // And at least the last ten seconds of anything.
+        (85.0, 90.0, .finished),
+        (79.0, 90.0, .at(79)),
+        (12.0, 20.0, .finished),
     ])
-    func worthKeeping(position: Double, duration: Double, expected: Double?) {
-        #expect(ResumeState.positionWorthKeeping(position, duration: duration) == expected)
+    func points(position: Double, duration: Double, expected: ResumePoint) {
+        #expect(ResumeState.point(for: position, duration: duration) == expected)
     }
 
-    @Test("Without a known length, anything past the beginning is kept")
+    @Test("Without a known length, anything past the beginning is somewhere to return to")
     func liveStreams() {
-        #expect(ResumeState.positionWorthKeeping(500, duration: nil) == 500)
-        #expect(ResumeState.positionWorthKeeping(3, duration: nil) == nil)
+        #expect(ResumeState.point(for: 500, duration: nil) == .at(500))
+        #expect(ResumeState.point(for: 3, duration: nil) == .notStarted)
+        #expect(ResumePoint.at(12).position == 12 && ResumePoint.finished.position == nil)
     }
 }
 
@@ -162,7 +166,9 @@ struct ResumeEngineTests {
         player.seek(to: 86)
         #expect(await eventually { player.state.position > 85 })
         player.setPaused(true)
-        #expect(await eventually { await memory.positions[key] == nil })
+        #expect(await eventually { await memory.points[key] == .finished })
+        // The length goes with it, for showing progress elsewhere.
+        #expect(await abs((memory.durations[key] ?? 0) - 90) < 1)
     }
 
     @Test("With resuming switched off, files start at the beginning and nothing is stored")
