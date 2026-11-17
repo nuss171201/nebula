@@ -57,6 +57,9 @@ public final class PlayerModel {
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var openedAt: ContinuousClock.Instant?
     @ObservationIgnored private var hasShutDown = false
+    @ObservationIgnored let userAgent: String
+    @ObservationIgnored var thumbnailGenerator: ThumbnailGenerator?
+    @ObservationIgnored var thumbnailCache: [Int: CGImage] = [:]
     @ObservationIgnored let memory: (any PlayerMemory)?
     @ObservationIgnored let trackPreferences: TrackPreferences
     /// Memory keys given explicitly for a source (a series id, say), by engine argument.
@@ -74,6 +77,7 @@ public final class PlayerModel {
         let logger = Logger(subsystem: configuration.logSubsystem, category: Self.logCategory)
         self.logger = logger
         self.memory = memory
+        userAgent = configuration.userAgent
         trackPreferences = configuration.trackPreferences
 
         let surface = configuration.videoOutput == .surface ? PlayerSurfaceView() : nil
@@ -263,6 +267,7 @@ public final class PlayerModel {
     public func shutdown() {
         guard !hasShutDown else { return }
         hasShutDown = true
+        discardThumbnails()
         client.quit()
     }
 
@@ -295,6 +300,7 @@ public final class PlayerModel {
 
         switch event {
         case .startedLoading:
+            discardThumbnails()
             unconfirmedSeek = nil
             // A loop belongs to one file.
             if abLoop != .off {

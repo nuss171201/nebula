@@ -94,6 +94,15 @@ public final class PlayerCoordinator {
         controller?.chrome.isSettingsPanelVisible = true
     }
 
+    /// Shows the seek bar's hover preview at a fraction of the file, as if the pointer were there.
+    /// For checking the preview without a pointer.
+    public func showSeekPreview(atFraction fraction: Double) {
+        // A pointer over the seek bar is also over the controls, which keeps them from hiding.
+        controller?.chrome.userDidInteract()
+        controller?.chrome.pointerIsOnControls(true)
+        controller?.chrome.seekHoverFraction = min(max(fraction, 0), 1)
+    }
+
     public func closePlayer() {
         controller?.close()
     }

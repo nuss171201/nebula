@@ -16,7 +16,8 @@ cd "$(dirname "$0")/.."
 MEDIA="${1:?usage: measure-playback.sh <file-or-url> [seconds]}"
 SECONDS_TO_SAMPLE="${2:-10}"
 ENGINE_OPTIONS="${3:-}"
-[[ "$MEDIA" == http* || "$MEDIA" == /* ]] || MEDIA="$(pwd)/$MEDIA"
+# Never hand the app a file inside ~/Documents: macOS would ask the user for permission.
+MEDIA="$(Scripts/stage-media.sh "$MEDIA")"
 
 APP="$(find build/DerivedData/Build/Products/Debug -maxdepth 1 -name '*.app' 2>/dev/null | head -1)"
 [[ -d "$APP" ]] || { echo "No Debug build found. Run Scripts/ci.sh first." >&2; exit 1; }

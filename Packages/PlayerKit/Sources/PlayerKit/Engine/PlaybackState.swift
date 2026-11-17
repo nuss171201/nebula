@@ -104,6 +104,11 @@ public struct PlaybackState: Sendable, Equatable {
         tracks.first { $0.kind == kind && $0.isSelected }
     }
 
+    /// The chapter that contains a position, if the file has chapters.
+    public func chapter(at seconds: Double) -> MediaChapter? {
+        chapters.last { $0.start <= seconds + 0.001 }
+    }
+
     /// Whether a file is open (playing, paused or sitting on its last frame).
     public var hasMedia: Bool {
         phase == .playing || phase == .ended

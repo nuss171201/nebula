@@ -21,6 +21,8 @@ public final class PlayerChromeModel {
     }
 
     public var settingsTab = PlayerSettingsTab.video
+    /// Where along the seek bar the pointer is, as a fraction of its width; `nil` when not over it.
+    public var seekHoverFraction: Double?
 
     @ObservationIgnored private let hideDelay: Duration
     @ObservationIgnored private let sleep: Sleep

@@ -46,6 +46,7 @@ Scripts/screenshot.sh /path/shot.png 6 -section discover        # also: library,
 Scripts/screenshot.sh /path/shot.png 7 -search "the office"
 Scripts/screenshot.sh /path/shot.png 7 -open series:tt0386676   # a detail page
 Scripts/screenshot.sh /path/shot.png 6 -silent YES -play "$PWD/TestMedia/sdr-h264-1080p.mp4"   # player
+Scripts/stage-media.sh TestMedia/multi-track.mkv   # prints a copy's path outside ~/Documents, for -play
 
 # Playback over HTTP (Range-capable; python's http.server is not):
 Scripts/serve-test-media.py 8765 &          # then -play http://127.0.0.1:8765/<file>; add --throttle-kbps N
@@ -68,7 +69,14 @@ Always launch it in the **background** (`open -g`, which the scripts above do) a
 `open` without `-g` brings the window to the front; the user was working and quit it (⌘Q) both times
 during Stage 1. Debug builds accept launch arguments that open a given state
 (`App/DebugLaunchOptions.swift`): `-section`, `-search`, `-open <type>:<id>`, `-install <address>`,
-`-play <path or URL>`, `-silent YES`, `-engine "name=value,…"`.
+`-play <path or URL>`, `-silent YES`, `-engine "name=value,…"`, `-panel video|audio|subtitles` (the
+player's settings panel), `-seekPreview <0…1>` (the seek bar's hover preview at that fraction).
+
+**Never make macOS ask the user for permission during a check.** Do not point the app at files in
+`~/Documents`, `~/Desktop` or `~/Downloads` (this repository is in Documents): macOS shows a
+permission dialog and the app waits on it. `screenshot.sh` and `measure-playback.sh` swap a `-play`
+path for a copy made by `Scripts/stage-media.sh`; do the same in anything new. Tests are not
+affected: they run under the terminal's own permission.
 
 **Never make a sound the user did not ask for:** every `-play` used for a check must come with
 `-silent YES` (the scripts do this), and tests create players with `playsAudio: false` or volume 0.
@@ -257,10 +265,13 @@ Carried over or not verified:
 - Not checked by eye or hand, because they need focus, a click or a key press: full screen, real key
   presses, dragging the seek bar, the Open panel, the Open Location sheet, and **audible sound**
   (the output device opens and decodes; nothing was ever played aloud).
-- **Slow first frame on the first launch after a rebuild:** 2.7 to 10.9 s in five such launches, about
-  0.3 s in every other launch. In the one sample taken the engine was already rendering and the main
-  thread was saturated by AppKit cursor updates, which are expensive on this Mac because it uses an
-  accessibility pointer. Not explained yet; look at it in Stage 8.
+- **"Slow first frame after a rebuild" was a macOS permission dialog, not the app.** The repository
+  is in `~/Documents`; when the app opened a test file there, macOS asked the user "Orbit would like to
+  access files in your Documents folder" and playback waited for the answer (2.7 to 10.9 s, or for
+  ever). Ad-hoc signed builds get a new identity on every rebuild, so the question returned each time.
+  Checks now play a copy from the temporary folder (`Scripts/stage-media.sh`); the first launch after
+  a rebuild then starts in about 0.3 s. A user opening their own file in Documents will still be
+  asked, once per build while the signature is ad-hoc.
 - `leaks` reports 2 to 5 leaked 80-byte blocks in most playback runs and none in the run with
   allocation stacks recorded. Source not identified.
 - HDR is tone-mapped to SDR for now; passthrough is a Stage 4 item.

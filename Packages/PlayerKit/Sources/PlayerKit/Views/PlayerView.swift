@@ -109,14 +109,7 @@ private struct PlayerControls: View {
                 .monospacedDigit()
                 .fixedSize()
 
-            Slider(value: positionBinding, in: 0 ... max(state.duration ?? 1, 1)) { isEditing in
-                if !isEditing {
-                    model.commitScrub()
-                }
-            }
-            .disabled(state.duration == nil || !state.hasMedia)
-            .accessibilityLabel("Position")
-            .accessibilityValue(PlaybackTime.format(model.displayPosition))
+            SeekBar(model: model, chrome: chrome)
 
             Text(state.duration.map(PlaybackTime.format) ?? "--:--")
                 .monospacedDigit()
@@ -173,14 +166,6 @@ private struct PlayerControls: View {
             "speaker.wave.2.fill"
         } else {
             "speaker.wave.3.fill"
-        }
-    }
-
-    private var positionBinding: Binding<Double> {
-        Binding {
-            model.displayPosition
-        } set: { position in
-            model.scrubPosition = position
         }
     }
 

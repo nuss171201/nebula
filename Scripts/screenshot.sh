@@ -28,6 +28,19 @@ quit_app() {
     while pgrep -f "$BINARY" >/dev/null 2>&1; do sleep 0.2; done
 }
 
+# A file given to -play is swapped for a copy outside ~/Documents, so that macOS does not
+# ask the user whether the app may read their Documents folder (see Scripts/stage-media.sh).
+ARGS=()
+previous=""
+for argument in "$@"; do
+    if [[ "$previous" == "-play" ]]; then
+        argument="$(Scripts/stage-media.sh "$argument")"
+    fi
+    ARGS+=("$argument")
+    previous="$argument"
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+
 quit_app
 # Never leave the app running behind the user's back, even if the capture fails.
 [[ "${KEEP_RUNNING:-0}" == "1" ]] || trap quit_app EXIT

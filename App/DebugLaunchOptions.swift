@@ -14,6 +14,7 @@
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv      (or an http(s) address)
     ///     open -g Orbit.app --args -silent YES -engine "profile=fast" -play /path/to/file.mkv
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -panel audio   (video, audio, subtitles)
+    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -seekPreview 0.6
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -46,6 +47,14 @@
             }
             if let panel = defaults.string(forKey: "panel"), let tab = PlayerSettingsTab(rawValue: panel) {
                 model.player.showPlayerSettings(tab)
+            }
+            if defaults.object(forKey: "seekPreview") != nil {
+                // After the file has had time to open, show the hover preview at this fraction of it.
+                let fraction = defaults.double(forKey: "seekPreview")
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    model.player.showSeekPreview(atFraction: fraction)
+                }
             }
             if let target = defaults.string(forKey: "open") {
                 let parts = target.split(separator: ":", maxSplits: 1).map(String.init)
