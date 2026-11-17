@@ -118,6 +118,21 @@ struct PiecePrioritizerTests {
         #expect(PiecePrioritizer.plan(map: PieceMap(pieceLength: 1 << 20, fileOffset: 0, fileSize: 0), readers: [0]) { _ in false } == PiecePlan())
     }
 
+    @Test("For a file too large to keep, only what the player is about to need is fetched")
+    func withoutBackgroundDownload() {
+        let waiting = PiecePrioritizer.plan(map: map, readers: [], window: window, fetchesWholeFile: false) { _ in false }
+        #expect(waiting.deadlines == [0: 0, 1: 250, 98: 250, 99: 500])
+        #expect(waiting.priorities[50] == .skip)
+        #expect(waiting.priorities[0] == .high)
+
+        let playing = PiecePrioritizer.plan(map: map, readers: [20 << 20], window: window, fetchesWholeFile: false) { _ in false }
+        #expect(playing.deadlines.keys.sorted() == [20, 21, 22, 23])
+        #expect(playing.priorities[24] == .high && playing.priorities[33] == .high)
+        #expect(playing.priorities[34] == .skip)
+        #expect(playing.priorities[19] == .skip)
+        #expect(playing.priorities.values.filter { $0 != .skip }.count == 14)
+    }
+
     @Test("Only what changed between two plans is sent to the engine")
     func changes() {
         let before = PiecePrioritizer.plan(map: map, readers: [20 << 20], window: window) { _ in false }

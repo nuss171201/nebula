@@ -80,7 +80,7 @@ struct HTTPMessageTests {
 
         let empty = HTTPResponseHead.forResource(size: 0, contentType: "video/mp4", rangeHeader: nil)
         #expect(empty.head.status == 200 && empty.body == nil)
-        let text = String(decoding: part.head.serialized, as: UTF8.self)
+        let text = String(bytes: part.head.serialized, encoding: .utf8) ?? ""
         #expect(text.hasPrefix("HTTP/1.1 206 Partial Content\r\n") && text.hasSuffix("\r\n\r\n"))
     }
 

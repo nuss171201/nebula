@@ -80,6 +80,8 @@ public struct StreamingWindow: Sendable, Equatable {
 /// about every other piece of the file.
 public struct PiecePlan: Sendable, Equatable {
     public enum Priority: Int, Sendable, Comparable {
+        /// Not fetched at all: the file is too large to keep whole.
+        case skip = 0
         /// Behind the player: fetched when nothing else is wanted, for seeking back.
         case low = 1
         /// Ahead of the player, but not soon.
@@ -136,11 +138,14 @@ public struct PiecePlan: Sendable, Equatable {
 public enum PiecePrioritizer {
     /// - Parameters:
     ///   - readers: Offsets within the file that are being read, most recently active first.
+    ///   - fetchesWholeFile: Whether the rest of the file is fetched in the background as well.
+    ///     `false` keeps to what the player is about to need, for files larger than the cache allows.
     ///   - isComplete: Whether a piece has been downloaded and verified.
     public static func plan(
         map: PieceMap,
         readers: [Int64],
         window: StreamingWindow = StreamingWindow(),
+        fetchesWholeFile: Bool = true,
         isComplete: (Int) -> Bool
     ) -> PiecePlan {
         guard map.fileSize > 0 else { return PiecePlan() }
@@ -156,12 +161,13 @@ public enum PiecePrioritizer {
 
         func raise(_ pieces: ClosedRange<Int>, to priority: PiecePlan.Priority) {
             for piece in pieces where !isComplete(piece) {
-                plan.priorities[piece] = max(plan.priorities[piece] ?? .low, priority)
+                plan.priorities[piece] = max(plan.priorities[piece] ?? .skip, priority)
             }
         }
 
-        // Everything missing starts low; the stretches that matter are raised below.
-        raise(map.pieces, to: .low)
+        // Everything missing starts at the bottom; the stretches that matter are raised below.
+        let background: PiecePlan.Priority = fetchesWholeFile ? .normal : .skip
+        raise(map.pieces, to: fetchesWholeFile ? .low : .skip)
 
         if readers.isEmpty {
             // Nothing has been asked for yet: get both ends, the start first.
@@ -169,7 +175,7 @@ public enum PiecePrioritizer {
             if map.fileSize > window.edgeBytes {
                 want(map.piece(containing: map.fileSize - window.edgeBytes) ... map.lastPiece, startingAt: window.deadlineStep)
             }
-            raise(map.pieces, to: .normal)
+            raise(map.pieces, to: background)
         }
 
         for (rank, reader) in readers.enumerated() {
@@ -183,7 +189,7 @@ public enum PiecePrioritizer {
                 let lastAhead = map.piece(containing: position + window.urgentBytes + window.readAheadBytes - 1)
                 raise(lastUrgent + 1 ... max(lastAhead, lastUrgent + 1), to: .high)
             }
-            raise(first ... map.lastPiece, to: .normal)
+            raise(first ... map.lastPiece, to: background)
         }
         // Urgent pieces are also the keenest in the ordinary ordering.
         for piece in plan.deadlines.keys {

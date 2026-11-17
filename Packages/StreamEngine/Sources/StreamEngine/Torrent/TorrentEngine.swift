@@ -62,6 +62,7 @@ public actor TorrentEngine {
 
     struct FileStream {
         var map: PieceMap
+        var fetchesWholeFile = true
         var readers: [UUID: Reader] = [:]
         var plan = PiecePlan()
         /// The piece each reader was last planned for; a new plan is only made when one moves on.
@@ -231,13 +232,15 @@ public actor TorrentEngine {
     }
 
     /// Chooses the file to play: it becomes the only file downloaded, starting with both of its ends.
-    public func open(file index: Int, of infoHash: String) throws(TorrentError) -> PieceMap {
+    /// - Parameter fetchesWholeFile: `false` fetches only around where the player reads, for a
+    ///   file too large to keep whole.
+    public func open(file index: Int, of infoHash: String, fetchesWholeFile: Bool = true) throws(TorrentError) -> PieceMap {
         guard let info = torrents[infoHash]?.info else { throw .removed }
         guard let map = info.pieceMap(forFile: index) else { throw .noSuchFile }
         if torrents[infoHash]?.streams[index] == nil {
             session.wantOnlyFile(index, ofTorrent: infoHash)
             torrents[infoHash]?.completed = Set(session.completedPieces(ofTorrent: infoHash).map(\.self))
-            torrents[infoHash]?.streams[index] = FileStream(map: map)
+            torrents[infoHash]?.streams[index] = FileStream(map: map, fetchesWholeFile: fetchesWholeFile)
             replan(file: index, of: infoHash)
         }
         return map
@@ -296,7 +299,9 @@ public actor TorrentEngine {
     private func replan(file index: Int, of infoHash: String) {
         guard let torrent = torrents[infoHash], let stream = torrent.streams[index] else { return }
         let readers = stream.readers.values.sorted { $0.lastActive > $1.lastActive }.map(\.offset)
-        let plan = PiecePrioritizer.plan(map: stream.map, readers: readers, window: window) { torrent.completed.contains($0) }
+        let plan = PiecePrioritizer.plan(map: stream.map, readers: readers, window: window, fetchesWholeFile: stream.fetchesWholeFile) {
+            torrent.completed.contains($0)
+        }
         let changes = plan.changes(from: stream.plan)
         torrents[infoHash]?.streams[index]?.plan = plan
         guard !changes.isEmpty else { return }

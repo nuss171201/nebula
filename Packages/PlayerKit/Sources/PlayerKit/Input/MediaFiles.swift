@@ -1,15 +1,11 @@
 import Foundation
+import MediaCore
 
 /// Telling media and subtitle files apart by their names, and finding the media in folders.
 public enum MediaFiles {
-    public static let videoExtensions: Set<String> = [
-        "mkv", "mp4", "m4v", "mov", "avi", "webm", "ts", "m2ts", "mts", "mpg", "mpeg", "wmv", "flv", "ogv", "3gp", "vob", "rmvb", "divx",
-    ]
-    public static let audioExtensions: Set<String> = [
-        "mp3", "m4a", "aac", "flac", "wav", "aiff", "aif", "ogg", "oga", "opus", "mka", "wma", "ac3", "eac3", "dts", "alac", "ape", "wv",
-    ]
-    /// Formats the engine reads as subtitles.
-    public static let subtitleExtensions: Set<String> = ["srt", "ass", "ssa", "vtt", "sub", "idx", "sup", "smi", "lrc", "ttml", "mks"]
+    public static let videoExtensions = MediaFileExtensions.video
+    public static let audioExtensions = MediaFileExtensions.audio
+    public static let subtitleExtensions = MediaFileExtensions.subtitles
 
     public static func isPlayable(_ url: URL) -> Bool {
         let fileExtension = url.pathExtension.lowercased()
