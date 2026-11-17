@@ -51,6 +51,7 @@ require ffmpeg
 
 step "Prepare Libmpv.framework and test media"
 Scripts/build-mpv-framework.sh
+Scripts/build-torrent-framework.sh
 Scripts/make-test-media.sh >/dev/null
 
 step "Generate Xcode project"
