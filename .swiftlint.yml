@@ -1,0 +1,42 @@
+included:
+  - App
+  - Packages
+excluded:
+  - build
+  - Vendor
+  - "**/.build"
+
+# Formatting is owned by SwiftFormat; these rules disagree with its output.
+disabled_rules:
+  - trailing_comma
+  - opening_brace
+  - statement_position
+
+opt_in_rules:
+  - empty_count
+  - first_where
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+
+line_length:
+  warning: 140
+  error: 200
+  ignores_comments: true
+
+identifier_name:
+  min_length: 2
+  excluded:
+    - db
+    - tv
+    - id
+
+large_tuple:
+  warning: 3
+  error: 4
+
+type_body_length:
+  warning: 300
+file_length:
+  warning: 500
+function_body_length:
+  warning: 60

@@ -1,0 +1,15 @@
+{
+  "comment": "Add-ons installed on first launch. Only official metadata and subtitle add-ons belong here. Never add a streaming source.",
+  "addons": [
+    {
+      "name": "Cinemeta",
+      "purpose": "metadata",
+      "manifestURL": "https://v3-cinemeta.strem.io/manifest.json"
+    },
+    {
+      "name": "OpenSubtitles v3",
+      "purpose": "subtitles",
+      "manifestURL": "https://opensubtitles-v3.strem.io/manifest.json"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+#include "Base.xcconfig"
+
+// Universal binary: Apple Silicon first, Intel supported.
+ONLY_ACTIVE_ARCH = NO
+ARCHS = arm64 x86_64
+SWIFT_OPTIMIZATION_LEVEL = -O
+SWIFT_COMPILATION_MODE = wholemodule
+DEBUG_INFORMATION_FORMAT = dwarf-with-dsym

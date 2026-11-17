@@ -1,0 +1,63 @@
+# XcodeGen spec. The .xcodeproj is generated and not committed:
+#   xcodegen generate
+#
+# Project, target, scheme and module are named "MediaCenter" on purpose so that
+# renaming the product only touches Config/Branding.xcconfig.
+name: MediaCenter
+
+options:
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  groupSortPosition: top
+  deploymentTarget:
+    macOS: "14.0"
+
+configs:
+  Debug: debug
+  Release: release
+
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+
+packages:
+  MediaCore:
+    path: Packages/MediaCore
+  MediaLibrary:
+    path: Packages/MediaLibrary
+  StreamEngine:
+    path: Packages/StreamEngine
+  PlayerKit:
+    path: Packages/PlayerKit
+  AppUI:
+    path: Packages/AppUI
+
+targets:
+  MediaCenter:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+    dependencies:
+      - package: MediaCore
+      - package: AppUI
+
+schemes:
+  MediaCenter:
+    build:
+      targets:
+        MediaCenter: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - package: MediaCore/MediaCoreTests
+        - package: MediaLibrary/MediaLibraryTests
+        - package: StreamEngine/StreamEngineTests
+        - package: PlayerKit/PlayerKitTests
+        - package: AppUI/AppUITests
+    profile:
+      config: Release
+    archive:
+      config: Release

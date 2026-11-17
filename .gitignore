@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Generated Xcode project (recreate with `xcodegen generate`)
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+
+# Build output
+build/
+DerivedData/
+.build/
+.swiftpm/
+
+# Locally built binary frameworks (see Scripts/)
+Vendor/
+
+# Generated test media
+TestMedia/
