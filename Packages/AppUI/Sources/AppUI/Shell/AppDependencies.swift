@@ -14,6 +14,8 @@ public struct AppDependencies: Sendable {
     /// Manifest addresses installed on first launch.
     public let defaultAddonAddresses: [String]
     public let playerConfiguration: PlayerConfiguration
+    /// Finds and downloads subtitles through installed add-ons.
+    public let subtitleService: AddonSubtitleService
     /// Set when something went wrong during startup that the user should know about.
     public let startupWarning: String?
 
@@ -24,6 +26,8 @@ public struct AppDependencies: Sendable {
         imagePipeline: ImagePipeline,
         defaultAddonAddresses: [String],
         playerConfiguration: PlayerConfiguration? = nil,
+        subtitleHTTP: (any HTTPClient)? = nil,
+        subtitleDirectory: URL? = nil,
         startupWarning: String? = nil
     ) {
         self.branding = branding
@@ -36,6 +40,13 @@ public struct AppDependencies: Sendable {
         self.playerConfiguration = playerConfiguration ?? PlayerConfiguration(
             userAgent: branding.userAgent,
             logSubsystem: branding.bundleIdentifier
+        )
+        subtitleService = AddonSubtitleService(
+            client: addonClient,
+            http: subtitleHTTP ?? URLSessionHTTPClient(userAgent: branding.userAgent),
+            // Without a place of its own, downloads go to a folder that is cleared with the temporary files.
+            directory: subtitleDirectory ?? FileManager.default.temporaryDirectory
+                .appendingPathComponent("subtitles-\(UUID().uuidString)", isDirectory: true)
         )
         self.startupWarning = startupWarning
     }
@@ -101,6 +112,8 @@ public struct AppDependencies: Sendable {
                     .appendingPathComponent(branding.name, isDirectory: true),
                 additionalEngineOptions: additionalEngineOptions
             ),
+            subtitleHTTP: apiClient,
+            subtitleDirectory: (caches ?? files.temporaryDirectory).appendingPathComponent("Subtitles", isDirectory: true),
             startupWarning: warning
         )
     }
@@ -121,7 +134,8 @@ public struct AppDependencies: Sendable {
                 userAgent: branding.userAgent,
                 logSubsystem: branding.bundleIdentifier,
                 playsAudio: false
-            )
+            ),
+            subtitleHTTP: http
         )
     }
 

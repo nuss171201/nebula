@@ -19,6 +19,7 @@ public enum PlayerSettingsTab: String, CaseIterable, Identifiable, Sendable {
 struct PlayerSettingsPanel: View {
     @Bindable var model: PlayerModel
     @Bindable var chrome: PlayerChromeModel
+    var onlineSubtitles: OnlineSubtitlesModel?
 
     static let width: CGFloat = 320
 
@@ -50,7 +51,7 @@ struct PlayerSettingsPanel: View {
                     switch chrome.settingsTab {
                     case .video: VideoSettingsTab(model: model)
                     case .audio: AudioSettingsTab(model: model)
-                    case .subtitles: SubtitleSettingsTab(model: model)
+                    case .subtitles: SubtitleSettingsTab(model: model, online: onlineSubtitles)
                     }
                 }
                 .padding(14)

@@ -58,7 +58,8 @@ public final class AppModel {
         addons = AddonsModel(registry: registry)
         player = PlayerCoordinator(
             configuration: dependencies.playerConfiguration,
-            memory: LibraryPlayerMemory(store: dependencies.playbackMemory, settings: dependencies.settings)
+            memory: LibraryPlayerMemory(store: dependencies.playbackMemory, settings: dependencies.settings),
+            subtitleService: dependencies.subtitleService
         )
         selection = initialSection
         currentSection = initialSection
@@ -112,5 +113,6 @@ public final class AppModel {
         home.update(addons: addons)
         discover.update(addons: addons)
         search.update(addons: addons)
+        dependencies.subtitleService.update(addons: addons)
     }
 }

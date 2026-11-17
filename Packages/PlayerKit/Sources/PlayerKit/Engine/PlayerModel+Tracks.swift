@@ -22,6 +22,46 @@ extension PlayerModel {
         }
     }
 
+    /// Loads a subtitle file into the open video and switches to it. Returns whether the
+    /// engine could read it.
+    ///
+    /// - Parameters:
+    ///   - title: Shown in the track list; the file name when `nil`.
+    ///   - language: A language tag for the track, when known.
+    @discardableResult
+    public func addSubtitle(fileURL: URL, title: String? = nil, language: String? = nil) async -> Bool {
+        guard state.hasMedia, fileURL.isFileURL else { return false }
+        // The engine takes title and language by position, so a language needs a title before it.
+        var arguments = ["sub-add", fileURL.path, "select"]
+        if title != nil || language != nil {
+            arguments.append(title ?? fileURL.lastPathComponent)
+        }
+        if let language {
+            arguments.append(language)
+        }
+        let (client, generation) = (client, fileGeneration)
+        let result = await Task.detached(priority: .userInitiated) {
+            client.commandResult(arguments)
+        }.value
+        guard result != nil, generation == fileGeneration else {
+            if generation == fileGeneration {
+                announce("Could Not Read the Subtitle File")
+            }
+            return false
+        }
+        // Someone who adds subtitles wants to see them.
+        subtitles.isVisible = true
+        if let language {
+            // Remember the language, so the next episode picks it if it has it.
+            rememberedForCurrentFile.subtitle = .track(TrackDescriptor(language: language))
+            let (choice, keys) = (rememberedForCurrentFile, currentMemoryKeys)
+            Task { [memory] in
+                await memory?.remember(choice, for: keys)
+            }
+        }
+        return true
+    }
+
     func applyTrack(_ kind: MediaTrack.Kind, number: Int?) {
         let property = switch kind {
         case .video: "vid"

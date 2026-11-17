@@ -70,12 +70,23 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
     let window: PlayerWindow
     /// Which of the window's controls and panels are showing.
     public let chrome = PlayerChromeModel()
+    /// Finds subtitles on the network; `nil` when the app provides no service for it.
+    public let onlineSubtitles: OnlineSubtitlesModel?
     private let bindings: KeyBindings
     private var sizedForVideo: CGSize?
 
-    public init(model: PlayerModel, bindings: KeyBindings = .standard) {
+    /// - Parameter subtitleService: Where to look for subtitles on the network, if anywhere.
+    public init(model: PlayerModel, bindings: KeyBindings = .standard, subtitleService: (any OnlineSubtitleService)? = nil) {
         self.model = model
         self.bindings = bindings
+        onlineSubtitles = subtitleService.map { service in
+            let preferences = model.trackPreferences
+            return OnlineSubtitlesModel(
+                player: model,
+                service: service,
+                preferredLanguages: preferences.subtitleLanguages + preferences.audioLanguages
+            )
+        }
         window = PlayerWindow(
             contentRect: NSRect(origin: .zero, size: Self.initialSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -93,7 +104,7 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.contentMinSize = Self.minimumSize
         window.delegate = self
-        window.contentView = NSHostingView(rootView: PlayerView(model: model, chrome: chrome) { [weak self] in
+        window.contentView = NSHostingView(rootView: PlayerView(model: model, chrome: chrome, onlineSubtitles: onlineSubtitles) { [weak self] in
             self?.toggleFullScreen()
         })
         window.setContentSize(Self.initialSize)

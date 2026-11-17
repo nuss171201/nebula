@@ -35,6 +35,7 @@ swiftformat .                     # apply formatting
 # One package, fast (no Xcode project needed):
 cd Packages/MediaCore && swift test
 LIVE_ADDON_TESTS=1 swift test --filter LiveAddonTests   # opt-in: hits the real default add-ons
+cd Packages/AppUI && LIVE_ADDON_TESTS=1 swift test --filter LiveSubtitleServiceTests   # opt-in: lists, never downloads
 
 # Prerequisites that ci.sh runs for you (both skip work that is already done):
 Scripts/build-mpv-framework.sh    # Packages/PlayerKit/Vendor/Libmpv.xcframework from Config/mpv-libraries.lock
@@ -73,6 +74,7 @@ during Stage 1. Debug builds accept launch arguments that open a given state
 player side panel), `-seekPreview <0…1>` (the seek bar's hover preview at that fraction), `-enqueue <path>`
 (a second file for the queue), `-keys "]]l"` (plain key presses sent through the player's key bindings
 two seconds after launch: the only way to check a binding and its on-screen notice without the keyboard).
+`-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
 
 **Never make macOS ask the user for permission during a check.** Do not point the app at files in
 `~/Documents`, `~/Desktop` or `~/Downloads` (this repository is in Documents): macOS shows a

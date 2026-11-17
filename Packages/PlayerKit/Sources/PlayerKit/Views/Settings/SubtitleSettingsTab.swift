@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 extension SubtitleSettings.Color {
     init(_ color: Color) {
@@ -17,6 +18,7 @@ extension SubtitleSettings.Color {
 
 struct SubtitleSettingsTab: View {
     @Bindable var model: PlayerModel
+    var online: OnlineSubtitlesModel?
 
     /// Font families are listed once; there can be several hundred.
     private static let fontFamilies = NSFontManager.shared.availableFontFamilies.filter { !$0.hasPrefix(".") }
@@ -25,6 +27,12 @@ struct SubtitleSettingsTab: View {
         SettingsSection(title: "Subtitle Track") {
             TrackList(model: model, kind: .subtitle, allowsNone: true)
             Toggle("Show subtitles", isOn: $model.subtitles.isVisible)
+            Button("Add Subtitle File…", action: chooseFile)
+                .disabled(!model.state.hasMedia)
+        }
+
+        if let online {
+            OnlineSubtitlesSection(model: online, player: model)
         }
 
         SettingsSection(title: "Timing") {
@@ -61,6 +69,27 @@ struct SubtitleSettingsTab: View {
                 valueText: String(format: "%.1f", model.subtitles.borderSize)
             )
             Toggle("Use this style for styled subtitles too", isOn: $model.subtitles.overridesEmbeddedStyle)
+        }
+    }
+
+    /// Formats the engine reads; anything else is greyed out in the panel.
+    static let subtitleFileExtensions = ["srt", "ass", "ssa", "vtt", "sub", "idx", "sup", "smi", "lrc", "ttml", "mks"]
+
+    private func chooseFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = Self.subtitleFileExtensions.compactMap { UTType(filenameExtension: $0) }
+        panel.message = "Choose a subtitle file for this video."
+        // Start where the video is: that is where its subtitles usually are.
+        if let source = model.source, source.isLocalFile {
+            panel.directoryURL = source.url.deletingLastPathComponent()
+        }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                await model.addSubtitle(fileURL: url)
+            }
         }
     }
 

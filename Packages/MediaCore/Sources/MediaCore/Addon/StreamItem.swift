@@ -129,15 +129,19 @@ public struct SubtitleItem: Sendable, Hashable, Identifiable, Decodable {
     public var url: URL
     /// Language as the add-on gives it: usually an ISO 639-2 code, sometimes a name.
     public var language: String
+    /// The release or file the subtitle was made for, when the add-on says. Not part of the
+    /// protocol, but common, and the best clue to whether the timing will fit.
+    public var releaseName: String?
 
-    public init(id: String, url: URL, language: String) {
+    public init(id: String, url: URL, language: String, releaseName: String? = nil) {
         self.id = id
         self.url = url
         self.language = language
+        self.releaseName = releaseName
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, url, lang
+        case id, url, lang, movieReleaseName, subtitleFileName, title, label
     }
 
     public init(from decoder: any Decoder) throws {
@@ -151,5 +155,8 @@ public struct SubtitleItem: Sendable, Hashable, Identifiable, Decodable {
         self.url = url
         language = container.lenientString(.lang) ?? "und"
         id = container.lenientString(.id) ?? url.absoluteString
+        releaseName = [CodingKeys.movieReleaseName, .subtitleFileName, .title, .label].lazy
+            .compactMap { container.lenientString($0)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 }

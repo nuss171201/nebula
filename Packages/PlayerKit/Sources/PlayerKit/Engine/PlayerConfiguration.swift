@@ -204,6 +204,12 @@ public struct PlayerConfiguration: Sendable, Equatable {
             ("user-agent", userAgent),
             ("network-timeout", "30"),
             ("hwdec", usesHardwareDecoding ? "videotoolbox" : "no"),
+            // Subtitle files next to a video whose names start with the video's name load by
+            // themselves, also from the folders people usually keep them in. One spelling of each
+            // folder: on the usual case-insensitive disk "subs" and "Subs" are the same folder, and
+            // listing both loads every file in it twice.
+            ("sub-auto", "fuzzy"),
+            ("sub-file-paths", "Subs:Subtitles"),
         ]
         switch videoOutput {
         case .surface:

@@ -17,6 +17,7 @@
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -seekPreview 0.6
     ///     open -g Orbit.app --args -silent YES -play /path/a.mkv -enqueue /path/b.mkv -panel queue
     ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -keys "]]l"   (plain keys, after 2 s)
+    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -subtitleSearch "a film's name"
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -67,6 +68,12 @@
                     player.showPlayerSettings(tab)
                 } else if panel == "queue" {
                     player.showQueue()
+                }
+            }
+            if let name = defaults.string(forKey: "subtitleSearch") {
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    player.searchSubtitleTitles(name)
                 }
             }
             if let keys = defaults.string(forKey: "keys") {

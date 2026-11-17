@@ -147,6 +147,16 @@ struct MetaDecodingTests {
         let subtitle = try decode(SubtitleItem.self, #"{"url": "https://subs.example.com/a.vtt"}"#)
         #expect(subtitle.language == "und")
         #expect(subtitle.id == "https://subs.example.com/a.vtt")
+        #expect(subtitle.releaseName == nil)
+
+        // Not in the protocol, but widely sent: what release the subtitle was timed for.
+        let named = try decode(SubtitleItem.self, #"""
+        {"id": 7, "url": "https://subs.example.com/7", "lang": "pob", "movieReleaseName": " Film.1968.BluRay ", "subtitleFileName": "film.srt"}
+        """#)
+        #expect(named.id == "7" && named.language == "pob")
+        #expect(named.releaseName == "Film.1968.BluRay")
+        let fileNamed = try decode(SubtitleItem.self, #"{"url": "https://subs.example.com/8", "movieReleaseName": "", "subtitleFileName": "film.srt"}"#)
+        #expect(fileNamed.releaseName == "film.srt")
         #expect(throws: (any Error).self) {
             try decode(SubtitleItem.self, #"{"id": "x", "lang": "eng"}"#)
         }

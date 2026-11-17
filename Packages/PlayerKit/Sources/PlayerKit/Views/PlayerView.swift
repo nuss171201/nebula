@@ -5,11 +5,18 @@ import SwiftUI
 public struct PlayerView: View {
     private let model: PlayerModel
     @Bindable private var chrome: PlayerChromeModel
+    private let onlineSubtitles: OnlineSubtitlesModel?
     private let toggleFullScreen: () -> Void
 
-    public init(model: PlayerModel, chrome: PlayerChromeModel, toggleFullScreen: @escaping () -> Void) {
+    public init(
+        model: PlayerModel,
+        chrome: PlayerChromeModel,
+        onlineSubtitles: OnlineSubtitlesModel? = nil,
+        toggleFullScreen: @escaping () -> Void
+    ) {
         self.model = model
         self.chrome = chrome
+        self.onlineSubtitles = onlineSubtitles
         self.toggleFullScreen = toggleFullScreen
     }
 
@@ -42,7 +49,7 @@ public struct PlayerView: View {
             }
 
             if chrome.isSettingsPanelVisible {
-                PlayerSettingsPanel(model: model, chrome: chrome)
+                PlayerSettingsPanel(model: model, chrome: chrome, onlineSubtitles: onlineSubtitles)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .transition(.move(edge: .trailing))
             } else if chrome.isQueueVisible {

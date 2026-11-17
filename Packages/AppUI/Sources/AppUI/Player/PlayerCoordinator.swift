@@ -19,15 +19,23 @@ public final class PlayerCoordinator {
     /// How new players are set up. The app updates this once stored preferences are loaded.
     @ObservationIgnored public var configuration: PlayerConfiguration
     @ObservationIgnored private let memory: (any PlayerMemory)?
+    @ObservationIgnored private let subtitleService: (any OnlineSubtitleService)?
     @ObservationIgnored private let presentsWindow: Bool
     @ObservationIgnored private var controller: PlayerWindowController?
 
     /// - Parameters:
     ///   - memory: Where track choices and volume are remembered; `nil` remembers nothing.
+    ///   - subtitleService: Where the player looks for subtitles on the network, if anywhere.
     ///   - presentsWindow: `false` keeps the player window off screen. For tests.
-    public init(configuration: PlayerConfiguration, memory: (any PlayerMemory)? = nil, presentsWindow: Bool = true) {
+    public init(
+        configuration: PlayerConfiguration,
+        memory: (any PlayerMemory)? = nil,
+        subtitleService: (any OnlineSubtitleService)? = nil,
+        presentsWindow: Bool = true
+    ) {
         self.configuration = configuration
         self.memory = memory
+        self.subtitleService = subtitleService
         self.presentsWindow = presentsWindow
     }
 
@@ -68,7 +76,7 @@ public final class PlayerCoordinator {
         }
         do {
             let model = try PlayerModel(configuration: configuration, memory: memory)
-            let controller = PlayerWindowController(model: model)
+            let controller = PlayerWindowController(model: model, subtitleService: subtitleService)
             controller.onClose = { [weak self] in
                 self?.controller = nil
                 self?.isPlayerOpen = false
@@ -111,6 +119,16 @@ public final class PlayerCoordinator {
     public func showPlayerSettings(_ tab: PlayerSettingsTab) {
         controller?.chrome.settingsTab = tab
         controller?.chrome.isSettingsPanelVisible = true
+    }
+
+    /// Opens the subtitle panel and looks a title up in it, as if typed into its search field.
+    /// For checking the online subtitle search without the keyboard.
+    public func searchSubtitleTitles(_ query: String) {
+        guard let controller, let online = controller.onlineSubtitles else { return }
+        showPlayerSettings(.subtitles)
+        online.prepare(for: controller.model.source)
+        online.query = query
+        online.searchTitles()
     }
 
     /// Opens the player's queue panel, if a player is open.
