@@ -1,6 +1,10 @@
 /// Something the user can ask the player to do, independent of which key or control asked.
 public enum PlayerCommand: Hashable, Sendable {
     case togglePause
+    /// Pause or resume, whatever the current state. What "play" and "pause" keys ask for.
+    case setPaused(Bool)
+    /// Seconds from the start.
+    case seekTo(Double)
     /// Seconds; negative goes back.
     case seekBy(Double)
     /// Volume points on the 0–100 scale; negative lowers.

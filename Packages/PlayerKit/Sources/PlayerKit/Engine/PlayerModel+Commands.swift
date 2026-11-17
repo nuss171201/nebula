@@ -15,6 +15,8 @@ extension PlayerModel {
     public func perform(_ command: PlayerCommand) -> Bool {
         switch command {
         case .togglePause: togglePause()
+        case let .setPaused(isPaused): setPaused(isPaused)
+        case let .seekTo(seconds): seek(to: seconds)
         case let .seekBy(seconds): seek(by: seconds)
         case let .changeVolumeBy(amount): changeVolume(by: amount)
         case .toggleMute: toggleMuteWithNotice()

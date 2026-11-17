@@ -1,6 +1,7 @@
 import Foundation
 import MediaCore
 import Observation
+import PlayerKit
 
 /// Root view model: owns navigation state and the per-screen view models, and
 /// keeps them in step with the installed add-ons.
@@ -59,7 +60,8 @@ public final class AppModel {
         player = PlayerCoordinator(
             configuration: dependencies.playerConfiguration,
             memory: LibraryPlayerMemory(store: dependencies.playbackMemory, settings: dependencies.settings),
-            subtitleService: dependencies.subtitleService
+            subtitleService: dependencies.subtitleService,
+            usesSystemNowPlaying: dependencies.usesSystemNowPlaying
         )
         selection = initialSection
         currentSection = initialSection
@@ -81,6 +83,9 @@ public final class AppModel {
         observeAddons()
         if let stored = try? await dependencies.settings.value(for: LibraryPlayerMemory.trackPreferencesKey) {
             player.configuration.trackPreferences = stored
+        }
+        if let overrides = try? await dependencies.settings.value(for: LibraryPlayerMemory.keyBindingOverridesKey) {
+            player.keyBindings = KeyBindings.standard.applying(overrides: overrides)
         }
         await registry.start()
         await dependencies.imagePipeline.trimDiskCache()

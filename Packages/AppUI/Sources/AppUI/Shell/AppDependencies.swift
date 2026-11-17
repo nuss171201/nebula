@@ -14,6 +14,9 @@ public struct AppDependencies: Sendable {
     /// Manifest addresses installed on first launch.
     public let defaultAddonAddresses: [String]
     public let playerConfiguration: PlayerConfiguration
+    /// Whether the player appears in the system's Now Playing display and answers media keys.
+    /// Off for silent checks and tests, which must not take the user's media keys from their music.
+    public let usesSystemNowPlaying: Bool
     /// Finds and downloads subtitles through installed add-ons.
     public let subtitleService: AddonSubtitleService
     /// Set when something went wrong during startup that the user should know about.
@@ -26,6 +29,7 @@ public struct AppDependencies: Sendable {
         imagePipeline: ImagePipeline,
         defaultAddonAddresses: [String],
         playerConfiguration: PlayerConfiguration? = nil,
+        usesSystemNowPlaying: Bool = false,
         subtitleHTTP: (any HTTPClient)? = nil,
         subtitleDirectory: URL? = nil,
         startupWarning: String? = nil
@@ -41,6 +45,7 @@ public struct AppDependencies: Sendable {
             userAgent: branding.userAgent,
             logSubsystem: branding.bundleIdentifier
         )
+        self.usesSystemNowPlaying = usesSystemNowPlaying
         subtitleService = AddonSubtitleService(
             client: addonClient,
             http: subtitleHTTP ?? URLSessionHTTPClient(userAgent: branding.userAgent),
@@ -112,6 +117,7 @@ public struct AppDependencies: Sendable {
                     .appendingPathComponent(branding.name, isDirectory: true),
                 additionalEngineOptions: additionalEngineOptions
             ),
+            usesSystemNowPlaying: playsAudio,
             subtitleHTTP: apiClient,
             subtitleDirectory: (caches ?? files.temporaryDirectory).appendingPathComponent("Subtitles", isDirectory: true),
             startupWarning: warning

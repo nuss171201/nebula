@@ -8,6 +8,10 @@ struct LibraryPlayerMemory: PlayerMemory {
     /// The user's language preferences; `nil` means "follow the system languages".
     static let trackPreferencesKey = SettingKey<TrackPreferences?>("player.trackPreferences", default: nil)
 
+    /// The user's changes to the player's key bindings: chord text to command identifier
+    /// (see `KeyBindings.applying(overrides:)`). Empty means the standard bindings.
+    static let keyBindingOverridesKey = SettingKey<[String: String]>("player.keyBindings", default: [:])
+
     let store: PlaybackMemoryStore
     let settings: SettingsStore
 

@@ -40,6 +40,17 @@ public extension KeyChord {
 /// The player's window. Key presses that match a binding become player commands.
 final class PlayerWindow: NSWindow {
     var onKeyDown: ((KeyChord) -> Bool)?
+    /// Scrolling and pinching that no view under the pointer wanted (the panels' lists take their own).
+    var onScroll: ((NSEvent) -> Void)?
+    var onMagnify: ((NSEvent) -> Void)?
+
+    override func scrollWheel(with event: NSEvent) {
+        onScroll?(event)
+    }
+
+    override func magnify(with event: NSEvent) {
+        onMagnify?(event)
+    }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -60,8 +71,8 @@ final class PlayerWindow: NSWindow {
 /// proportions in step with the media, routes keys, and shuts the player down on close.
 @MainActor
 public final class PlayerWindowController: NSObject, NSWindowDelegate {
-    private static let initialSize = NSSize(width: 1280, height: 720)
-    private static let minimumSize = PlayerWindowLayout.standardMinimum
+    static let initialSize = NSSize(width: 1280, height: 720)
+    static let minimumSize = PlayerWindowLayout.standardMinimum
 
     public let model: PlayerModel
     /// Called after the window has closed and the player has been told to shut down.
@@ -72,18 +83,28 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
     public let chrome = PlayerChromeModel()
     /// Finds subtitles on the network; `nil` when the app provides no service for it.
     public let onlineSubtitles: OnlineSubtitlesModel?
-    private let bindings: KeyBindings
-    private var sizedForVideo: CGSize?
+    let bindings: KeyBindings
+    var sizedForVideo: CGSize?
     private var screenObserver: (any NSObjectProtocol)?
     /// Where the normal window was before it became a small one.
-    private var standardFrame: NSRect?
+    var standardFrame: NSRect?
     /// A mode asked for while in full screen, applied once full screen has been left.
-    private var pendingMode: PlayerWindowMode?
+    var pendingMode: PlayerWindowMode?
     /// Whether the mini player came up by itself for a file without a picture.
-    private var enteredMiniAutomatically = false
+    var enteredMiniAutomatically = false
+    var scrolling = ScrollInterpreter()
+    var pinching = PinchInterpreter()
+    var nowPlaying: NowPlayingSession?
 
-    /// - Parameter subtitleService: Where to look for subtitles on the network, if anywhere.
-    public init(model: PlayerModel, bindings: KeyBindings = .standard, subtitleService: (any OnlineSubtitleService)? = nil) {
+    /// - Parameters:
+    ///   - subtitleService: Where to look for subtitles on the network, if anywhere.
+    ///   - nowPlaying: The system's Now Playing display and media keys; `nil` keeps the player to itself.
+    public init(
+        model: PlayerModel,
+        bindings: KeyBindings = .standard,
+        subtitleService: (any OnlineSubtitleService)? = nil,
+        nowPlaying center: (any NowPlayingCenter)? = nil
+    ) {
         self.model = model
         self.bindings = bindings
         onlineSubtitles = subtitleService.map { service in
@@ -116,9 +137,7 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
         })
         window.setContentSize(Self.initialSize)
         window.center()
-        window.onKeyDown = { [weak self] chord in
-            self?.handle(chord) ?? false
-        }
+        connectInput(nowPlaying: center)
         followModel()
         updateDisplayCapabilities()
         // The display's abilities change with its settings too, not only when the window moves.
@@ -202,133 +221,6 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
         return true
     }
 
-    // MARK: - Window modes
-
-    public var mode: PlayerWindowMode {
-        chrome.windowMode
-    }
-
-    /// Turns the window into a normal, picture-in-picture or mini window.
-    public func setMode(_ newMode: PlayerWindowMode) {
-        enteredMiniAutomatically = false
-        applyMode(newMode)
-    }
-
-    private func applyMode(_ newMode: PlayerWindowMode) {
-        guard newMode != mode else { return }
-        if isFullScreen {
-            // The window cannot change shape until full screen has been left.
-            pendingMode = newMode
-            toggleFullScreen()
-            return
-        }
-        if mode == .standard {
-            standardFrame = window.frame
-        } else if mode == .mini {
-            model.setVideoEnabled(true)
-        }
-        chrome.isSettingsPanelVisible = false
-        chrome.isQueueVisible = false
-        chrome.windowMode = newMode
-
-        let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(origin: .zero, size: Self.initialSize)
-        let content = window.contentRect(forFrameRect: window.frame)
-        let video = model.displayedVideoSize
-        switch newMode {
-        case .standard:
-            window.contentMinSize = Self.minimumSize
-            window.contentMaxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-            constrainProportions(to: video)
-            setFrame(standardFrame ?? window.frameRect(forContentRect: NSRect(origin: content.origin, size: Self.initialSize)))
-            if let video {
-                // The video may have changed while the window was small.
-                sizedForVideo = video
-                fitWindow(toVideoOf: video)
-            }
-        case .pictureInPicture:
-            window.contentMinSize = PlayerWindowLayout.pictureInPictureMinimum
-            window.contentMaxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-            constrainProportions(to: video ?? CGSize(width: 16, height: 9))
-            setFrame(window.frameRect(forContentRect: PlayerWindowLayout.pictureInPictureFrame(video: video, visibleFrame: visibleFrame)))
-        case .mini:
-            // Nothing shows the picture, so it need not be decoded.
-            model.setVideoEnabled(false)
-            constrainProportions(to: nil)
-            let height = PlayerWindowLayout.miniSize.height
-            window.contentMinSize = NSSize(width: PlayerWindowLayout.miniWidthRange.lowerBound, height: height)
-            window.contentMaxSize = NSSize(width: PlayerWindowLayout.miniWidthRange.upperBound, height: height)
-            setFrame(window.frameRect(forContentRect: PlayerWindowLayout.miniFrame(replacing: content)))
-        }
-        applyWindowStyle()
-    }
-
-    /// Locks the window to the video's shape, or frees it.
-    private func constrainProportions(to size: CGSize?) {
-        if let size, size.width > 0, size.height > 0 {
-            window.contentAspectRatio = size
-        } else {
-            // Setting increments is how AppKit is told to forget an aspect ratio.
-            window.contentResizeIncrements = NSSize(width: 1, height: 1)
-        }
-    }
-
-    /// Moves and resizes the window, animated when it is on screen.
-    ///
-    /// Through the animator rather than `setFrame(_:display:animate:)`: that one does not return
-    /// until the animation is over, running the event loop (and SwiftUI layout) inside whatever
-    /// called it, which is often a SwiftUI action.
-    private func setFrame(_ frame: NSRect) {
-        guard window.isVisible else {
-            window.setFrame(frame, display: false)
-            return
-        }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
-            window.animator().setFrame(frame, display: true)
-        }
-    }
-
-    /// Title bar, buttons and Spaces behaviour for the current mode.
-    private func applyWindowStyle() {
-        let isPictureInPicture = mode == .pictureInPicture
-        window.titleVisibility = mode == .standard ? .visible : .hidden
-        // Picture in picture has its own close and return buttons, shown on hover.
-        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            window.standardWindowButton(button)?.isHidden = isPictureInPicture
-        }
-        window.standardWindowButton(.zoomButton)?.isEnabled = mode == .standard
-        if isPictureInPicture {
-            // On every Space, and over other apps' full-screen windows.
-            window.collectionBehavior.remove(.fullScreenPrimary)
-            window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
-        } else {
-            window.collectionBehavior.subtract([.canJoinAllSpaces, .fullScreenAuxiliary])
-            if mode == .standard {
-                window.collectionBehavior.insert(.fullScreenPrimary)
-            } else {
-                window.collectionBehavior.remove(.fullScreenPrimary)
-            }
-        }
-        applyWindowLevel()
-    }
-
-    private func applyWindowLevel() {
-        window.level = mode == .pictureInPicture || chrome.isAlwaysOnTop ? .floating : .normal
-    }
-
-    /// Acts on a key press as if it had been typed in the player window. Returns whether a
-    /// binding matched and its command was handled.
-    @discardableResult
-    public func press(_ chord: KeyChord) -> Bool {
-        handle(chord)
-    }
-
-    private func handle(_ chord: KeyChord) -> Bool {
-        guard let command = bindings.command(for: chord) else { return false }
-        chrome.userDidInteract()
-        return perform(command)
-    }
-
     /// Updates the window whenever the media's title or picture size changes.
     private func followModel() {
         let (title, videoSize, hasMedia, isAudioOnly) = withObservationTracking {
@@ -355,47 +247,6 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Sound without a picture gets the mini player by itself, and gives the normal window
-    /// back when a video follows. A mode the user chose is left alone.
-    private func followKind(isAudioOnly: Bool) {
-        if isAudioOnly, mode == .standard, !isFullScreen {
-            applyMode(.mini)
-            enteredMiniAutomatically = true
-        } else if !isAudioOnly, mode == .mini, enteredMiniAutomatically {
-            enteredMiniAutomatically = false
-            applyMode(.standard)
-        }
-    }
-
-    private func reshapePictureInPicture(for videoSize: CGSize) {
-        guard window.contentAspectRatio != videoSize else { return }
-        let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame ?? window.frame
-        let content = window.contentRect(forFrameRect: window.frame)
-        window.contentAspectRatio = videoSize
-        setFrame(window.frameRect(forContentRect: PlayerWindowLayout.reshapedPictureInPictureFrame(
-            current: content, video: videoSize, visibleFrame: visibleFrame
-        )))
-    }
-
-    /// Gives the window the video's proportions, at one point per video pixel but never
-    /// more than most of the screen, keeping it centred where it was.
-    private func fitWindow(toVideoOf videoSize: CGSize) {
-        window.contentAspectRatio = videoSize
-        guard !isFullScreen else { return }
-        let available = (window.screen ?? NSScreen.main)?.visibleFrame.size ?? Self.initialSize
-        // One video pixel per point: on a Retina screen a 720p video at one pixel per screen
-        // pixel would be a very small window.
-        let natural = videoSize
-        let fit = min(1, available.width * 0.8 / natural.width, available.height * 0.8 / natural.height)
-        let size = NSSize(
-            width: max((natural.width * fit).rounded(), Self.minimumSize.width),
-            height: max((natural.height * fit).rounded(), Self.minimumSize.height)
-        )
-        let center = NSPoint(x: window.frame.midX, y: window.frame.midY)
-        window.setContentSize(size)
-        window.setFrameOrigin(NSPoint(x: center.x - window.frame.width / 2, y: center.y - window.frame.height / 2))
-    }
-
     // MARK: - NSWindowDelegate
 
     public func windowDidChangeScreen(_: Notification) {
@@ -410,6 +261,8 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
     }
 
     public func windowWillClose(_: Notification) {
+        nowPlaying?.stop()
+        nowPlaying = nil
         if let screenObserver {
             NotificationCenter.default.removeObserver(screenObserver)
         }

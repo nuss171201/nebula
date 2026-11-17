@@ -18,6 +18,9 @@ public final class PlayerCoordinator {
 
     /// How new players are set up. The app updates this once stored preferences are loaded.
     @ObservationIgnored public var configuration: PlayerConfiguration
+    /// Which key does what in the player window. Applies to players opened from now on.
+    @ObservationIgnored public var keyBindings = KeyBindings.standard
+    @ObservationIgnored private let usesSystemNowPlaying: Bool
     @ObservationIgnored private let memory: (any PlayerMemory)?
     @ObservationIgnored private let subtitleService: (any OnlineSubtitleService)?
     @ObservationIgnored private let presentsWindow: Bool
@@ -26,13 +29,16 @@ public final class PlayerCoordinator {
     /// - Parameters:
     ///   - memory: Where track choices and volume are remembered; `nil` remembers nothing.
     ///   - subtitleService: Where the player looks for subtitles on the network, if anywhere.
+    ///   - usesSystemNowPlaying: Whether to appear in the system's Now Playing display and answer media keys.
     ///   - presentsWindow: `false` keeps the player window off screen. For tests.
     public init(
         configuration: PlayerConfiguration,
         memory: (any PlayerMemory)? = nil,
         subtitleService: (any OnlineSubtitleService)? = nil,
+        usesSystemNowPlaying: Bool = false,
         presentsWindow: Bool = true
     ) {
+        self.usesSystemNowPlaying = usesSystemNowPlaying
         self.configuration = configuration
         self.memory = memory
         self.subtitleService = subtitleService
@@ -76,7 +82,12 @@ public final class PlayerCoordinator {
         }
         do {
             let model = try PlayerModel(configuration: configuration, memory: memory)
-            let controller = PlayerWindowController(model: model, subtitleService: subtitleService)
+            let controller = PlayerWindowController(
+                model: model,
+                bindings: keyBindings,
+                subtitleService: subtitleService,
+                nowPlaying: usesSystemNowPlaying ? SystemNowPlayingCenter() : nil
+            )
             controller.onClose = { [weak self] in
                 self?.controller = nil
                 self?.isPlayerOpen = false
@@ -129,6 +140,12 @@ public final class PlayerCoordinator {
         online.prepare(for: controller.model.source)
         online.query = query
         online.searchTitles()
+    }
+
+    /// Runs a command in the open player, as its keys and menus do. Returns whether it was handled.
+    @discardableResult
+    public func perform(_ command: PlayerCommand) -> Bool {
+        controller?.perform(command) ?? false
     }
 
     /// Puts the player window into a mode (normal, picture in picture, mini), if a player is open.
