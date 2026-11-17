@@ -2,8 +2,8 @@ import Darwin
 import Foundation
 import os
 
-/// Measures cold-launch time: from the kernel creating the process to the first
-/// screen appearing. Logged so `Scripts/measure-launch.sh` can read it back.
+/// Measures launch time: from the kernel creating the process to named milestones.
+/// Logged so `Scripts/measure-launch.sh` can read the values back.
 public enum LaunchMetrics {
     public static let logCategory = "launch"
 
@@ -22,13 +22,21 @@ public enum LaunchMetrics {
         processStartDate().map { now.timeIntervalSince($0) }
     }
 
-    /// Logs the launch duration under the given subsystem and returns it.
+    /// Points during launch worth timing.
+    public enum Milestone: String, Sendable, CaseIterable {
+        /// The main window's first frame.
+        case firstScreen = "first-screen"
+        /// The first catalog row on Home has its data.
+        case homeContent = "home-content"
+    }
+
+    /// Logs the time since process start for a milestone, as `<milestone>-ms=<n>`, and returns it in seconds.
     @discardableResult
-    public static func reportFirstScreen(subsystem: String) -> TimeInterval? {
+    public static func report(_ milestone: Milestone, subsystem: String) -> TimeInterval? {
         guard let elapsed = secondsSinceProcessStart() else { return nil }
         let milliseconds = Int((elapsed * 1000).rounded())
         Logger(subsystem: subsystem, category: logCategory)
-            .notice("first-screen-ms=\(milliseconds, privacy: .public)")
+            .notice("\(milestone.rawValue, privacy: .public)-ms=\(milliseconds, privacy: .public)")
         return elapsed
     }
 }

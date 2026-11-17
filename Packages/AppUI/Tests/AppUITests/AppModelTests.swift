@@ -7,10 +7,12 @@ import Testing
 @MainActor
 @Suite("App navigation model")
 struct AppModelTests {
-    private func makeModel(reportLaunch: @escaping @MainActor () -> TimeInterval? = { nil }) -> AppModel {
+    private func makeModel(
+        reportMilestone: @escaping @MainActor (LaunchMetrics.Milestone) -> TimeInterval? = { _ in nil }
+    ) -> AppModel {
         AppModel(
             dependencies: .ephemeral(http: StubHTTPClient(data: Data())),
-            reportLaunch: reportLaunch
+            reportMilestone: reportMilestone
         )
     }
 
@@ -52,18 +54,18 @@ struct AppModelTests {
         #expect(model.path.isEmpty)
     }
 
-    @Test("Launch time is recorded once, on the first appearance only")
+    @Test("The first-screen time is recorded once, on the first appearance only")
     func launchRecordedOnce() {
-        var calls = 0
-        let model = makeModel {
-            calls += 1
+        var calls: [LaunchMetrics.Milestone] = []
+        let model = makeModel { milestone in
+            calls.append(milestone)
             return 0.25
         }
-        #expect(model.launchDuration == nil)
+        #expect(model.launchDurations.isEmpty)
         model.firstScreenDidAppear()
         model.firstScreenDidAppear()
-        #expect(calls == 1)
-        #expect(model.launchDuration == 0.25)
+        #expect(calls == [.firstScreen])
+        #expect(model.launchDurations == [.firstScreen: 0.25])
     }
 
     @Test("Every section has distinct, non-empty sidebar content")
@@ -77,6 +79,7 @@ struct AppModelTests {
     @Test("Screens follow the installed add-ons, from first launch through later changes")
     func screensFollowAddons() async throws {
         let harness = try await AddonHarness.make()
+        var milestones: [LaunchMetrics.Milestone] = []
         let model = try AppModel(
             dependencies: AppDependencies(
                 branding: AppBranding(name: "Test", bundleIdentifier: "test.app", version: "1", build: "1"),
@@ -85,13 +88,24 @@ struct AppModelTests {
                 imagePipeline: ImagePipeline(http: StubHTTPClient(data: Data()), directory: nil),
                 defaultAddonAddresses: [harness.address().manifestURL.absoluteString]
             ),
-            reportLaunch: { nil }
+            reportMilestone: { milestone in
+                milestones.append(milestone)
+                return 1
+            }
         )
         #expect(model.home.rows.isEmpty)
 
         await model.start()
         #expect(await eventually { model.home.rows.count == 2 })
         #expect(model.discover.types == [.movie, .series])
+
+        // Home content is timed when the first row gets items, and only once.
+        harness.server.respond(to: "/catalog/movie/top.json", with: .json(AddonFixtures.catalogJSON(count: 2)))
+        harness.server.respond(to: "/catalog/series/top.json", with: .json(AddonFixtures.catalogJSON(count: 2)))
+        #expect(model.launchDurations[.homeContent] == nil)
+        await model.home.rows[0].loadIfNeeded()
+        await model.home.rows[1].loadIfNeeded()
+        #expect(milestones == [.homeContent])
         #expect(model.search.hasSearchableAddons)
 
         let addonID = try #require(model.registry.addons.first?.id)
@@ -121,7 +135,7 @@ extension AppModelTests {
                 imagePipeline: ImagePipeline(http: StubHTTPClient(data: Data()), directory: nil),
                 defaultAddonAddresses: []
             ),
-            reportLaunch: { nil }
+            reportMilestone: { _ in nil }
         )
         await model.start()
         #expect(await eventually { model.home.rows.count == 2 })

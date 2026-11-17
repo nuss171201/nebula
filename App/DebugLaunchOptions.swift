@@ -9,6 +9,7 @@
     ///     open -g Orbit.app --args -section discover
     ///     open -g Orbit.app --args -search "the office"
     ///     open -g Orbit.app --args -open series:tt0386676
+    ///     open -g Orbit.app --args -section addons -install http://127.0.0.1:8123/manifest.json
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -19,6 +20,11 @@
             }
             if let query = defaults.string(forKey: "search") {
                 model.search.query = query
+            }
+            if let address = defaults.string(forKey: "install") {
+                // Stops at the confirmation sheet; nothing is installed without a click.
+                model.addons.addressInput = address
+                Task { await model.addons.fetchPendingInstall() }
             }
             if let target = defaults.string(forKey: "open") {
                 let parts = target.split(separator: ":", maxSplits: 1).map(String.init)

@@ -8,6 +8,8 @@
 #   Scripts/screenshot.sh /tmp/discover.png 6 -section discover
 #   Scripts/screenshot.sh /tmp/detail.png 8 -open series:tt0386676
 #   KEEP_RUNNING=1 Scripts/screenshot.sh ...     leave the app running afterwards
+#
+# Limitation: a window that has a sheet attached cannot be captured this way.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -26,6 +28,8 @@ quit_app() {
 }
 
 quit_app
+# Never leave the app running behind the user's back, even if the capture fails.
+[[ "${KEEP_RUNNING:-0}" == "1" ]] || trap quit_app EXIT
 open -g "$APP" --args "$@"
 
 PID=""
@@ -40,5 +44,3 @@ sleep "$WAIT"
 WINDOW="$(swift Scripts/window-id.swift "$PID")"
 screencapture -x -o -l "$WINDOW" "$OUTPUT"
 echo "saved $OUTPUT (pid $PID, window $WINDOW)"
-
-[[ "${KEEP_RUNNING:-0}" == "1" ]] || quit_app

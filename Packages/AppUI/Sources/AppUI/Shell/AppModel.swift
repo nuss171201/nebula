@@ -31,16 +31,17 @@ public final class AppModel {
     /// Detail pages pushed on top of the current section.
     public var path: [MediaRoute] = []
 
-    /// Seconds from process start to the first screen, once measured.
-    public private(set) var launchDuration: TimeInterval?
+    /// Seconds from process start to each launch milestone, once reached.
+    public private(set) var launchDurations: [LaunchMetrics.Milestone: TimeInterval] = [:]
 
-    @ObservationIgnored private let reportLaunch: @MainActor () -> TimeInterval?
+    @ObservationIgnored private let reportMilestone: @MainActor (LaunchMetrics.Milestone) -> TimeInterval?
+    @ObservationIgnored private var reportedMilestones: Set<LaunchMetrics.Milestone> = []
     @ObservationIgnored private var hasStarted = false
 
     public init(
         dependencies: AppDependencies,
         initialSection: AppSection = .home,
-        reportLaunch: (@MainActor () -> TimeInterval?)? = nil
+        reportMilestone: (@MainActor (LaunchMetrics.Milestone) -> TimeInterval?)? = nil
     ) {
         self.dependencies = dependencies
         let client = dependencies.addonClient
@@ -57,7 +58,10 @@ public final class AppModel {
         selection = initialSection
         currentSection = initialSection
         let subsystem = dependencies.branding.bundleIdentifier
-        self.reportLaunch = reportLaunch ?? { LaunchMetrics.reportFirstScreen(subsystem: subsystem) }
+        self.reportMilestone = reportMilestone ?? { LaunchMetrics.report($0, subsystem: subsystem) }
+        home.onFirstContent = { [weak self] in
+            self?.reached(.homeContent)
+        }
     }
 
     public var branding: AppBranding {
@@ -73,10 +77,15 @@ public final class AppModel {
         await dependencies.imagePipeline.trimDiskCache()
     }
 
-    /// Called when the root view first appears. Records the launch time exactly once.
+    /// Called when the root view first appears.
     public func firstScreenDidAppear() {
-        guard launchDuration == nil else { return }
-        launchDuration = reportLaunch()
+        reached(.firstScreen)
+    }
+
+    /// Records a launch milestone the first time it is reached; later calls do nothing.
+    private func reached(_ milestone: LaunchMetrics.Milestone) {
+        guard reportedMilestones.insert(milestone).inserted else { return }
+        launchDurations[milestone] = reportMilestone(milestone)
     }
 
     public func detailModel(for route: MediaRoute) -> DetailModel {

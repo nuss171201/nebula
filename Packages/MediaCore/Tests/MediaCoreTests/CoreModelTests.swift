@@ -34,6 +34,8 @@ struct CoreModelTests {
         let elapsed = try #require(LaunchMetrics.secondsSinceProcessStart())
         #expect(elapsed >= 0)
         #expect(elapsed < 3600)
+        #expect(LaunchMetrics.report(.homeContent, subsystem: "test.metrics") != nil)
+        #expect(LaunchMetrics.Milestone.allCases.map(\.rawValue) == ["first-screen", "home-content"])
     }
 }
 

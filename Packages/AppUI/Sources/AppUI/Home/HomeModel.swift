@@ -11,10 +11,12 @@ public final class CatalogRowModel: Identifiable {
     public private(set) var state: LoadState<[MetaItem]> = .idle
 
     @ObservationIgnored private let client: AddonClient
+    @ObservationIgnored private let didLoadItems: @MainActor () -> Void
 
-    public init(source: CatalogSource, client: AddonClient) {
+    public init(source: CatalogSource, client: AddonClient, didLoadItems: @escaping @MainActor () -> Void = {}) {
         self.source = source
         self.client = client
+        self.didLoadItems = didLoadItems
     }
 
     public nonisolated var id: String {
@@ -51,6 +53,9 @@ public final class CatalogRowModel: Identifiable {
             let request = CatalogRequest(type: source.catalog.type, catalogID: source.catalog.id)
             let page = try await client.catalog(request, from: source.addon.address)
             state = .loaded(page.items)
+            if !page.items.isEmpty {
+                didLoadItems()
+            }
         } catch {
             // Scrolled away mid-load: go back to idle so it loads when visible again.
             state = error.isCancellation ? .idle : .failed(error.userMessage)
@@ -64,7 +69,11 @@ public final class CatalogRowModel: Identifiable {
 public final class HomeModel {
     public private(set) var rows: [CatalogRowModel] = []
 
+    /// Called once, the first time any row has items to show.
+    @ObservationIgnored public var onFirstContent: (@MainActor () -> Void)?
+
     @ObservationIgnored private let client: AddonClient
+    @ObservationIgnored private var hasShownContent = false
 
     public init(client: AddonClient) {
         self.client = client
@@ -81,7 +90,15 @@ public final class HomeModel {
                 if let row = existing[source.id], row.source == source {
                     return row
                 }
-                return CatalogRowModel(source: source, client: client)
+                return CatalogRowModel(source: source, client: client) { [weak self] in
+                    self?.rowDidLoadItems()
+                }
             }
+    }
+
+    private func rowDidLoadItems() {
+        guard !hasShownContent else { return }
+        hasShownContent = true
+        onFirstContent?()
     }
 }

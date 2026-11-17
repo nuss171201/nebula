@@ -31,32 +31,37 @@ xcodegen generate                 # regenerate MediaCenter.xcodeproj (not commit
 Scripts/ci.sh                     # format check + lint + Debug build (warnings = errors) + all tests
 Scripts/ci.sh --release           # the above + universal Release build (arm64 + x86_64)
 swiftformat .                     # apply formatting
-Scripts/measure-launch.sh 5       # launch time + idle memory of the Release build
-swift Scripts/generate-icon.swift App/Assets.xcassets/AppIcon.appiconset   # redraw placeholder icon
 
 # One package, fast (no Xcode project needed):
 cd Packages/MediaCore && swift test
+LIVE_ADDON_TESTS=1 swift test --filter LiveAddonTests   # opt-in: hits the real default add-ons
 
-# Manual xcodebuild (what ci.sh runs):
-xcodebuild -project MediaCenter.xcodeproj -scheme MediaCenter -configuration Debug \
-  -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData build   # or: test
+# Looking at the running app without taking focus (Debug build):
+Scripts/screenshot.sh /path/shot.png 6                          # Home
+Scripts/screenshot.sh /path/shot.png 6 -section discover        # also: library, calendar, addons
+Scripts/screenshot.sh /path/shot.png 7 -search "the office"
+Scripts/screenshot.sh /path/shot.png 7 -open series:tt0386676   # a detail page
+
+# Measuring (Release build; run Scripts/ci.sh --release first):
+Scripts/measure-launch.sh 5                       # first-screen and home-content times, idle memory
+CLEAR_IMAGE_CACHE=1 Scripts/profile-launch.sh 8   # Time Profiler around a launch, summarised
+leaks <pid>                                       # on a Debug build left running with KEEP_RUNNING=1
+
+swift Scripts/generate-icon.swift App/Assets.xcassets/AppIcon.appiconset   # redraw placeholder icon
 ```
 
 Built app: `build/DerivedData/Build/Products/{Debug,Release}/Orbit.app`. Logs: `build/logs/`.
+Traces: `build/traces/` (open in Instruments).
 
 ### Running the app for verification
 
-Launch it in the **background** so it does not steal focus from the user, and capture the window by id:
-
-```bash
-open -g build/DerivedData/Build/Products/Debug/Orbit.app
-# find the window id with CGWindowListCopyWindowInfo (owner name = app name), then:
-screencapture -x -o -l <windowID> /path/to/shot.png
-pkill -f "Orbit.app/Contents/MacOS"
-```
-
+Always launch it in the **background** (`open -g`, which the scripts above do) and quit it afterwards.
 `open` without `-g` brings the window to the front; the user was working and quit it (⌘Q) both times
-during Stage 1. Quit any instance you start.
+during Stage 1. Debug builds accept launch arguments that open a given state
+(`App/DebugLaunchOptions.swift`): `-section`, `-search`, `-open <type>:<id>`, `-install <address>`.
+
+Limits of background verification: nothing can be clicked or scrolled, and a window with a sheet
+attached cannot be captured. Anything that needs interaction is covered by view-model tests, not by eye.
 
 ## Architecture
 
@@ -85,6 +90,22 @@ App/ (target MediaCenter)   entry point + composition root + Branding. No featur
 - **Dependencies are pinned exactly** in each `Package.swift` because the generated Xcode project (and
   its `Package.resolved`) is not committed.
 
+### How the browse side fits together (Stage 2)
+
+- `AddonClient` (MediaCore) is the only code that speaks the add-on protocol. Decoding is lenient by
+  design (`LenientDecoding.swift`): loose JSON types are accepted and malformed list entries are skipped,
+  never fatal. Image and subtitle URLs must be http(s) so an add-on cannot point the app at local files.
+- `AddonRegistry` (AppUI) is the single source of truth for installed add-ons; it persists through
+  `AddonStore` (MediaLibrary). `AppModel` observes `registry.addons` and pushes changes to
+  `HomeModel`, `DiscoverModel` and `SearchModel`.
+- **Anything a view branches on must be an observed stored property.** A computed property over
+  `@ObservationIgnored` state does not invalidate the view (this broke Discover and Search once;
+  `ObservationTests` guards it).
+- `ImagePipeline` (AppUI) downloads once, stores originals on disk (SHA-256 file names, LRU trim),
+  decodes and downsamples off the main thread, and dedupes concurrent requests.
+- Tests run against `MockAddonServer` (AddonTestSupport, in the MediaCore package): a real loopback
+  HTTP server, so request URLs are verified byte for byte.
+
 ### Decisions still to be made (with the stage that decides them)
 
 | Stage | Decision | Current recommendation |
@@ -93,8 +114,10 @@ App/ (target MediaCenter)   entry point + composition root + Branding. No featur
 | 3 | libmpv source | MPVKit LGPL build, dynamically linked. Verify variant and licence files before adding. |
 | 4 | Audio transcode fallback | Bundled ffmpeg helper as the last step of a fallback chain; size/licence to be approved. |
 | 4 | Picture-in-Picture | Floating always-on-top window with public APIs (no private PIP.framework). |
-| 2 | Trailers | Embedded YouTube player (no stream extraction). |
 | 9 | Notarisation | Needs a paid Developer ID certificate; ask first. |
+
+Decided: trailers play in YouTube's embedded player (`TrailerView`), never by extracting streams. The
+page is loaded with `https://<bundle id>` as its origin because YouTube requires embedders to send a referrer.
 
 Known limits to state honestly in the UI/docs: mpv tone-maps Dolby Vision to HDR10/SDR but cannot emit a
 true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transcode path will rarely run.
@@ -126,7 +149,7 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 ## Stage checklist
 
 - [x] **1. Skeleton** — XcodeGen project, five packages, CLAUDE.md, branding, placeholder icon, CI script
-- [ ] **2. Add-on client + browsing** — protocol client, Cinemeta, Home, Discover, Search, Detail
+- [x] **2. Add-on client + browsing** — protocol client, Cinemeta, Home, Discover, Search, Detail, Add-ons
 - [ ] **3. Player core** — libmpv embedding, Metal view, basic controls, file + HTTP playback
 - [ ] **4. Player features** — everything in spec section 3B
 - [ ] **5. Streams + torrent engine** — stream list, libtorrent bridge, local HTTP server, cache
@@ -145,6 +168,25 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 | PlayerKit | `PlaybackSpeed` (0.25×–16× clamp and preset ladder) | 5 |
 | AppUI | `AppSection`, `AppModel`, `RootView` (sidebar shell with empty states), `SettingsView` | 4 |
 
+### Stage 2 contents
+
+| Package | Added | Tests |
+|---|---|---|
+| MediaCore | Protocol models (manifest, meta, stream, subtitles), lenient decoding, resource paths, `HTTPClient` with retry, `AddonClient`, `InstalledAddon`; target `AddonTestSupport` (mock server, fixtures, stub client) | 54 (2 opt-in live) |
+| MediaLibrary | `AddonStore`, migration `v2-addons` | 10 |
+| AppUI | `ImagePipeline`, `AddonRegistry`, view models and views for Home, Discover, Search, Detail, Add-ons, trailer sheet | 45 |
+| App | `DefaultAddons` (bundled JSON), `DebugLaunchOptions` | — |
+
+Carried over to later stages:
+
+- Detail page: "mark watched" and "add to library" belong with the library (Stage 6); episodes become
+  playable with the player and stream list (Stages 3 and 5).
+- Not verified by eye because they need a click or a scroll: trailer playback (the embed was checked
+  offscreen and loads the right video), the install confirmation sheet, drag-to-reorder, and Discover's
+  paging in the live app. Their logic is unit-tested.
+- Scrolling smoothness (120 Hz, no main-thread work > 8 ms) is unmeasured for the same reason; measure
+  it in Stage 8 with a UI test or by hand in Instruments.
+
 ## Performance log
 
 Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K HDR < 600 MB;
@@ -156,7 +198,19 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 1 | Release, arm64 | Launch to first screen, first run after build | 463 ms |
 | 2026-11-17 | 1 | Debug, arm64 | Launch to first screen, first run after build | 622 ms |
 | 2026-11-17 | 1 | Release, arm64 | Idle memory, empty shell: physical footprint / RSS | 30 MB / 97 MB |
+| 2026-11-17 | 2 | Release, arm64 | Launch to first screen, warm, median of 5 | 196 ms |
+| 2026-11-17 | 2 | Release, arm64 | Launch to Home content (first catalog row has data), warm, median of 5 | 378 ms |
+| 2026-11-17 | 2 | Release, arm64 | First-ever launch (no database, no caches): first screen / Home content | 201 ms / 576 ms |
+| 2026-11-17 | 2 | Release, arm64 | Idle memory, Home loaded with artwork: physical footprint / RSS | 62–67 MB / 134–148 MB |
+| 2026-11-17 | 2 | Debug, arm64 | `leaks` on a series detail page | 0 leaks |
+| 2026-11-17 | 2 | Release, arm64 | Time Profiler, launch with empty image cache (`profile-launch.sh`), run 1 | After launch: main thread never busy > 8 ms at a stretch |
+| 2026-11-17 | 2 | Release, arm64 | Same, run 2 | After launch: 7 stretches > 8 ms, longest 16 ms, while ~60 posters arrive |
+| 2026-11-17 | 2 | Release, arm64 | Same traces: where the work runs | Image decode (65–75 ms) and JSON decode on background threads; no app code hot on main |
 
-Not yet measured: a true cold launch (after reboot or `sudo purge`), and Instruments traces (Time
-Profiler, Allocations, Leaks). The shell has no workload worth profiling yet; Instruments runs start in
-Stage 2 when there is real scrolling and networking.
+Reading the Stage 2 numbers: launch and memory are well inside the targets. The 8 ms main-thread budget
+is met most of the time while artwork streams in but not always (run 2); that is SwiftUI committing
+many image updates at once, and it is the first thing to look at in Stage 8. Scrolling itself has not
+been measured.
+
+Not yet measured: a true cold launch (after reboot or `sudo purge`), scrolling frame times, and the
+Allocations instrument (footprint and `leaks` were used instead).
