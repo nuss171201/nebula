@@ -47,7 +47,9 @@ public struct AddonTransportURL: Hashable, Sendable, Codable {
             throw .unsupportedScheme(scheme)
         }
 
-        components.path = Self.manifestPath(from: components.path)
+        // Work on the percent-encoded path so configuration segments reach the server
+        // byte-for-byte as the user pasted them.
+        components.percentEncodedPath = Self.manifestPath(from: components.percentEncodedPath)
         components.fragment = nil
 
         guard let url = components.url else { throw .malformed }
