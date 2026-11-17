@@ -31,6 +31,11 @@ public enum PlayerProperty: Sendable, Equatable {
     case hardwareDecoder(String?)
     /// Seconds of media buffered ahead of the playhead.
     case bufferedAhead(Double?)
+    case tracks([MediaTrack])
+    case chapters([MediaChapter])
+    /// The chapter the playhead is in; `nil` before the first one.
+    case currentChapter(Int?)
+    case playlist([PlaylistEntry])
 }
 
 /// Everything the player reports, as values.
@@ -74,6 +79,11 @@ public struct PlaybackState: Sendable, Equatable {
     public var bufferedAhead: Double?
     /// Whether a frame of the current file has been shown yet.
     public var hasShownFirstFrame = false
+    public var tracks: [MediaTrack] = []
+    public var chapters: [MediaChapter] = []
+    public var currentChapter: Int?
+    /// The play queue. Survives from one file to the next.
+    public var playlist: [PlaylistEntry] = []
 
     private var displayWidth: Int?
     private var displayHeight: Int?
@@ -84,6 +94,14 @@ public struct PlaybackState: Sendable, Equatable {
     public var videoSize: CGSize? {
         guard let displayWidth, let displayHeight, displayWidth > 0, displayHeight > 0 else { return nil }
         return CGSize(width: displayWidth, height: displayHeight)
+    }
+
+    public func tracks(of kind: MediaTrack.Kind) -> [MediaTrack] {
+        tracks.filter { $0.kind == kind }
+    }
+
+    public func selectedTrack(of kind: MediaTrack.Kind) -> MediaTrack? {
+        tracks.first { $0.kind == kind && $0.isSelected }
     }
 
     /// Whether a file is open (playing, paused or sitting on its last frame).
@@ -110,11 +128,12 @@ public struct PlaybackState: Sendable, Equatable {
     public mutating func apply(_ event: PlayerEvent) {
         switch event {
         case .startedLoading:
-            // Volume and mute are the user's settings and carry over; everything else is per file.
-            let (volume, isMuted) = (volume, isMuted)
+            // Volume, mute and the queue carry over; everything else is per file.
+            let (volume, isMuted, playlist) = (volume, isMuted, playlist)
             self = PlaybackState()
             self.volume = volume
             self.isMuted = isMuted
+            self.playlist = playlist
             phase = .loading
 
         case .fileLoaded:
@@ -158,6 +177,10 @@ public struct PlaybackState: Sendable, Equatable {
         case let .displayHeight(value): displayHeight = value
         case let .hardwareDecoder(value): hardwareDecoder = value
         case let .bufferedAhead(value): bufferedAhead = value
+        case let .tracks(value): tracks = value
+        case let .chapters(value): chapters = value
+        case let .currentChapter(value): currentChapter = value
+        case let .playlist(value): playlist = value
         case let .reachedEnd(value):
             if value, phase == .playing {
                 phase = .ended

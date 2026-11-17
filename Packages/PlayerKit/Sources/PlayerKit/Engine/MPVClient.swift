@@ -21,12 +21,14 @@ enum MPVValue: Sendable, Equatable {
     case double(Double)
     case int(Int64)
     case string(String)
+    case node(MPVNode)
 }
 
 /// The engine properties the app watches, and how each one is read.
 enum ObservedProperty: UInt64, CaseIterable, Sendable {
     case pause = 1, timePosition, duration, volume, mute, pausedForCache, seeking, endOfFileReached
     case mediaTitle, displayWidth, displayHeight, hardwareDecoder, cacheDuration
+    case trackList, chapterList, chapter, playlist
 
     var name: String {
         switch self {
@@ -43,6 +45,10 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         case .displayHeight: "dheight"
         case .hardwareDecoder: "hwdec-current"
         case .cacheDuration: "demuxer-cache-duration"
+        case .trackList: "track-list"
+        case .chapterList: "chapter-list"
+        case .chapter: "chapter"
+        case .playlist: "playlist"
         }
     }
 
@@ -50,8 +56,9 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         switch self {
         case .pause, .mute, .pausedForCache, .seeking, .endOfFileReached: MPV_FORMAT_FLAG
         case .timePosition, .duration, .volume, .cacheDuration: MPV_FORMAT_DOUBLE
-        case .displayWidth, .displayHeight: MPV_FORMAT_INT64
+        case .displayWidth, .displayHeight, .chapter: MPV_FORMAT_INT64
         case .mediaTitle, .hardwareDecoder: MPV_FORMAT_STRING
+        case .trackList, .chapterList, .playlist: MPV_FORMAT_NODE
         }
     }
 
@@ -85,6 +92,15 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         // The engine reports "no" (or nothing) when it is decoding in software.
         case let (.hardwareDecoder, .string(text)): .hardwareDecoder(text.isEmpty || text == "no" ? nil : text)
         case (.hardwareDecoder, nil): .hardwareDecoder(nil)
+        case let (.trackList, .node(node)): .tracks(MediaTrack.list(from: node))
+        case (.trackList, nil): .tracks([])
+        case let (.chapterList, .node(node)): .chapters(MediaChapter.list(from: node))
+        case (.chapterList, nil): .chapters([])
+        // The engine reports -1 before the first chapter starts.
+        case let (.chapter, .int(index)): .currentChapter(index >= 0 ? Int(index) : nil)
+        case (.chapter, nil): .currentChapter(nil)
+        case let (.playlist, .node(node)): .playlist(PlaylistEntry.list(from: node))
+        case (.playlist, nil): .playlist([])
         default: nil
         }
     }
@@ -189,7 +205,38 @@ final class MPVClient: Sendable {
                     var raw: UnsafePointer<CChar>? = pointer
                     _ = mpv_set_property_async(handle, 0, name, MPV_FORMAT_STRING, &raw)
                 }
+            case .node:
+                // Structured values are only ever read from the engine.
+                break
             }
+        }
+    }
+
+    /// Reads a structured property. Blocks briefly.
+    func node(_ name: String) -> MPVNode? {
+        core.read { handle in
+            var result = mpv_node()
+            guard mpv_get_property(handle, name, MPV_FORMAT_NODE, &result) >= 0 else { return nil }
+            defer { mpv_free_node_contents(&result) }
+            return MPVNode(result)
+        }
+    }
+
+    /// Runs a command and waits for its result. Blocks until the engine has finished it, so it
+    /// must not be called from the main thread for anything slow.
+    func commandResult(_ arguments: [String]) -> MPVNode? {
+        core.read { handle in
+            var pointers: [UnsafePointer<CChar>?] = arguments.map { UnsafePointer(strdup($0)) }
+            pointers.append(nil)
+            defer {
+                for pointer in pointers {
+                    free(UnsafeMutablePointer(mutating: pointer))
+                }
+            }
+            var result = mpv_node()
+            guard mpv_command_ret(handle, &pointers, &result) >= 0 else { return nil }
+            defer { mpv_free_node_contents(&result) }
+            return MPVNode(result)
         }
     }
 
@@ -347,6 +394,8 @@ private final class Core: @unchecked Sendable {
         case MPV_FORMAT_STRING:
             guard let text = data.assumingMemoryBound(to: UnsafePointer<CChar>?.self).pointee else { return nil }
             return .string(String(cString: text))
+        case MPV_FORMAT_NODE:
+            return .node(MPVNode(data.assumingMemoryBound(to: mpv_node.self).pointee))
         default:
             return nil
         }

@@ -254,6 +254,8 @@ struct EngineMappingTests {
         #expect(bindings.command(for: KeyChord(.character("f"))) == .toggleFullScreen)
         #expect(bindings.command(for: KeyChord(.escape)) == .exitFullScreen)
         #expect(bindings.command(for: KeyChord(.space, .command)) == nil)
-        #expect(bindings.command(for: KeyChord(.character("z"))) == nil)
+        #expect(bindings.command(for: KeyChord(.character("q"))) == nil)
+        #expect(bindings.command(for: KeyChord(.character("s"), .command)) == .screenshot(includingSubtitles: true))
+        #expect(bindings.command(for: KeyChord(.character("."))) == .stepFrameForward)
     }
 }

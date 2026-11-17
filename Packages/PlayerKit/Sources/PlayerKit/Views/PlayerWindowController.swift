@@ -15,7 +15,9 @@ public extension KeyChord {
         case 53: key = .escape
         case 36, 76: key = .returnKey
         default:
-            guard let character = characters?.lowercased().first, character.isLetter || character.isNumber else { return nil }
+            guard let character = characters?.lowercased().first,
+                  character.isLetter || character.isNumber || character.isPunctuation || character.isSymbol
+            else { return nil }
             key = .character(character)
         }
         var modifiers: Modifiers = []
@@ -144,7 +146,7 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
     /// Updates the window whenever the media's title or picture size changes.
     private func followModel() {
         let (title, videoSize) = withObservationTracking {
-            (model.title, model.state.videoSize)
+            (model.title, model.displayedVideoSize)
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.followModel()

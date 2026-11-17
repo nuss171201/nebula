@@ -11,6 +11,8 @@ disabled_rules:
   - trailing_comma
   - opening_brace
   - statement_position
+  # Misfires on ternaries that produce enum values inside switch expressions.
+  - void_function_in_ternary
 
 opt_in_rules:
   - empty_count
@@ -29,10 +31,15 @@ identifier_name:
     - db
     - tv
     - id
+    - x
+    - y
 
 # A flat `switch` that maps one value to another is a table, not a tangle.
 cyclomatic_complexity:
   ignores_case_statements: true
+
+nesting:
+  type_level: 2
 
 large_tuple:
   warning: 3
