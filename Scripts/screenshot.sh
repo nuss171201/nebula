@@ -18,7 +18,9 @@ OUTPUT="${1:?usage: screenshot.sh <output.png> [seconds] [app args...]}"
 WAIT="${2:-5}"
 shift $(( $# > 1 ? 2 : 1 ))
 
-APP="$(find build/DerivedData/Build/Products/Debug -maxdepth 1 -name '*.app' 2>/dev/null | head -1)"
+# PROFILE_BUILD=1 uses the optimised build with launch arguments (Scripts/build-profile.sh).
+PRODUCTS="build/DerivedData${PROFILE_BUILD:+-Profile}/Build/Products/Debug"
+APP="$(find "$PRODUCTS" -maxdepth 1 -name '*.app' 2>/dev/null | head -1)"
 [[ -d "$APP" ]] || { echo "No Debug build found. Run Scripts/ci.sh first." >&2; exit 1; }
 APP="$(cd "$APP" && pwd)"
 BINARY="$APP/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist")"

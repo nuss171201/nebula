@@ -11,6 +11,7 @@ Reports CPU time per thread, how long the main thread ran without a break
 (the number that matters for dropped frames), and where the app's own code
 spent time on and off the main thread.
 """
+import os
 import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -98,7 +99,7 @@ def app_frame(frames):
 span = ms(samples[-1][0] - start)
 print(f"process: {target}   samples: {len(samples)}   CPU: {ms(sum(per_thread.values())):.0f} ms over {span / 1000:.1f} s")
 print("\nCPU time by thread:")
-for thread, weight in per_thread.most_common(5):
+for thread, weight in per_thread.most_common(int(os.environ.get("THREADS", "5"))):
     print(f"  {ms(weight):7.0f} ms  {thread.split(' (')[0]}")
 print(f"  ({len(per_thread)} threads in total)")
 
@@ -126,3 +127,29 @@ for label, group in (("main thread", main_samples), ("other threads", [(t, w, f)
         print(f"  {ms(weight):6.0f} ms  {name[:110]}")
     if not inclusive:
         print("  none sampled")
+
+# DETAIL=<n>: the n symbols (any binary) most often on the main thread's stack after launch,
+# and per thread name, for finding what a busy thread is busy with.
+detail = int(os.environ.get("DETAIL", "0"))
+if detail:
+    after_from = int(os.environ.get("DETAIL_FROM_MS", "0")) * 1_000_000
+    # DETAIL_THREAD=<name>: another thread instead of the main one (exact name before " (").
+    wanted = os.environ.get("DETAIL_THREAD")
+    if wanted:
+        after = [(t, w, f) for t, th, w, f in samples if th.split(" (")[0] == wanted]
+    else:
+        after = [(t, w, f) for t, w, f in main_samples if t - start > launch_window_ns]
+    after = [(t, w, f) for t, w, f in after if t - start >= after_from]
+    inclusive, leaf = Counter(), Counter()
+    for _, weight, frames in after:
+        for name in {f"{name}  [{binary}]" for name, binary in frames}:
+            inclusive[name] += weight
+        if frames:
+            leaf[f"{frames[0][0]}  [{frames[0][1]}]"] += weight
+    total = sum(w for _, w, _ in after)
+    print(f"\n{wanted or 'Main thread'} after launch{f' (from +{ms(after_from):.0f} ms)' if after_from else ''}: {ms(total):.0f} ms. On the stack most often:")
+    for name, weight in inclusive.most_common(detail):
+        print(f"  {ms(weight):6.0f} ms  {name[:130]}")
+    print(f"\n{wanted or 'Main thread'}, where the time itself went (leaf frames):")
+    for name, weight in leaf.most_common(max(detail // 2, 10)):
+        print(f"  {ms(weight):6.0f} ms  {name[:130]}")

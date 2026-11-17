@@ -10,7 +10,10 @@ import os
 public final class PlayerModel {
     public static let logCategory = "player"
 
-    public internal(set) var state = PlaybackState()
+    /// Behind `state` and `playhead`, which decide who is told about a change (see `PlayerModel+State.swift`).
+    @ObservationIgnored var storedState = PlaybackState()
+    /// Keeps the Mac awake while this player plays.
+    @ObservationIgnored let wakefulness = Wakefulness()
     /// What was asked to be opened most recently.
     public internal(set) var source: PlayableSource?
     /// Time from `open` to the first frame of that file being shown.
@@ -128,7 +131,7 @@ public final class PlayerModel {
             logger: logger
         )
 
-        state.volume = configuration.initialVolume
+        storedState.volume = configuration.initialVolume
         applyDefaults(configuration.defaults)
         let events = client.events
         eventTask = Task { [weak self] in
@@ -154,7 +157,7 @@ public final class PlayerModel {
 
     /// The position to show: where the user is dragging to, or the playhead.
     public var displayPosition: Double {
-        scrubPosition ?? state.position
+        scrubPosition ?? playhead
     }
 
     /// The picture's size as shown: after aspect override, crop and rotation.
@@ -322,19 +325,10 @@ public final class PlayerModel {
         // Where it was left is written now; nothing the engine says while closing may change it.
         savePosition()
         hasShutDown = true
+        wakefulness.set(.none)
         discardThumbnails()
         resetAudioFallback()
         client.quit()
-    }
-
-    /// Reads an engine property as text. Blocks briefly; for diagnostics and tests only.
-    func engineProperty(_ name: String) -> String? {
-        client.string(name)
-    }
-
-    /// Runs an engine command and returns its result. Blocks; for tests and off-main work.
-    func engineCommandResult(_ arguments: [String]) -> MPVNode? {
-        client.commandResult(arguments)
     }
 
     /// Writes an engine property as text. For tests, until the feature has a proper intent.
@@ -419,6 +413,7 @@ public final class PlayerModel {
             logger.error("playback failed: \(message, privacy: .public)")
         case .shutdown:
             hasShutDown = true
+            wakefulness.set(.none)
             eventTask = nil
             onShutdown?()
             onShutdown = nil

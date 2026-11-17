@@ -175,6 +175,14 @@ struct EngineMappingTests {
         #expect(table["keep-open"] == "yes")
         #expect(table["ao"] == nil)
         #expect(table["volume"] == "100.0")
+        // The stream cache is kept small enough for 4K to stay inside the memory target,
+        // and an options file can still say otherwise (its options come later).
+        #expect(table["demuxer-max-bytes"] == "48MiB")
+        #expect(table["demuxer-max-back-bytes"] == "8MiB")
+        #expect(table["demuxer-donate-buffer"] == "no")
+        var tuned = PlayerConfiguration(userAgent: "x", logSubsystem: "test")
+        tuned.additionalEngineOptions = [.init("demuxer-max-bytes", "200MiB")]
+        #expect(tuned.engineOptions.last { $0.name == "demuxer-max-bytes" }?.value == "200MiB")
         // The efficient renderer is the default; the high-quality one adds no overrides.
         #expect(table["profile"] == "fast")
         #expect(table["dither"] == "ordered")

@@ -54,11 +54,21 @@ Scripts/stage-media.sh TestMedia/multi-track.mkv   # prints a copy's path outsid
 # Playback over HTTP (Range-capable; python's http.server is not):
 Scripts/serve-test-media.py 8765 &          # then -play http://127.0.0.1:8765/<file>; add --throttle-kbps N
 
-# Measuring (Release build; run Scripts/ci.sh --release first):
+# Measuring launch (Release build; run Scripts/ci.sh --release first):
 Scripts/measure-launch.sh 5                       # first-screen and home-content times, idle memory
 CLEAR_IMAGE_CACHE=1 Scripts/profile-launch.sh 8   # Time Profiler around a launch, summarised
-Scripts/measure-playback.sh TestMedia/hdr10-hevc-4k60.mkv 10            # first frame, CPU, memory, leaks
-Scripts/measure-playback.sh TestMedia/hdr10-hevc-4k60.mkv 10 "profile=fast"   # with extra engine options
+
+# Measuring playback and scrolling: these need a launch argument, which Release does not have, so
+# they use the "profile" build: Debug configuration compiled with optimisation, in build/DerivedData-Profile.
+Scripts/build-profile.sh                          # rebuild it after changing code
+PROFILE_BUILD=1 Scripts/measure-playback.sh TestMedia/hdr10-hevc-4k60.mkv 14   # first frame, CPU, memory, dropped frames, leaks
+PROFILE_BUILD=1 Scripts/measure-playback.sh TestMedia/hdr10-hevc-4k60.mkv 14 "swapchain-depth=1"   # with extra engine options
+PROFILE_BUILD=1 Scripts/measure-playback.sh http://127.0.0.1:8765/hdr10-hevc-4k24-long.mkv 40      # a stream (serve-test-media.py), long enough for the cache to fill
+Scripts/memory-detail.sh TestMedia/sdr-h264-1080p.mp4 8          # what playback memory is made of (NO_LOOP=1: after the file has ended)
+Scripts/measure-scroll.sh discover 8              # scrolls the screen by itself; how late the main thread was per tick
+CLEAR_IMAGE_CACHE=1 Scripts/measure-scroll.sh home 6 2500        # with artwork to fetch; third argument is points per second
+PROFILE_BUILD=1 DETAIL=60 DETAIL_FROM_MS=3500 Scripts/profile-launch.sh 13 -section discover -autoscroll 8   # what the main thread did meanwhile
+#   DETAIL_THREAD=vo (or core, …) breaks down another thread; THREADS=16 lists more threads.
 
 swift Scripts/generate-icon.swift App/Assets.xcassets/AppIcon.appiconset   # redraw placeholder icon
 ```
@@ -79,6 +89,8 @@ two seconds after launch: the only way to check a binding and its on-screen noti
 `-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
 `-window pictureInPicture|mini` puts the player window in that mode.
 `-settings general|playback|streaming|shortcuts|advanced` opens the Settings window on that tab.
+`-autoscroll <seconds>` scrolls the screen's list by itself (`App/DebugAutoscroll.swift`), `-scrollSpeed <pt/s>`;
+`-stats <seconds>` logs dropped and late frames and the buffered duration that long after launch.
 `-profile <folder>` keeps the database and caches in a scratch folder and keeps the stream engine to
 this machine; with it, `-installNow <address>` installs an add-on without the confirmation click,
 `-episode <video id>` shows an episode's streams, `-stream <n>` plays the nth listed stream,
@@ -183,7 +195,11 @@ App/ (target MediaCenter)   entry point + composition root + Branding. No featur
   the screen's pixel size (capped at 3840 on the long edge); the engine letterboxes the video inside
   it; the view shows the video's rectangle scaled to fit. Costs: rendering is always at screen
   resolution, and windows smaller than the screen see a Core Animation downscale. The proper fix is a
-  resize event in the engine's Metal context, which needs a patched from-source build.
+  resize event in the engine's Metal context, which needs a patched from-source build. Tried in
+  Stage 8: with the layer's size changed, none of panscan, zoom, aspect override, rotation,
+  deinterlacing, switching hardware decoding, `video-reload`, a filter change or a seek makes the engine
+  read it again; only re-creating the video output does (`vid=no` then `vid=auto`), which interrupts
+  playback. What the canvas costs is its three swapchain images (98 MB at 3600×2338; 43 MB at 2560×1440).
 - **Render quality defaults to `efficient`** (`profile=fast` plus ordered dithering) because the
   engine's default pipeline misses the CPU and memory targets at 4K (see the performance log).
   `RenderQuality.high` keeps the engine defaults for a future Settings choice.
@@ -279,13 +295,36 @@ StreamPlayer ─┬─ web address ───────────────
   listed first ("This stream") when the player's subtitle panel looks that video up. They are not loaded
   by themselves.
 
+### What keeps it fast (Stage 8)
+
+- **The playhead is observed apart from the rest of the player's state** (`PlayerModel+State.swift`).
+  `state` is one struct, so a read of any part of it used to be invalidated fifteen times a second by the
+  position, and the whole player view was evaluated and laid out at that rate: the main thread's largest
+  cost during playback (268 ms in nine seconds, now 16 ms). A change to position or buffer alone is
+  announced as `playhead`; a write that changes nothing is not announced. **A view that follows the
+  playhead must read `playhead` or `displayPosition`, never `state.position`.**
+- **The Mac is kept awake by the app** (`Wakefulness`): display on while a picture plays, system awake
+  for sound alone, nothing when paused or ended. The engine would do this for a window of its own; it
+  draws into ours. Before Stage 8 nothing did, so the display would have slept during a film.
+- **The engine's stream cache is capped** at 48 MiB ahead and 8 MiB behind (`PlayerConfiguration`). Its
+  own defaults (150 + 50 MiB, lending between the two) put a 4K HDR stream at 740 to 850 MB.
+- **Grids and strips of posters are AppKit underneath** (`PosterGrid`, `PosterRow`, `PosterCellView`).
+  SwiftUI's lazy grid builds each card as it scrolls in, which cost 10 to 20 ms a row whatever the card
+  contained (measured with bare cards and with no artwork). The grid is an `NSCollectionView` whose cells
+  are three layers each and are reused; a horizontal strip keeps SwiftUI's scroll view (so trackpad
+  handling is SwiftUI's) around one view that holds cells only for what is in sight. Opening a title goes
+  through `EnvironmentValues.openTitle`, an `Equatable` action: a bare closure in the environment
+  invalidates every reader on every update. The Library's Saved grid and Continue Watching are still SwiftUI.
+- **Screens are split so that a view is evaluated only for what it reads.** Discover's pickers and its
+  results are separate views: a page arriving used to rebuild the pickers (9 to 10 ms, mid-scroll).
+
 ### Decisions still to be made (with the stage that decides them)
 
 | Stage | Decision | Current recommendation |
 |---|---|---|
-| 8 | Shortcuts in the menus | The Playback menu shows no key equivalents, because the keys are the user's to change and live in `KeyBindings`. Showing the current key next to each menu item needs the menu to read the bindings. |
-| 8 | Subtitles in black bars | With the fixed canvas, subtitles are kept inside the picture (`sub-use-margins=no`). Revisit with the engine build. |
-| 8 | Engine build | Build libmpv from source with a resize event in the Metal context, replacing the fixed canvas. |
+| later | Shortcuts in the menus | The Playback menu shows no key equivalents, because the keys are the user's to change and live in `KeyBindings`. Showing the current key next to each menu item needs the menu to read the bindings. Not done in Stage 8. |
+| later | Subtitles in black bars | With the fixed canvas, subtitles are kept inside the picture (`sub-use-margins=no`). Goes with the engine build. |
+| later | Engine build | Building libmpv from source (meson, with MPVKit's patches plus a resize event) is **the user's call and was not started**: every target is met without it. It would buy a surface that follows the window (about 55 MB less in a 1280×720 window, nothing in full screen), subtitles in the black bars, and a chance to find the fixed 190 MB of GPU memory described in the performance log. It costs a long from-source build as a prerequisite and a patch to maintain. Adapting MPVKit's patches means checking their licence and telling the user first. |
 | 9 | Bundling ffmpeg for the audio fallback | The fallback chain exists and uses an ffmpeg the user has installed. Shipping an LGPL ffmpeg helper inside the app (tens of MB) is the user's call; ask before doing it. |
 | 9 | Notarisation | Needs a paid Developer ID certificate; ask first. |
 
@@ -335,7 +374,7 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - [x] **5. Streams + torrent engine** — stream list, libtorrent bridge, local HTTP server, cache
 - [x] **6. Library** — Continue Watching, resume, next-episode autoplay, calendar
 - [x] **7. Settings + polish** — settings window, shortcut editor, mpv.conf/input.conf, saved player choices
-- [ ] **8. Performance pass** — measure every target in spec section 4
+- [x] **8. Performance pass** — every target in spec section 4 measured; playback, memory and scrolling fixes
 - [ ] **9. Packaging** — signed .app + .dmg, Sparkle, README
 
 ### Stage 1 contents
@@ -549,6 +588,56 @@ Carried over or not verified in Stage 7:
 - Not done: the mini player's cover art; key equivalents shown in the Playback menu (see the decisions
   table); export or import of settings.
 
+### Stage 8 contents
+
+| Where | Added | Tests |
+|---|---|---|
+| Scripts | `build-profile.sh`, `measure-scroll.sh`, `memory-detail.sh`; `measure-playback.sh` reports dropped frames and settled memory; `analyze-trace.py` breaks any thread down; a 150-second 4K HDR sample at 24 frames a second | — |
+| PlayerKit | `PlayerModel+State` (playhead observed apart), `Wakefulness`, stream cache options | 179 |
+| AppUI | `PosterGrid`, `PosterCell`, `PosterRow` (+ `PosterRowLayout`, `PosterGridMetrics`, `OpenTitleAction`), Discover split in two views | 125 |
+| App | `DebugAutoscroll`, `-autoscroll`, `-stats` | — |
+
+Targets, as measured at the end of the stage (M4 Pro, display at 3600×2338; details in the log below):
+
+| Target | Result | Met |
+|---|---|---|
+| Cold launch < 1.5 s | 193 ms warm, 206–580 ms on the first run after a build | yes, with the caveat below |
+| Idle memory < 250 MB | 71 MB | yes |
+| Playing 4K HDR < 600 MB | 480–520 MB from a file, 545 MB as a stream | yes |
+| 4K HEVC 10-bit HDR < 30 % CPU on an M1 | 10.5 % at 24 frames a second, 20 % at 60, on an M4 Pro | on this machine; not verified on an M1 |
+| HTTP time to first frame < 2 s | 265–290 ms on loopback | yes, on loopback only |
+| No main-thread work > 8 ms while scrolling | Discover and Home: no tick later than 7.5 ms in any run | yes, as far as it can be measured without a hand on the trackpad |
+
+Carried over or not verified in Stage 8:
+
+- **Nothing was scrolled by hand.** `-autoscroll` moves the scroll position 120 times a second, which
+  makes the views do what a scroll makes them do, but it is not a trackpad: momentum, rubber-banding and
+  the horizontal strips under two fingers were not tried. The window was in the background throughout.
+- **The new grid and strips were not clicked.** Opening a title by click, Return or Space, hover
+  highlights, the focus ring on strip cards and VoiceOver's press are in code and (activation, reuse,
+  paging, scroll position) in tests against an offscreen window; none was tried by hand.
+- **A true cold launch** (after a restart) is still unmeasured: it needs `sudo purge` or a reboot.
+- **An M1 was not available.** The M1 has roughly 60 % of this machine's single-core speed, which would
+  put 4K HDR at 24 frames a second near 18 % and at 60 near 33 %; that is arithmetic, not a measurement.
+- **About 190 MB of GPU memory is unexplained**: some 46 allocations of exactly 4 MB that exist while a
+  file is open (playing or paused) and are gone once it has ended. They do not depend on the canvas size,
+  the video's size, hardware decoding, dithering, subtitles, sound or the Vulkan queue options; the
+  high-quality preset adds 18 more. Not libplacebo's slab allocator (its log shows one 260 KB slab) and
+  not Metal's timestamp buffers (tested outside the app). Finding it needs the engine built from source.
+- **Dropped frames in background runs vary** without any change to the app: the same stream dropped 0,
+  33–37 and 82 frames in different 40-second runs before the final ones, which dropped none. The window
+  is behind others during a check, and what the window server does for a hidden window is not ours to
+  control; treat a drop count from a background run as an upper bound, not a finding.
+- The stream cache cap leaves about 12 seconds in hand at 32 Mbit/s for a plain HTTP stream (torrents
+  are on disk by then). Whether that is enough on a poor connection was not tried; an `mpv.conf` can raise it.
+- Engine costs that only a from-source build could change: 4 decoder threads are requested even with
+  hardware decoding (about 380 ms of software HEVC work at start-up), FFmpeg sets colour attachments
+  on every decoded frame (1.75 % of a core at 60 frames a second), and the letterbox bars are cleared in
+  a render pass of their own (0.8 %).
+- `swapchain-depth=1` would save one 32 MB swapchain image and dropped no frames here, but it cannot be
+  judged with the window in the background, so the engine's default (3) stays.
+- `leaks` still reports 3 to 5 blocks of 80 bytes during playback.
+
 ## Performance log
 
 Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K HDR < 600 MB;
@@ -602,6 +691,22 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 7 | Release, universal | Same, with settings read before the add-ons (first attempt, two runs of 5) | 191–222 ms / 405–432 ms |
 | 2026-11-17 | 7 | Release, universal | Idle memory, Home loaded; app bundle size | 68 MB; 128 MB |
 
+| 2026-11-17 | 8 | Profile build | 4K HEVC 10-bit HDR 60 fps from a file, start of stage / end: CPU | 22.8 % / 20.1 % of one core |
+| 2026-11-17 | 8 | Profile build | Same: memory at most / settled; dropped frames | 520 MB / 497 MB; 0 |
+| 2026-11-17 | 8 | Profile build | 4K HEVC 10-bit HDR 24 fps (150 s, 32 Mbit/s) from a file: CPU / memory | 10.5 % / 481 MB |
+| 2026-11-17 | 8 | Profile build | Same file as a stream over loopback HTTP, engine's own cache sizes: memory | 740–850 MB (over the target) |
+| 2026-11-17 | 8 | Profile build | Same, cache capped at 48 + 8 MiB (now the default): CPU / memory at most / settled; dropped | 10.4 % / 553 MB / 543 MB; 0 |
+| 2026-11-17 | 8 | Profile build | 1080p H.264 30 fps from a file, start of stage / end: CPU; memory | 13.0 % / 11.1 %; 429 MB |
+| 2026-11-17 | 8 | Profile build | Time to first frame: file / loopback HTTP / HTTP throttled to 10 Mbit/s | 269–290 ms / 267 ms / 264 ms |
+| 2026-11-17 | 8 | Profile build | Main thread while 4K HDR plays, nine seconds, before / after the playhead split | 268 ms / 16 ms on CPU |
+| 2026-11-17 | 8 | Profile build | Player after its file has ended (holding the last frame): memory | 248 MB |
+| 2026-11-17 | 8 | Profile build | Discover scrolled 20 000 pt in 8 s, SwiftUI grid: ticks late by > 8 ms / > 16 ms; longest | 29–37 / 6–10 of 900; 19–27 ms |
+| 2026-11-17 | 8 | Profile build | Same, collection view grid (3 runs, and 1 with an empty image cache) | 0 / 0 of 960; 5.0–7.5 ms |
+| 2026-11-17 | 8 | Profile build | Same at 6000 pt/s (47 000 pt) | 3 / 0; 9 ms |
+| 2026-11-17 | 8 | Profile build | Home scrolled, SwiftUI strips / layer-based strips: longest tick | 17–31 ms / 6.9 ms |
+| 2026-11-17 | 8 | Release, universal | Launch to first screen / Home content, warm, median of 5; first run after the build | 193 ms / 377 ms; 206 ms / 392 ms |
+| 2026-11-17 | 8 | Release, universal | Idle memory, Home loaded; app bundle size | 71 MB; 128 MB |
+
 **The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
 10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)
 and, through a parsing slip, dropped CPU samples under 10 %, which hid the idle ones. The script now
@@ -609,11 +714,18 @@ loops the file and reads memory while it plays; the Stage 4 rows are the ones to
 also larger for Stage 4 (3600×2338, the display was set to a higher resolution) than for Stage 3
 (3024×1964), and both CPU and memory grow with it.
 
-Reading the Stage 4 numbers: about 290 MB of the playing footprint is canvas-sized textures (swapchain
-images and the renderer's buffers at 34 MB each), the price of the fixed canvas. 4K HDR is inside the
-600 MB target by 80 MB on this display and would not be on a larger one; the "under 30 % on an M1" CPU
-target is not met with any confidence, since 26 % was measured on an M4 Pro. Both are for Stage 8, where
-the from-source engine build lets the surface follow the window instead of the screen.
+Reading the Stage 8 numbers. "Profile build" is the Debug configuration compiled with optimisation; on
+the plain Debug build the same playback measured about two points of CPU higher. Scrolling is measured
+by how late a 120 Hz timer on the main thread fires while the list is moved under it: a tick 8 ms late
+is a missed frame at 120 Hz. It understates work that fits between two ticks and says nothing about the
+window server. Where playback memory goes at 4K HDR (about 520 MB): the decoder's frames, eleven of
+24 MB each (inherent to 10-bit 4K with HEVC's reference frames); the three swapchain images, 98 MB; a
+fixed 190 MB of GPU memory that is not explained (see the Stage 8 notes); 120 to 170 MB of heap; and the
+app itself, about 70 MB.
+
+**The Stage 4 reading of where memory goes was wrong**: it put about 290 MB down to canvas-sized
+textures. Only the swapchain depends on the canvas (measured by changing the canvas size); the "under
+30 % on an M1" CPU target remains unverified for want of an M1.
 
 Reading the Stage 3 numbers: all on an M4 Pro, so the "under 30 % on an M1" target is not verified, and
 CPU is a share of one core with the window in the background. Playback memory is inside the 600 MB
@@ -625,5 +737,5 @@ is met most of the time while artwork streams in but not always (run 2); that is
 many image updates at once, and it is the first thing to look at in Stage 8. Scrolling itself has not
 been measured.
 
-Not yet measured: a true cold launch (after reboot or `sudo purge`), scrolling frame times, and the
-Allocations instrument (footprint and `leaks` were used instead).
+Not yet measured: a true cold launch (after reboot or `sudo purge`), anything on an M1, and the
+Allocations instrument (footprint, `heap`, `vmmap` and `leaks` were used instead).

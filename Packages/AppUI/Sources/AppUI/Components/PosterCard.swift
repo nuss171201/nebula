@@ -76,24 +76,6 @@ struct PosterCard: View {
     }
 }
 
-/// A horizontally scrolling strip of poster cards.
-struct PosterStrip: View {
-    let items: [MetaItem]
-
-    var body: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: 14) {
-                ForEach(items) { item in
-                    PosterCard(item: item)
-                }
-            }
-            .padding(.horizontal, 24)
-        }
-        .scrollIndicators(.hidden)
-        .frame(height: PosterCard.rowHeight)
-    }
-}
-
 /// An inline failure message with a way to try again.
 struct RetryMessage: View {
     let message: String

@@ -9,6 +9,9 @@
 #   hdr10-hevc-4k60.mkv     HEVC Main10 2160p60, BT.2020 / PQ, HDR10 mastering metadata + AAC.
 #                           The picture is an SDR test pattern tagged as HDR10: it exercises the
 #                           10-bit / HDR pipeline, it is not colour-accurate HDR content.
+#   hdr10-hevc-4k24-long.mkv  The same kind of picture at 24 frames a second for two and a half minutes
+#                           (about 20 Mbit/s): a film's frame rate, and long enough for the player's
+#                           stream cache to fill, which the ten-second sample never does.
 #   multi-track.mkv         H.264 720p with five audio tracks, two embedded subtitle tracks
 #                           and chapters:
 #                             a:0 AC-3 5.1    lang=fra  title "Français"
@@ -58,6 +61,18 @@ if needs hdr10-hevc-4k60.mkv; then
         -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc \
         -c:a aac -b:a 128k -ac 2 -metadata:s:a:0 language=eng \
         "$OUT/hdr10-hevc-4k60.mkv"
+fi
+
+if needs hdr10-hevc-4k24-long.mkv; then
+    echo "==> hdr10-hevc-4k24-long.mkv (4K HEVC 10-bit, 150 s; this one takes several minutes)"
+    MASTER="G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,50)"
+    "${FF[@]}" -f lavfi -i "testsrc2=size=3840x2160:rate=24:duration=150" \
+        -f lavfi -i "sine=frequency=330:sample_rate=48000:duration=150" \
+        -c:v libx265 -preset ultrafast -crf 22 -pix_fmt yuv420p10le -tag:v hvc1 \
+        -x265-params "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:master-display=$MASTER:max-cll=1000,400:hdr10=1:repeat-headers=1" \
+        -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc \
+        -c:a aac -b:a 128k -ac 2 -metadata:s:a:0 language=eng \
+        "$OUT/hdr10-hevc-4k24-long.mkv"
 fi
 
 if needs long-low-res.mp4; then

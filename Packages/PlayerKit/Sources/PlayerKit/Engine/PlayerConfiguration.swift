@@ -263,6 +263,15 @@ public struct PlayerConfiguration: Sendable, Equatable {
             // themselves, also from the folders people usually keep them in. One spelling of each
             // folder: on the usual case-insensitive disk "subs" and "Subs" are the same folder, and
             // listing both loads every file in it twice.
+            // What is kept in memory of a stream, ahead of the playhead and behind it. The engine's
+            // own figures (150 MiB and 50 MiB, the unused part of the first lent to the second)
+            // put a 4K HDR stream near 800 MB of memory; with these it stays near 520 MB, with
+            // about 12 seconds in hand at 32 Mbit/s and a minute or more at ordinary bit rates.
+            // Torrents are also on disk by then, so a seek back costs no network either way.
+            // An mpv.conf can set them differently.
+            ("demuxer-max-bytes", "48MiB"),
+            ("demuxer-max-back-bytes", "8MiB"),
+            ("demuxer-donate-buffer", "no"),
             ("sub-auto", "fuzzy"),
             ("sub-file-paths", "Subs:Subtitles"),
         ]

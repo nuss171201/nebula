@@ -15,7 +15,11 @@ cd "$(dirname "$0")/.."
 SECONDS_AFTER="${1:-8}"
 shift $(( $# > 0 ? 1 : 0 ))
 
-APP="$(find build/DerivedData/Build/Products/Release -maxdepth 1 -name '*.app' 2>/dev/null | head -1)"
+# PROFILE_BUILD=1 uses the optimised build with launch arguments (Scripts/build-profile.sh),
+# for profiling a state that only a launch argument can open (playback, scrolling).
+PRODUCTS="build/DerivedData/Build/Products/Release"
+[[ -n "${PROFILE_BUILD:-}" ]] && PRODUCTS="build/DerivedData-Profile/Build/Products/Debug"
+APP="$(find "$PRODUCTS" -maxdepth 1 -name '*.app' 2>/dev/null | head -1)"
 [[ -d "$APP" ]] || { echo "No Release build found. Run: Scripts/ci.sh --release" >&2; exit 1; }
 APP="$(cd "$APP" && pwd)"
 PLIST="$APP/Contents/Info.plist"

@@ -24,7 +24,9 @@ ENGINE_OPTIONS="loop-file=inf${3:+,$3}"
 # Never hand the app a file inside ~/Documents: macOS would ask the user for permission.
 MEDIA="$(Scripts/stage-media.sh "$MEDIA")"
 
-APP="$(find build/DerivedData/Build/Products/Debug -maxdepth 1 -name '*.app' 2>/dev/null | head -1)"
+# PROFILE_BUILD=1 uses the optimised build with launch arguments (Scripts/build-profile.sh).
+PRODUCTS="build/DerivedData${PROFILE_BUILD:+-Profile}/Build/Products/Debug"
+APP="$(find "$PRODUCTS" -maxdepth 1 -name '*.app' 2>/dev/null | head -1)"
 [[ -d "$APP" ]] || { echo "No Debug build found. Run Scripts/ci.sh first." >&2; exit 1; }
 APP="$(cd "$APP" && pwd)"
 PLIST="$APP/Contents/Info.plist"
@@ -39,7 +41,7 @@ trap quit_app EXIT
 
 quit_app
 # The Add-ons section keeps the main window quiet, so the numbers are the player's.
-open -g "$APP" --args -silent YES -section addons -engine "$ENGINE_OPTIONS" -play "$MEDIA"
+open -g "$APP" --args -silent YES -section addons -engine "$ENGINE_OPTIONS" -play "$MEDIA" -stats "$((SECONDS_TO_SAMPLE + 2))"
 PID=""
 for _ in $(seq 1 50); do
     PID="$(pgrep -f "$BINARY" | head -1 || true)"
@@ -55,12 +57,18 @@ top -l $((SECONDS_TO_SAMPLE / 2 + 1)) -s 2 -pid "$PID" -stats cpu >"$TOP_OUTPUT"
 TOP_PID=$!
 # Memory while it plays: the largest of a few readings taken alongside the CPU samples.
 FOOTPRINT_MB=0
+READINGS=()
 while kill -0 "$TOP_PID" 2>/dev/null; do
     reading="$(footprint "$PID" 2>/dev/null | awk '/TOTAL/ {print ($2 == "GB") ? $1 * 1024 : $1; exit}')"
     reading="${reading%.*}"
-    [[ -n "$reading" && "$reading" -gt "$FOOTPRINT_MB" ]] && FOOTPRINT_MB="$reading"
+    if [[ -n "$reading" ]]; then
+        READINGS+=("$reading")
+        [[ "$reading" -gt "$FOOTPRINT_MB" ]] && FOOTPRINT_MB="$reading"
+    fi
     sleep 1.5
 done
+# The last third of the readings: what it settles at once caches have filled.
+SETTLED_MB="$(printf '%s\n' ${READINGS[@]+"${READINGS[@]}"} | tail -n "$(( (${#READINGS[@]} + 2) / 3 ))" | sort -n | awk '{v[NR] = $1} END {if (NR) print v[int((NR + 1) / 2)]; else print "?"}')"
 wait "$TOP_PID" 2>/dev/null || true
 # top pads values below 10 with spaces, so the test is on the field, not on the whole line.
 CPU_SAMPLES="$(awk 'NF == 1 && $1 ~ /^[0-9.]+$/ {print $1}' "$TOP_OUTPUT" | tail -n +2)"
@@ -77,9 +85,14 @@ DECODER="$(/usr/bin/log show --last "$((SECONDS_TO_SAMPLE + 20))s" --style compa
     --predicate "processID == $PID AND subsystem == \"$BUNDLE_ID\" AND category == \"player\"" 2>/dev/null \
     | grep -oE 'decoder=[a-z-]+' | tr '\n' ' ' || true)"
 
+STATS="$(/usr/bin/log show --last "$((SECONDS_TO_SAMPLE + 20))s" --style compact \
+    --predicate "processID == $PID AND subsystem == \"$BUNDLE_ID\" AND category == \"player\"" 2>/dev/null \
+    | grep -oE 'stats .*' | tail -1 | sed 's/^stats //' || true)"
+
 echo "media:        $(basename "$MEDIA")${ENGINE_OPTIONS:+   [engine: $ENGINE_OPTIONS]}"
 echo "first frame:  ${FIRST_FRAME:-not reported}"
 echo "decoder:      ${DECODER:-not reported}"
 echo "cpu:          average ${CPU_AVG}% of one core, peak ${CPU_MAX:-?}% (sampled every 2 s for ${SECONDS_TO_SAMPLE} s)"
-echo "memory:       footprint ${FOOTPRINT:-unknown} at most while playing"
+echo "memory:       footprint ${FOOTPRINT:-unknown} at most while playing, ${SETTLED_MB} MB towards the end"
+echo "frames:       ${STATS:-not reported}"
 echo "leaks:        ${LEAKS:-not available}"

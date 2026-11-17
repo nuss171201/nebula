@@ -63,6 +63,7 @@ public struct RootView: View {
             Text(model.player.errorMessage ?? "")
         }
         .environment(\.imagePipeline, model.dependencies.imagePipeline)
+        .environment(\.openTitle, OpenTitleAction(owner: model) { [model] in model.path.append(MediaRoute(item: $0)) })
         .frame(minWidth: 900, minHeight: 560)
         .onAppear {
             model.firstScreenDidAppear()
@@ -108,7 +109,7 @@ public struct RootView: View {
                     showsContinueWatching: model.settings.settings.showsContinueWatching
                 ) { model.open($0) }
             case .discover:
-                DiscoverView(model: model.discover, registry: model.registry)
+                DiscoverView(model: model.discover, registry: model.registry) { model.path.append(MediaRoute(item: $0)) }
             case .addons:
                 AddonsView(model: model.addons)
             case .library:

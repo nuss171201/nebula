@@ -2,6 +2,7 @@
     import AppUI
     import Foundation
     import MediaCore
+    import os
     import PlayerKit
 
     /// Debug-only launch arguments that open the app in a given state, so a screen can
@@ -24,6 +25,7 @@
     ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -episode tt0386676:1:1
     ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -addToLibrary YES -markWatched tt0386676:1:1
     ///     open -g Orbit.app --args -settings shortcuts   (general, playback, streaming, shortcuts, advanced)
+    ///     open -g Orbit.app --args -section discover -autoscroll 8   (scrolls by itself; see DebugAutoscroll)
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -52,6 +54,16 @@
             if let name = defaults.string(forKey: "settings"), let tab = SettingsTab(rawValue: name) {
                 model.settings.selectedTab = tab
                 model.opensSettingsAtLaunch = true
+            }
+            if defaults.object(forKey: "autoscroll") != nil {
+                // `-autoscroll <seconds>` scrolls the screen's list by itself, three seconds after
+                // launch, at `-scrollSpeed <points per second>` (2500 unless given).
+                let speed = defaults.object(forKey: "scrollSpeed") != nil ? defaults.double(forKey: "scrollSpeed") : 2500
+                DebugAutoscroll.start(
+                    after: defaults.object(forKey: "scrollDelay") != nil ? defaults.double(forKey: "scrollDelay") : 3,
+                    speed: CGFloat(max(speed, 100)),
+                    duration: max(defaults.double(forKey: "autoscroll"), 1)
+                )
             }
             if let query = defaults.string(forKey: "search") {
                 model.search.query = query
@@ -120,6 +132,20 @@
             }
         }
 
+        /// `-stats <seconds>`: that long after launch, logs how many frames were dropped or shown
+        /// late and how much the engine has buffered. For Scripts/measure-playback.sh.
+        @MainActor
+        private static func logStats(of player: PlayerCoordinator, after delay: Double) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delay))
+                guard let model = player.player else { return }
+                let names = ["frame-drop-count", "vo-delayed-frame-count", "decoder-frame-drop-count", "demuxer-cache-duration"]
+                let values = names.map { "\($0)=\(model.engineProperty($0) ?? "?")" }.joined(separator: " ")
+                Logger(subsystem: Branding.current.bundleIdentifier, category: PlayerModel.logCategory)
+                    .notice("stats \(values, privacy: .public)")
+            }
+        }
+
         /// The arguments that concern the player: what to play, and which of its panels to show.
         @MainActor
         private static func applyPlayerOptions(to player: PlayerCoordinator, defaults: UserDefaults) {
@@ -144,6 +170,9 @@
                     try? await Task.sleep(for: .seconds(2))
                     player.searchSubtitleTitles(name)
                 }
+            }
+            if defaults.object(forKey: "stats") != nil {
+                logStats(of: player, after: max(defaults.double(forKey: "stats"), 1))
             }
             if let keys = defaults.string(forKey: "keys") {
                 // After the file has had time to open, as most commands need one.
