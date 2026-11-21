@@ -1,5 +1,6 @@
 import AppUI
 import MediaCore
+import os
 import PlayerKit
 import SwiftUI
 
@@ -81,6 +82,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var waiting: [URL] = []
+
+    /// A second copy of the app hands over to the first and quits (`SingleInstance` says why).
+    func applicationWillFinishLaunching(_: Notification) {
+        var usesOwnProfile = false
+        #if DEBUG
+            usesOwnProfile = DebugLaunchOptions.profileDirectory != nil
+        #endif
+        let running = NSWorkspace.shared.runningApplications.map {
+            SingleInstance.RunningApp(processIdentifier: $0.processIdentifier, bundleIdentifier: $0.bundleIdentifier, launchDate: $0.launchDate)
+        }
+        guard let other = SingleInstance.instanceToYieldTo(
+            bundleIdentifier: Branding.current.bundleIdentifier,
+            ownProcess: ProcessInfo.processInfo.processIdentifier,
+            usesOwnProfile: usesOwnProfile,
+            running: running
+        ) else { return }
+        #if !DEBUG
+            // Opening the app again means "show me the app". A check must not take the screen, so
+            // a Debug build only steps aside.
+            NSRunningApplication(processIdentifier: other.processIdentifier)?.activate()
+        #endif
+        Logger(subsystem: Branding.current.bundleIdentifier, category: "launch")
+            .notice("another copy is running (pid \(other.processIdentifier, privacy: .public)); this one is quitting")
+        exit(0)
+    }
 
     func application(_: NSApplication, open urls: [URL]) {
         if let onOpen {

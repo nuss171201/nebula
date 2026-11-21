@@ -46,6 +46,7 @@ public final class DetailModel {
         self.library = library
         streams = StreamListModel(client: client, memory: streamMemory)
         meta = route.preview
+        streams.setRuntime(RuntimeText.seconds(in: route.preview?.runtime))
     }
 
     // MARK: - Library and watched marks
@@ -220,6 +221,7 @@ public final class DetailModel {
 
     private func apply(_ full: MetaItem) {
         meta = full
+        streams.setRuntime(RuntimeText.seconds(in: full.runtime))
         let numbers = Set(full.videos.compactMap(\.season))
         seasons = numbers.filter { $0 != 0 }.sorted() + (numbers.contains(0) ? [0] : [])
         if selectedSeason.map(seasons.contains) != true {

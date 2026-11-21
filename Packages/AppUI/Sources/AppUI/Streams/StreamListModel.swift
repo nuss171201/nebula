@@ -19,11 +19,16 @@ public final class StreamListModel {
     public private(set) var hasProviders = false
     /// Add-ons that did not answer.
     public private(set) var failedAddonNames: [String] = []
-    /// The stream to offer first: the one most like what was played last time for this title,
-    /// else the first of the preferred quality, if there is either.
+    /// The streams that can be played by pressing Play, most suitable first (`StreamPicker`).
+    public private(set) var picks: [StreamPick] = []
+    /// The stream the full list shows first: the picker's choice, when it has one worth pointing out.
     public private(set) var suggested: StreamChoice?
-    /// Why it is offered first.
-    public private(set) var suggestionTitle = "Like Last Time"
+    /// Why it is shown first.
+    public private(set) var suggestionTitle = "Recommended"
+    /// A Play button that chooses, or the whole list.
+    public var presentation = StreamListStyle.playButton
+    /// Whether the whole list is showing under the Play button.
+    public var showsAllStreams = false
     public var sort: StreamSort = .quality {
         didSet {
             if sort != oldValue {
@@ -37,8 +42,8 @@ public final class StreamListModel {
     /// The video the list is for.
     public private(set) var videoID: String?
 
-    /// The quality to suggest when nothing was played for this title before; `nil` suggests nothing.
-    @ObservationIgnored public var preferredQuality: StreamQuality?
+    /// What the picker goes by, apart from what was played last time (which this model looks up itself).
+    @ObservationIgnored public private(set) var context = StreamPicker.Context()
     @ObservationIgnored private let client: AddonClient
     @ObservationIgnored private let memory: (any StreamChoiceMemory)?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
@@ -65,6 +70,8 @@ public final class StreamListModel {
         groups = []
         failedAddonNames = []
         suggested = nil
+        picks = []
+        showsAllStreams = false
 
         let providers = addons.serving(resource: ManifestResource.stream, type: type, id: videoID)
         hasProviders = !providers.isEmpty
@@ -108,6 +115,21 @@ public final class StreamListModel {
         }
     }
 
+    /// What the picker should go by: the user's limits and languages, and the connection's speed.
+    public func configure(_ context: StreamPicker.Context) {
+        let runtime = self.context.runtime
+        self.context = context
+        self.context.runtime = context.runtime ?? runtime
+        arrange()
+    }
+
+    /// How long the title runs, once the catalog has said: it decides what each stream needs.
+    public func setRuntime(_ seconds: Double?) {
+        guard let seconds, seconds != context.runtime else { return }
+        context.runtime = seconds
+        arrange()
+    }
+
     /// Forgets the list (the page moved on to another video, or away).
     public func clear() {
         loadTask?.cancel()
@@ -117,6 +139,8 @@ public final class StreamListModel {
         groups = []
         failedAddonNames = []
         suggested = nil
+        picks = []
+        showsAllStreams = false
         phase = .idle
     }
 
@@ -137,21 +161,18 @@ public final class StreamListModel {
         await loadTask?.value
     }
 
-    /// The first stream of the preferred quality, in the order the add-ons gave them; `nil`
-    /// when no quality is preferred or no stream has it.
-    static func preferred(_ quality: StreamQuality?, in choices: [StreamChoice]) -> StreamChoice? {
-        guard let quality else { return nil }
-        return choices.first { $0.quality == quality }
-    }
-
     private func arrange() {
         groups = StreamGroup.groups(of: choices, by: sort)
-        if let match = lastChoice?.bestMatch(in: choices) {
-            suggested = match
-            suggestionTitle = "Like Last Time"
+        var context = context
+        context.lastChoice = lastChoice
+        picks = StreamPicker.picks(from: choices, context: context)
+        // Worth pointing out in the full list only if it should simply play; and only when
+        // there is a choice to make.
+        if let best = picks.first, best.standing <= .fewPeers, choices.count > 1 {
+            suggested = best.choice
+            suggestionTitle = lastChoice?.bestMatch(in: choices)?.id == best.id ? "Like Last Time" : "Recommended"
         } else {
-            suggested = Self.preferred(preferredQuality, in: choices)
-            suggestionTitle = "Your Preferred Quality"
+            suggested = nil
         }
     }
 }

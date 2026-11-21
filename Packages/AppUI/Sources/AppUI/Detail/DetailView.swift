@@ -8,9 +8,13 @@ struct DetailScreen: View {
     private let streamPlayer: StreamPlayer
     private let library: LibraryCenter
     private let appIdentifier: String
+    private let playBest: @MainActor (DetailModel) -> Void
+    private let didAppear: @MainActor (DetailModel) -> Void
 
     init(route: MediaRoute, appModel: AppModel) {
         _model = State(initialValue: appModel.detailModel(for: route))
+        playBest = { [appModel] in appModel.playBestStream(of: $0) }
+        didAppear = { [appModel] in appModel.detailDidAppear($0) }
         registry = appModel.registry
         streamPlayer = appModel.streamPlayer
         library = appModel.library
@@ -22,10 +26,13 @@ struct DetailScreen: View {
             guard let video = model.streamVideo else { return }
             model.streams.didChoose(choice)
             streamPlayer.play(choice, for: video)
+        }, playBest: {
+            playBest(model)
         }, retry: {
             Task { await model.load(addons: registry.addons) }
         })
         .task(id: registry.addons.map(\.id)) {
+            didAppear(model)
             await model.load(addons: registry.addons)
         }
         // Watched marks and progress change while the page is up: the player saves as it goes.
@@ -39,6 +46,8 @@ struct DetailView: View {
     @Bindable var model: DetailModel
     let appIdentifier: String
     var playStream: (StreamChoice) -> Void = { _ in }
+    /// Plays the stream the app thinks best.
+    var playBest: () -> Void = {}
     let retry: () -> Void
 
     @State private var trailer: YouTubeVideoID?
@@ -60,7 +69,7 @@ struct DetailView: View {
                     credits
                     status
                     if model.isSingleVideo {
-                        StreamListView(model: model.streams, play: playStream)
+                        StreamListView(model: model.streams, play: playStream, playBest: playBest)
                     }
                     videos
                 }
@@ -244,7 +253,7 @@ struct DetailView: View {
         .accessibilityHint(isSelected ? "Hides this episode's streams" : "Shows this episode's streams")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         if isSelected {
-            StreamListView(model: model.streams, play: playStream)
+            StreamListView(model: model.streams, play: playStream, playBest: playBest)
                 .padding(.leading, 190)
                 .padding(.bottom, 8)
         }

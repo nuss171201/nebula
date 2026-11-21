@@ -44,6 +44,12 @@ done
 set -- ${ARGS[@]+"${ARGS[@]}"}
 
 quit_app
+# Without a profile of its own the app would share the user's library, and a second copy quits
+# by itself in favour of one that is open.
+if [[ " $* " != *" -profile "* ]] && pgrep -f "/Contents/MacOS/$(basename "$BINARY")( |\$)" >/dev/null 2>&1; then
+    echo "The app is open. Pass -profile <folder>, or quit it first." >&2
+    exit 1
+fi
 # Never leave the app running behind the user's back, even if the capture fails.
 [[ "${KEEP_RUNNING:-0}" == "1" ]] || trap quit_app EXIT
 open -g "$APP" --args "$@"

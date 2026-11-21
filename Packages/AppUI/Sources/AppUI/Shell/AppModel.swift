@@ -108,6 +108,9 @@ public final class AppModel {
             nextEpisode: nextEpisode,
             configFolder: dependencies.engineConfigFolder
         )
+        streamPlayer.onSessionSpeed = { [settings] rate in
+            settings.noteStreamSession(bestRate: rate)
+        }
         selection = initialSection
         currentSection = initialSection
         usesStartSection = initialSection == .home
@@ -160,10 +163,12 @@ public final class AppModel {
             library: library
         )
         model.streams.sort = settings.settings.streamSort
-        model.streams.preferredQuality = settings.settings.preferredQuality
+        model.streams.presentation = settings.settings.streamListStyle
+        model.streams.configure(settings.pickerContext)
         // Arriving from Continue Watching: go straight to the episode in question.
         model.initialVideoID = pendingEpisodes.removeValue(forKey: route.id)
-        latestDetail = model
+        // Not noted as the page on screen here: SwiftUI calls this more often than it shows a
+        // page (see `detailDidAppear`).
         return model
     }
 
@@ -183,6 +188,31 @@ public final class AppModel {
         let choice = detail.streams.choices[index]
         detail.streams.didChoose(choice)
         streamPlayer.play(choice, for: video)
+        return true
+    }
+
+    /// A title's page is on screen with this model. SwiftUI may build several models for one
+    /// page and keep only the first, so the page says which one it kept; without this the
+    /// helpers below sometimes held one that was never shown.
+    public func detailDidAppear(_ detail: DetailModel) {
+        latestDetail = detail
+    }
+
+    /// Plays what the picker thinks best of a page's streams, as its Play button does: the
+    /// first that starts, of the three most suitable.
+    public func playBestStream(of detail: DetailModel) {
+        guard let video = detail.streamVideo else { return }
+        streamPlayer.playAutomatically(detail.streams.picks.map(\.choice), for: video) { [weak detail] choice in
+            detail?.streams.didChoose(choice)
+        }
+    }
+
+    /// Presses Play on the detail page that was opened last. Returns whether there was
+    /// anything to choose from. For checking the app without the pointer.
+    @discardableResult
+    public func pressPlayOnShownTitle() -> Bool {
+        guard let detail = latestDetail, !detail.streams.picks.isEmpty else { return false }
+        playBestStream(of: detail)
         return true
     }
 

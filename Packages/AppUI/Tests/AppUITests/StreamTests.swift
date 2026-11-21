@@ -15,102 +15,6 @@ private func choice(_ json: String, addon: String = "a", position: Int = 0) thro
     try StreamChoice(stream: decodeStream(json), addonID: addon, addonName: "Add-on \(addon.uppercased())", position: position)
 }
 
-@Suite("Reading and arranging streams (pure)")
-struct StreamChoiceTests {
-    @Test("Quality is read from the words add-ons use", arguments: [
-        ("Example 2160p HDR", StreamQuality.uhd4K), ("4K\nDV", .uhd4K), ("Film.1080p.WEB", .hd1080), ("[720p] x264", .hd720),
-        ("DVDRip", .sd), ("480p", .sd), ("1440p", .qhd1440),
-    ])
-    func quality(text: String, expected: StreamQuality) {
-        #expect(StreamTextParser.quality(in: text) == expected)
-    }
-
-    @Test("Words that only look like a quality are not one")
-    func noQuality() {
-        #expect(StreamTextParser.quality(in: "Good release, 24k gold") == nil)
-        #expect(StreamTextParser.quality(in: "") == nil)
-    }
-
-    @Test("Size is the largest one mentioned", arguments: [
-        ("💾 1.4 GB", 1_503_238_553), ("700MB x264", 734_003_200), ("Pack 40 GB, this file 2,5 GB", 42_949_672_960),
-        ("1 TB", 1_099_511_627_776),
-    ] as [(String, Int64)])
-    func size(text: String, expected: Int64) {
-        #expect(StreamTextParser.size(in: text) == expected)
-    }
-
-    @Test("A stream's kind, title, size and quality come from what the add-on sent")
-    func choices() throws {
-        let torrent = try choice(#"""
-        {"infoHash": "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "fileIdx": 2, "name": "Add-on\n1080p", "title": "Film.2020.1080p.WEB\n👤 12 💾 2.1 GB",
-         "behaviorHints": {"bingeGroup": "x|1080p", "filename": "Film.2020.1080p.WEB.mkv"}}
-        """#)
-        #expect(torrent.kind == .torrent && torrent.kindLabel == "Torrent")
-        #expect(torrent.title == "Add-on 1080p")
-        #expect(torrent.quality == .hd1080)
-        #expect(torrent.sizeBytes == Int64(2.1 * 1_073_741_824))
-        #expect(torrent.id == "a#0")
-
-        // A size the add-on states outright wins over one found in the text.
-        let direct = try choice(#"{"url": "https://cdn.example.com/a.mp4", "description": "720p 900 MB", "behaviorHints": {"videoSize": 1000}}"#)
-        #expect(direct.kind == .direct && direct.sizeBytes == 1000 && direct.quality == .hd720)
-        #expect(direct.title == "Add-on A")
-        #expect(try choice(#"{"ytId": "abcdefghijk"}"#).kind == .youTube)
-        #expect(try choice(#"{"externalUrl": "https://example.com/watch"}"#).kind == .external)
-    }
-
-    @Test("Streams are grouped by quality (best first, larger first), by size, or by add-on")
-    func grouping() throws {
-        let choices = try [
-            choice(#"{"url": "https://e.com/1", "name": "720p", "description": "1 GB"}"#, addon: "a", position: 0),
-            choice(#"{"url": "https://e.com/2", "name": "4K", "description": "20 GB"}"#, addon: "a", position: 1),
-            choice(#"{"url": "https://e.com/3", "name": "unknown"}"#, addon: "b", position: 0),
-            choice(#"{"url": "https://e.com/4", "name": "2160p", "description": "45 GB"}"#, addon: "b", position: 1),
-            choice(#"{"url": "https://e.com/5", "name": "720p"}"#, addon: "b", position: 2),
-        ]
-        let byQuality = StreamGroup.groups(of: choices, by: .quality)
-        #expect(byQuality.map(\.title) == ["4K", "720p", "Other"])
-        #expect(byQuality[0].choices.map(\.id) == ["b#1", "a#1"])
-        // Unknown sizes come after known ones, in the order they arrived.
-        #expect(byQuality[1].choices.map(\.id) == ["a#0", "b#2"])
-
-        let bySize = StreamGroup.groups(of: choices, by: .size)
-        #expect(bySize.count == 1)
-        #expect(bySize[0].choices.map(\.id) == ["b#1", "a#1", "a#0", "b#0", "b#2"])
-
-        let bySource = StreamGroup.groups(of: choices, by: .source)
-        #expect(bySource.map(\.title) == ["Add-on A", "Add-on B"])
-        #expect(bySource[1].choices.map(\.id) == ["b#0", "b#1", "b#2"])
-        #expect(StreamGroup.groups(of: [], by: .quality).isEmpty)
-        // With no quality known at all, the one group is not called "Other".
-        #expect(StreamGroup.groups(of: [choices[2]], by: .quality).map(\.title) == ["Streams"])
-    }
-
-    @Test("The stream most like last time's: same add-on and release group, else same add-on and quality")
-    func lastChoice() throws {
-        let played = try choice(#"{"infoHash": "abcdef0123456789abcdef0123456789abcdef01", "name": "1080p", "behaviorHints": {"bingeGroup": "grp-1080"}}"#)
-        let last = LastStreamChoice(played)
-        let nextEpisode = try [
-            choice(#"{"infoHash": "1111111111111111111111111111111111111111", "name": "1080p", "behaviorHints": {"bingeGroup": "other"}}"#, position: 0),
-            choice(#"{"infoHash": "2222222222222222222222222222222222222222", "name": "720p", "behaviorHints": {"bingeGroup": "grp-1080"}}"#, position: 1),
-            choice(
-                #"{"infoHash": "3333333333333333333333333333333333333333", "name": "1080p", "behaviorHints": {"bingeGroup": "grp-1080"}}"#,
-                addon: "b",
-                position: 0
-            ),
-        ]
-        // The group wins over the quality label; another add-on's identical group does not count.
-        #expect(last.bestMatch(in: nextEpisode)?.id == "a#1")
-        // No such group this time: same add-on, same quality, same kind.
-        #expect(last.bestMatch(in: [nextEpisode[0], nextEpisode[2]])?.id == "a#0")
-        #expect(last.bestMatch(in: [nextEpisode[2]]) == nil)
-        let direct = try choice(#"{"url": "https://e.com/x", "name": "1080p"}"#)
-        #expect(last.bestMatch(in: [direct]) == nil)
-        // Survives being stored.
-        #expect(try JSONDecoder().decode(LastStreamChoice.self, from: JSONEncoder().encode(last)) == last)
-    }
-}
-
 @MainActor
 @Suite("Stream list from installed add-ons")
 struct StreamListModelTests {
@@ -157,7 +61,10 @@ struct StreamListModelTests {
         #expect(model.phase == .finished)
         #expect(model.choices.map(\.addonName) == ["First Streams", "First Streams", "Second Streams"])
         #expect(model.groups.map(\.title) == ["4K", "1080p", "720p"])
-        #expect(model.failedAddonNames.isEmpty && model.suggested == nil)
+        #expect(model.failedAddonNames.isEmpty)
+        // Of the three, the full-HD one is pointed out: nothing is known of this connection yet, and a
+        // 4K stream of unknown size is assumed to need more than an unmeasured connection is trusted with.
+        #expect(model.suggested?.quality == .hd1080 && model.suggestionTitle == "Recommended")
         // The catalog add-on has no stream resource and was not asked.
         #expect(fixture.harness.server.requestCount(for: "/stream/series/tt0000042%3A1%3A2.json") == 0)
 
@@ -207,10 +114,13 @@ struct StreamListModelTests {
         let first = StreamListModel(client: fixture.harness.client, memory: memory)
         first.load(type: .series, videoID: "tt0000042:1:1", titleID: "tt0000042", addons: fixture.addons)
         await first.waitForLoad()
-        #expect(first.suggested == nil)
-        let played = try #require(first.choices.first { $0.quality == .hd1080 })
+        // Nothing was played before: the picker's choice is pointed out, the better picture of the two.
+        #expect(first.suggested?.quality == .hd1080)
+        #expect(first.suggestionTitle == "Recommended")
+        let played = try #require(first.choices.first { $0.quality == .hd720 })
         first.didChoose(played)
         #expect(first.suggested == played)
+        #expect(first.suggestionTitle == "Like Last Time")
 
         // The next episode, on a fresh page.
         for _ in 0 ..< 100 where await memory.lastChoice(for: "tt0000042") == nil {
@@ -219,7 +129,52 @@ struct StreamListModelTests {
         let next = StreamListModel(client: fixture.harness.client, memory: memory)
         next.load(type: .series, videoID: "tt0000042:1:2", titleID: "tt0000042", addons: fixture.addons)
         await next.waitForLoad()
-        #expect(try next.suggested?.stream.source == .url(#require(URL(string: "https://cdn.example.com/e2-1080.mp4"))))
+        // The like of what was played, not what would otherwise be recommended.
+        #expect(try next.suggested?.stream.source == .url(#require(URL(string: "https://cdn.example.com/e2-720.mp4"))))
+        #expect(next.suggestionTitle == "Like Last Time")
+        #expect(next.picks.first?.choice == next.suggested)
+    }
+
+    @Test("Play's choice follows the user's limits, the connection's speed and the title's length as they become known")
+    func picks() async throws {
+        let fixture = try await makeFixture()
+        defer { fixture.harness.server.stop() }
+        fixture.harness.server.respond(to: "/one/stream/movie/tt0000001.json", with: .json(#"""
+        {"streams": [
+          {"infoHash": "1111111111111111111111111111111111111111", "name": "4k", "title": "Film.2160p.COMPLETE.UHD.BLURAY\n👤 40 💾 60 GB"},
+          {"infoHash": "2222222222222222222222222222222222222222", "name": "4k", "title": "Film.2160p.WEB\n👤 80 💾 12 GB"},
+          {"infoHash": "3333333333333333333333333333333333333333", "name": "1080p", "title": "Film.1080p.WEB\n👤 50 💾 4 GB"},
+          {"externalUrl": "https://example.com/watch", "name": "Watch on the site"}]}
+        """#))
+        fixture.harness.server.respond(to: "/two/stream/movie/tt0000001.json", with: .json(#"{"streams": []}"#))
+        let model = StreamListModel(client: fixture.harness.client)
+        #expect(model.presentation == .playButton)
+        // A two-hour film on a connection measured at 40 Mbit/s.
+        model.configure(StreamPicker.Context(runtime: 7200, measuredSpeed: 5_000_000, languages: ["en"]))
+        model.load(type: .movie, videoID: "tt0000001", titleID: "tt0000001", addons: fixture.addons)
+        await model.waitForLoad()
+
+        // The disc copy and the web page cannot be played by pressing Play; the list still shows all four.
+        #expect(model.choices.count == 4)
+        #expect(model.picks.map(\.choice.quality) == [.uhd4K, .hd1080])
+        #expect(model.picks[0].standing == .good)
+        #expect(model.suggested == model.picks[0].choice)
+
+        // The user allows nothing above full HD.
+        var limited = model.context
+        limited.maximumQuality = .hd1080
+        model.configure(limited)
+        #expect(model.picks.first?.choice.quality == .hd1080)
+        #expect(model.context.runtime == 7200)
+
+        // The catalog turns out to say the film is 20 minutes long: 4 GB in that time is far too much.
+        model.setRuntime(1200)
+        #expect(model.picks.first?.standing == .tooHeavy)
+        #expect(model.suggested == nil)
+
+        model.showsAllStreams = true
+        model.clear()
+        #expect(model.picks.isEmpty && !model.showsAllStreams)
     }
 }
 

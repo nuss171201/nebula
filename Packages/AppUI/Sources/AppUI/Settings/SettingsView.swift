@@ -185,10 +185,30 @@ struct StreamingSettingsPane: View {
     var body: some View {
         Form {
             Section {
-                Picker("Preferred quality", selection: $model.settings.preferredQualityHeight) {
-                    Text("Best There Is").tag(Int?.none)
+                Picker("On a title's page, show", selection: $model.settings.streamListStyle) {
+                    ForEach(StreamListStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
+                Picker("Highest quality", selection: $model.settings.preferredQualityHeight) {
+                    Text("No Limit").tag(Int?.none)
                     ForEach(StreamQuality.allCases.reversed(), id: \.self) { quality in
                         Text(quality.label).tag(Int?.some(quality.rawValue))
+                    }
+                }
+                Picker("Largest size", selection: $model.settings.maximumStreamGigabytes) {
+                    Text("No Limit").tag(Int?.none)
+                    ForEach([2, 5, 10, 20, 40], id: \.self) { gigabytes in
+                        Text("\(gigabytes) GB").tag(Int?.some(gigabytes))
+                    }
+                }
+                LabeledContent("This connection") {
+                    HStack {
+                        Text(Self.speedText(model.measuredSpeed))
+                            .monospacedDigit()
+                        Button("Forget") { model.forgetMeasuredSpeed() }
+                            .disabled(model.measuredSpeed == nil)
+                            .help("Forget the measured speed, after changing connection for example")
                     }
                 }
                 Picker("Sort streams by", selection: $model.settings.streamSort) {
@@ -199,7 +219,11 @@ struct StreamingSettingsPane: View {
             } header: {
                 Text("Choosing a Stream")
             } footer: {
-                Text("Used to point out a stream when you have not played this title before. Nothing starts by itself.")
+                Text("""
+                Play chooses the best picture that should play without stopping: in your languages, within these \
+                limits, shared by enough people, and needing no more than this connection has been seen to manage. \
+                The speed is learned from the streams you play; nothing is tested behind your back.
+                """)
             }
 
             Section("Cache") {
@@ -268,6 +292,15 @@ private struct StepperRow<Value: Strideable>: View {
                     .accessibilityValue(valueText)
             }
         }
+    }
+}
+
+extension StreamingSettingsPane {
+    /// "38 Mbit/s", as connections are advertised; or that nothing is known yet.
+    nonisolated static func speedText(_ bytesPerSecond: Double?) -> String {
+        guard let bytesPerSecond, bytesPerSecond > 0 else { return "Not measured yet" }
+        let megabits = bytesPerSecond * 8 / 1_000_000
+        return megabits >= 10 ? "\(Int(megabits.rounded())) Mbit/s" : String(format: "%.1f Mbit/s", megabits)
     }
 }
 

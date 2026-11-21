@@ -45,8 +45,12 @@ public struct AppSettings: Sendable, Equatable, Codable {
 
     // MARK: Streams
 
-    /// The picture height to prefer when nothing was played before (2160, 1080, …); `nil` prefers the best there is.
+    /// A Play button that chooses the stream, or the full list to choose from.
+    public var streamListStyle = StreamListStyle.playButton
+    /// The highest picture quality Play may choose (2160, 1080, …); `nil` for no limit.
     public var preferredQualityHeight: Int?
+    /// The largest stream Play may choose, in gigabytes; `nil` for no limit.
+    public var maximumStreamGigabytes: Int?
     public var streamSort = StreamSort.quality
     /// Gigabytes of disk the stream cache may keep.
     public var cacheLimitGigabytes = 10.0
@@ -81,7 +85,9 @@ public struct AppSettings: Sendable, Equatable, Codable {
         nextEpisodeCountdown = read(.nextEpisodeCountdown, defaults.nextEpisodeCountdown)
         renderQuality = read(.renderQuality, defaults.renderQuality)
         readsEngineConfigFiles = read(.readsEngineConfigFiles, defaults.readsEngineConfigFiles)
+        streamListStyle = read(.streamListStyle, defaults.streamListStyle)
         preferredQualityHeight = try? container.decodeIfPresent(Int.self, forKey: .preferredQualityHeight)
+        maximumStreamGigabytes = (try? container.decodeIfPresent(Int.self, forKey: .maximumStreamGigabytes)).flatMap { $0 > 0 ? $0 : nil }
         streamSort = read(.streamSort, defaults.streamSort)
         cacheLimitGigabytes = read(.cacheLimitGigabytes, defaults.cacheLimitGigabytes)
         connectionsLimit = read(.connectionsLimit, defaults.connectionsLimit)
@@ -138,6 +144,17 @@ public struct AppSettings: Sendable, Equatable, Codable {
     public var preferredQuality: StreamQuality? {
         preferredQualityHeight.flatMap(StreamQuality.init(rawValue:))
     }
+
+    /// What Play goes by when it chooses a stream.
+    /// - Parameter measuredSpeed: The connection's speed as learned from earlier streams, in bytes a second.
+    public func pickerContext(measuredSpeed: Double?, systemLanguages: [String] = Locale.preferredLanguages) -> StreamPicker.Context {
+        StreamPicker.Context(
+            measuredSpeed: measuredSpeed,
+            languages: trackPreferences(systemLanguages: systemLanguages).audioLanguages,
+            maximumQuality: preferredQuality,
+            maximumSize: maximumStreamGigabytes.map { Int64($0) * 1_073_741_824 }
+        )
+    }
 }
 
 extension AppSection: Codable {}
@@ -155,6 +172,8 @@ public extension PlayerConfiguration.RenderQuality {
 enum SettingsKeys {
     static let app = SettingKey<AppSettings>("app.settings", default: AppSettings())
     static let playerDefaults = SettingKey<PlayerDefaults>("player.defaults", default: PlayerDefaults())
+    /// The connection's download speed as learned from streams (`ConnectionSpeed`), in bytes a second.
+    static let measuredSpeed = SettingKey<Double?>("stream.measuredSpeed", default: nil)
 }
 
 public extension TrackPreferences.SubtitleMode {

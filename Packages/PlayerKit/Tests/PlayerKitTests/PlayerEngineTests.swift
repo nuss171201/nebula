@@ -56,6 +56,34 @@ struct PlayerEngineTests {
         #expect(await eventually { player.state.phase == .playing && player.state.hasShownFirstFrame })
     }
 
+    @Test("Nothing the engine can load by itself is left on: every \"load-\" switch it has is off")
+    func nothingLoadsByItself() throws {
+        let player = try makePlayer()
+        defer { player.shutdown() }
+        // The engine's own list of options, so that a newer engine with a new built-in script fails here
+        // instead of quietly running it (four ran unnoticed until one of them crashed the app).
+        let options = try #require(player.engineProperty("options")).split(separator: ",").map(String.init)
+        #expect(options.count > 300)
+        let switches = options.filter { $0.hasPrefix("load-") }
+        #expect(switches.count >= 8)
+        for name in switches {
+            #expect(player.engineProperty("options/\(name)") == "no", "\(name) is on")
+        }
+        for name in ["osc", "ytdl", "config", "input-default-bindings", "input-vo-keyboard"] {
+            #expect(player.engineProperty("options/\(name)") == "no", "\(name) is on")
+        }
+        // And the reading means something: an engine told to load one says so.
+        let loose = try PlayerModel(configuration: PlayerConfiguration(
+            userAgent: "PlayerKitTests/1.0",
+            logSubsystem: "test.playerkit",
+            videoOutput: .none,
+            playsAudio: false,
+            additionalEngineOptions: [.init("load-select", "yes")]
+        ))
+        defer { loose.shutdown() }
+        #expect(loose.engineProperty("options/load-select") == "yes")
+    }
+
     @Test("Opens a local file, reports its duration and title, and the playhead advances")
     func playsLocalFile() async throws {
         let player = try makePlayer()

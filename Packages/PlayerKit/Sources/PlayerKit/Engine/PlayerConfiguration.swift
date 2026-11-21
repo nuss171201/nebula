@@ -244,10 +244,20 @@ public struct PlayerConfiguration: Sendable, Equatable {
             ("keep-open", "yes"),
             ("osc", "no"),
             ("ytdl", "no"),
+            // Every script the engine carries inside it has a switch of its own, and newer engines
+            // add more: "load-scripts" only covers scripts in folders. Left on, four of them ran
+            // in every player; one watches the list of audio devices, and the engine crashed in
+            // that watcher when a device came or went during a film. A test reads the engine's own
+            // list of options and fails if a new "load-" switch appears that is not set here.
             ("load-scripts", "no"),
             ("load-stats-overlay", "no"),
             ("load-osd-console", "no"),
+            ("load-console", "no"),
             ("load-auto-profiles", "no"),
+            ("load-select", "no"),
+            ("load-positioning", "no"),
+            ("load-commands", "no"),
+            ("load-context-menu", "no"),
             ("input-default-bindings", "no"),
             ("input-vo-keyboard", "no"),
             ("input-media-keys", "no"),

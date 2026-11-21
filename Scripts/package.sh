@@ -65,6 +65,12 @@ if [[ "$IDENTITY" != "-" ]]; then
         || fail "the signing identity \"$IDENTITY\" is not in the keychain"
 fi
 
+# The folder is about to be replaced. Not from under a copy of the app that is running from it.
+if pgrep -f "$DIST/image/.*/Contents/MacOS/" >/dev/null 2>&1; then
+    fail "the app is running from $DIST. Quit it first, then run this again."
+fi
+OTHER_COPY="$(pgrep -f "/Contents/MacOS/$EXECUTABLE( |\$)" || true)"
+
 step "Stage $NAME $VERSION ($BUILD_NUMBER), $KIND signing"
 rm -rf "$DIST"
 mkdir -p "$DIST/image" "$DIST/dSYMs"
@@ -125,18 +131,23 @@ for code in "$BINARY" "$ENGINE/Versions/A/Libmpv" "$HELPER"; do
     [[ "$ARCHS" == *arm64* && "$ARCHS" == *x86_64* ]] || fail "$(basename "$code") is not universal ($ARCHS)"
 done
 "$HELPER" -hide_banner -version >/dev/null 2>&1 || fail "the audio conversion helper does not run"
-# Run it as the loader will: a framework it refuses shows up here, in a log, not as a crash dialog.
-"$BINARY" >"$DIST/first-run.log" 2>&1 &
-RUN_PID=$!
-sleep 3
-if kill -0 "$RUN_PID" 2>/dev/null; then
-    kill "$RUN_PID" 2>/dev/null || true
-    wait "$RUN_PID" 2>/dev/null || true
+if [[ -n "$OTHER_COPY" ]]; then
+    # A second copy quits by itself in favour of the one that is open, so there is nothing to see.
+    echo "signature, entitlements and architectures: fine. Launch not checked: the app is open (pid $OTHER_COPY)."
 else
-    head -c 1500 "$DIST/first-run.log" >&2
-    fail "the packaged app exited at launch"
+    # Run it as the loader will: a framework it refuses shows up here, in a log, not as a crash dialog.
+    "$BINARY" >"$DIST/first-run.log" 2>&1 &
+    RUN_PID=$!
+    sleep 3
+    if kill -0 "$RUN_PID" 2>/dev/null; then
+        kill "$RUN_PID" 2>/dev/null || true
+        wait "$RUN_PID" 2>/dev/null || true
+    else
+        head -c 1500 "$DIST/first-run.log" >&2
+        fail "the packaged app exited at launch"
+    fi
+    echo "signature, entitlements, architectures and launch: fine"
 fi
-echo "signature, entitlements, architectures and launch: fine"
 
 step "Build the disk image"
 ln -s /Applications "$DIST/image/Applications"

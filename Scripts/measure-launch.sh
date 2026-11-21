@@ -28,6 +28,13 @@ PLIST="$APP/Contents/Info.plist"
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")"
 BINARY="$APP/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST")"
 
+# The Release app uses the user's own library and caches, and a second copy quits by itself in
+# favour of one that is open: with the app open there is nothing to measure.
+if pgrep -f "/Contents/MacOS/$(basename "$BINARY")( |\$)" | grep -v "^$(pgrep -f "$BINARY" || echo none)\$" >/dev/null 2>&1; then
+    echo "The app is open. Quit it, then run this again." >&2
+    exit 1
+fi
+
 quit_app() {
     pkill -f "$BINARY" 2>/dev/null || true
     while pgrep -f "$BINARY" >/dev/null 2>&1; do sleep 0.2; done

@@ -93,7 +93,8 @@ two seconds after launch: the only way to check a binding and its on-screen noti
 `-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
 `-window pictureInPicture|mini` puts the player window in that mode.
 `-settings general|playback|streaming|shortcuts|advanced` opens the Settings window on that tab.
-`-acknowledgements YES` opens the Acknowledgements window.
+`-acknowledgements YES` opens the Acknowledgements window. `-pressPlay YES` presses a title page's Play
+button as soon as it has streams to choose from.
 `-autoscroll <seconds>` scrolls the screen's list by itself (`App/DebugAutoscroll.swift`), `-scrollSpeed <pt/s>`;
 `-stats <seconds>` logs dropped and late frames and the buffered duration that long after launch.
 `-profile <folder>` keeps the database and caches in a scratch folder and keeps the stream engine to
@@ -119,6 +120,14 @@ affected: they run under the terminal's own permission.
 interfaces and talks to the router, and macOS then asks the user to allow incoming connections (if the
 firewall is on) and local-network access. Tests use `TorrentEngineSettings.loopback()`; in the app,
 `-profile` does the same. Never play a torrent stream in the app without `-profile`.
+
+**Never touch the user's own session.** The user now runs the app themselves. A copy without `-profile`
+shares their library and stream cache, and a second copy trims the cache at launch without knowing what
+the first is playing. So: the app itself steps aside when another copy is running (`SingleInstance`; a
+copy with `-profile` shares nothing and may run alongside); `measure-playback.sh` and `memory-detail.sh`
+use a scratch profile; `screenshot.sh` without `-profile`, `measure-launch.sh` and the Release launch
+check in `ci.sh` refuse or skip while the app is open; and **`package.sh` refuses to replace
+`build/dist` while the app is running from it**. Ask the user to quit before rebuilding the package.
 
 **Never make a sound the user did not ask for:** every `-play` used for a check must come with
 `-silent YES` (the scripts do this), and tests create players with `playsAudio: false` or volume 0.
@@ -363,6 +372,29 @@ StreamPlayer ─┬─ web address ───────────────
   permission system refused it until then): ask before fetching anything new from a new place.
 - **Disk image by `hdiutil`**, not `create-dmg`: nothing to install, and no Finder scripting (which
   would open windows on the user's screen). The image has no background picture or icon layout.
+
+### How Play chooses a stream (after Stage 9)
+
+- **A title's page shows one Play button** (`StreamListStyle.playButton`, the default) with a line
+  saying what it will play and an "All Streams" link; Settings → Streaming can show the full list instead.
+- **`StreamPicker` is pure.** For each stream it works out what it needs (size over the title's running
+  time, `RuntimeText`; a usual figure per quality when the size is unknown) and gives it a standing:
+  good, few peers, too heavy for the connection, over the user's limits, wrong language. Best standing
+  first, then what was played last time for this title, then quality, peers and size. Entries that are
+  not one playable video (a whole disc, a cinema recording, 3D, a sample, a web page) are never picked.
+- **`StreamFacts` reads the add-on's free text**: people sharing (a person sign or "seeders" before a
+  number), languages (flags, scene words, Cyrillic), MULTi/DUAL, and the traps above. It is a
+  heuristic over text add-ons write as they please: unknown means neutral, and the list is always one
+  click away. A stream that names its languages and none is wanted is last however many share it.
+- **The connection's speed is learned, not tested** (`ConnectionSpeed`): the best rate a torrent held
+  for a few readings, up at once and down a tenth at a time, stored as `stream.measuredSpeed`. Before
+  anything is known, 20 Mbit/s is assumed, and a stream may need at most 70 % of the figure.
+- **Play tries up to three** (`StreamPlayer.playAutomatically`): each gets 30 seconds (torrent) or 20
+  (web) to show a picture; on failure or timeout the next is tried, and closing the player or
+  pressing Cancel stops the sequence.
+- **The page tells the app which model it shows** (`AppModel.detailDidAppear`): SwiftUI builds a
+  `DetailModel` on every evaluation of the page's parent and keeps only the first, so "the last one
+  made" is usually one that was never shown. The debug helpers held the wrong one until this was found.
 
 ### Decisions still to be made (with the stage that decides them)
 
@@ -733,6 +765,40 @@ Carried over or not verified in Stage 9:
   not play, the player converted the same track again and again (seven times in seven seconds), and a
   file with no playable sound at all was announced as such on every pass. It now converts once, says
   there is no sound, and stops until the user picks a track.
+
+### After Stage 9: Play that chooses, and what the user's first session found
+
+| Where | Added | Tests |
+|---|---|---|
+| AppUI | `StreamFacts`, `StreamPicker`, `ConnectionSpeed`, `StreamListStyle`, the Play button and "All Streams", `StreamPlayer.playAutomatically`, speed sampling, Settings (show, highest quality, largest size, measured speed), `SingleInstance` | 156 |
+| PlayerKit | every built-in engine script switched off; a test that reads the engine's own option list | 181 |
+| App, Scripts | the second-copy guard, `-pressPlay`, scratch profiles and "app is open" checks in the scripts | — |
+
+Found when the user first ran the app for real:
+
+- **A crash during a film** (`hotplug_cb` in the engine, on CoreAudio's device-change queue). The engine
+  loads its built-in scripts by one switch each, and newer engines have more than the app switched off:
+  `select`, `positioning`, `commands` and `context_menu` were running in every player. `select` watches
+  the list of audio devices, and the engine crashed in that watcher when a device came or went. All are
+  off now; `nothingLoadsByItself` fails if a new engine brings a new one.
+- **A bare word in the add-on field** ("torentio") is taken for a server name and reported as
+  "the server could not be reached". Accurate, unhelpful; a clearer message was offered and not asked for.
+- **The size an add-on writes and the size the app shows differ** ("91.02 GB" beside "97,73 GB"): add-ons
+  count in units of 1024, the app shows decimal gigabytes as macOS does. Both are right; it looks wrong.
+
+Carried over or not verified:
+
+- **The picker has not met a real list in the app.** It was seen with a stand-in add-on whose six
+  entries were shaped like real ones; its judgement of real swarms (do 30 peers really start at once?)
+  is the user's to report. Fallback to the next stream is tested against a dead torrent and a missing file.
+- **Speed is only learned from torrents**, and only as a floor. A web stream teaches nothing.
+- **Not built: stepping down during playback** when a stream keeps stopping to load (offered with the
+  feature). Play can pick too boldly on a connection it has not measured; the user would have to choose
+  a smaller stream from the list.
+- The Play button was pressed through a debug argument, never clicked. The settings were not clicked.
+- **The packaged app in `build/dist` is older than this work**: the user had it open, so it was not
+  rebuilt. It still has the crash above until `Scripts/package.sh` is run with the app closed.
+- The 190 MB of GPU memory is still there with the scripts off (194 MB measured).
 
 ## Performance log
 

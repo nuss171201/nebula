@@ -23,6 +23,8 @@ public final class SettingsModel {
     /// Bytes the stream cache holds on disk, as last measured.
     public private(set) var cacheBytes: Int64 = 0
     public private(set) var hasLoaded = false
+    /// How fast the connection has been seen to download, in bytes a second; `nil` before any stream was played.
+    public private(set) var measuredSpeed: Double?
     /// What the engine's config files contained when they were last read.
     public private(set) var configReport = EngineConfigReport()
     /// The tab the Settings window shows.
@@ -40,6 +42,7 @@ public final class SettingsModel {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var defaultsTask: Task<Void, Never>?
     @ObservationIgnored private var engineTask: Task<Void, Never>?
+    @ObservationIgnored private var speedTask: Task<Void, Never>?
     /// The player's configuration as the app was started with, which carries what is not a setting.
     @ObservationIgnored private let baseConfiguration: PlayerConfiguration
     @ObservationIgnored private var baseEngineSettings: TorrentEngineSettings?
@@ -70,6 +73,7 @@ public final class SettingsModel {
     public func load() async {
         let stored = await (try? store.value(for: SettingsKeys.app)) ?? AppSettings()
         playerDefaults = await (try? store.value(for: SettingsKeys.playerDefaults)) ?? PlayerDefaults()
+        measuredSpeed = await (try? store.value(for: SettingsKeys.measuredSpeed)) ?? nil
         baseEngineSettings = await streamManager.settings
         await shortcuts.load()
         configReport = await Self.read(configFolder)
@@ -84,6 +88,31 @@ public final class SettingsModel {
 
     public func resetToDefaults() {
         settings = AppSettings()
+    }
+
+    /// What Play goes by when it chooses a stream, as things stand now.
+    public var pickerContext: StreamPicker.Context {
+        settings.pickerContext(measuredSpeed: measuredSpeed)
+    }
+
+    /// A stream has finished: what it achieved says something about the connection.
+    /// - Parameter bestRate: The best download rate it held for a few seconds, in bytes a second.
+    public func noteStreamSession(bestRate: Double) {
+        guard let updated = ConnectionSpeed.updated(measuredSpeed, sessionBest: bestRate), updated != measuredSpeed else { return }
+        measuredSpeed = updated
+        speedTask = Task { [store, previous = speedTask] in
+            await previous?.value
+            try? await store.set(updated, for: SettingsKeys.measuredSpeed)
+        }
+    }
+
+    /// Forgets what was learned about the connection (it has changed, say).
+    public func forgetMeasuredSpeed() {
+        measuredSpeed = nil
+        speedTask = Task { [store, previous = speedTask] in
+            await previous?.value
+            try? await store.reset(SettingsKeys.measuredSpeed)
+        }
     }
 
     /// Reads the engine's config files again. They apply to videos opened from then on.
@@ -113,6 +142,7 @@ public final class SettingsModel {
         await saveTask?.value
         await defaultsTask?.value
         await engineTask?.value
+        await speedTask?.value
         await shortcuts.waitForSave()
     }
 

@@ -22,6 +22,11 @@ provides is your choice and your responsibility.
 **Playing.** Local files, folders, web addresses, and streams from add-ons, including torrents (fetched
 piece by piece in playing order and served to the player from this Mac only).
 
+**One Play button.** A title's page shows Play, not a list of forty releases. The app picks the best
+picture that should play without stopping: in your languages, shared by enough people, within the limits
+you set, and needing no more than your connection has been seen to manage. If it does not start, the
+next one is tried. The full list is one click away, or the default if you prefer (Settings → Streaming).
+
 - Hardware decoding; HDR shown as HDR on an HDR display, converted otherwise.
 - Audio and subtitle track selection by language, remembered per file and per series.
 - Subtitle style, delay and online subtitle search; audio delay, 10-band equaliser, loudness levelling.

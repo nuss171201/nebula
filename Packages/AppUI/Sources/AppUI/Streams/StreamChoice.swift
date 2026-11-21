@@ -138,6 +138,23 @@ private extension String {
     }
 }
 
+/// What a title's page shows for its streams.
+public enum StreamListStyle: String, Sendable, CaseIterable, Identifiable, Codable {
+    /// One Play button; the app chooses the stream. The list is a click away.
+    case playButton
+    /// Every stream, for choosing by hand.
+    case fullList
+
+    public var id: Self { self }
+
+    public var title: String {
+        switch self {
+        case .playButton: "A Play Button"
+        case .fullList: "The Full List"
+        }
+    }
+}
+
 /// How the stream list is ordered.
 public enum StreamSort: String, Sendable, CaseIterable, Identifiable, Codable {
     case quality, size, source

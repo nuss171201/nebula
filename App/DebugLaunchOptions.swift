@@ -126,6 +126,15 @@
                     model.showStreamsOfEpisode(withID: episode)
                 }
             }
+            if defaults.bool(forKey: "pressPlay") {
+                // As soon as the page has streams to choose from (a slow network can take a
+                // while): press its Play button.
+                Task {
+                    for _ in 0 ..< 200 where !model.pressPlayOnShownTitle() {
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                }
+            }
             if defaults.object(forKey: "stream") != nil {
                 // Once the streams have had time to arrive: play the one at this place in the list.
                 let index = defaults.integer(forKey: "stream")

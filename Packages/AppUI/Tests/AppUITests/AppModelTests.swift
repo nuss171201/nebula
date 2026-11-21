@@ -91,12 +91,38 @@ struct AppModelTests {
         #expect(model.selection == .library)
         let detail = model.detailModel(for: MediaRoute(type: .movie, id: "tt1"))
         #expect(detail.streams.sort == .size)
-        #expect(detail.streams.preferredQuality == .hd720)
+        #expect(detail.streams.context.maximumQuality == .hd720)
+        #expect(detail.streams.presentation == .playButton)
 
         // A section chosen before the settings arrived (a launch argument) is not overridden.
         let chosen = AppModel(dependencies: dependencies, initialSection: .discover)
         await chosen.start()
         #expect(chosen.selection == .discover)
+    }
+
+    @Test("A second copy of the app steps aside for the one already running, unless it keeps its data to itself")
+    func singleInstance() {
+        typealias App = SingleInstance.RunningApp
+        let running = [
+            App(processIdentifier: 900, bundleIdentifier: "com.example.other"),
+            App(processIdentifier: 412, bundleIdentifier: "test.app", launchDate: Date(timeIntervalSince1970: 2000)),
+            App(processIdentifier: 388, bundleIdentifier: "test.app", launchDate: Date(timeIntervalSince1970: 1000)),
+            App(processIdentifier: 500, bundleIdentifier: nil),
+        ]
+        func yieldTo(own: Int32, ownProfile: Bool = false, _ apps: [App]) -> Int32? {
+            SingleInstance.instanceToYieldTo(bundleIdentifier: "test.app", ownProcess: own, usesOwnProfile: ownProfile, running: apps)?.processIdentifier
+        }
+        // A newcomer finds two; the older one has the user's session.
+        #expect(yieldTo(own: 700, running) == 388)
+        // The only copy running yields to nobody, itself included.
+        #expect(yieldTo(own: 388, [running[0], running[2], running[3]]) == nil)
+        #expect(yieldTo(own: 700, []) == nil)
+        // Age is by when it was launched, not by its number.
+        let reversed = [App(processIdentifier: 100, bundleIdentifier: "test.app", launchDate: Date(timeIntervalSince1970: 9000)), running[2]]
+        #expect(yieldTo(own: 700, reversed) == 388)
+        // A check with a scratch profile shares nothing and runs alongside.
+        #expect(yieldTo(own: 700, ownProfile: true, running) == nil)
+        #expect(SingleInstance.instanceToYieldTo(bundleIdentifier: "", ownProcess: 1, usesOwnProfile: false, running: running) == nil)
     }
 
     @Test("Screens follow the installed add-ons, from first launch through later changes")

@@ -171,6 +171,9 @@ struct EngineMappingTests {
         #expect(table["config"] == "no")
         #expect(table["input-default-bindings"] == "no")
         #expect(table["load-scripts"] == "no")
+        for script in ["stats-overlay", "console", "auto-profiles", "select", "positioning", "commands", "context-menu"] {
+            #expect(table["load-\(script)"] == "no", "the engine's built-in \(script) script is not switched off")
+        }
         #expect(table["ytdl"] == "no")
         #expect(table["keep-open"] == "yes")
         #expect(table["ao"] == nil)

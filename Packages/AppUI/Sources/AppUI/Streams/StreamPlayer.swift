@@ -84,23 +84,35 @@ public final class StreamPlayer {
         case failed(title: String, message: String)
     }
 
-    public private(set) var phase = Phase.idle
+    public internal(set) var phase = Phase.idle
     /// A YouTube stream waiting to be shown in the embedded player.
     var youTubeVideo: YouTubeVideoID?
     /// The torrent being played, if the player is on one.
     public private(set) var activeTorrent: String?
 
-    @ObservationIgnored private let coordinator: PlayerCoordinator
+    @ObservationIgnored let coordinator: PlayerCoordinator
     @ObservationIgnored private let manager: StreamManager
     @ObservationIgnored private let library: LibraryCenter?
     /// The video that was last handed to the player, for whoever decides what comes after it.
-    public private(set) var nowPlaying: StreamVideo?
+    public internal(set) var nowPlaying: StreamVideo?
     /// The stream it was played from.
-    public private(set) var nowPlayingChoice: StreamChoice?
+    public internal(set) var nowPlayingChoice: StreamChoice?
     @ObservationIgnored private let openExternal: @MainActor (URL) -> Void
     @ObservationIgnored private let subtitleService: AddonSubtitleService?
-    @ObservationIgnored private var prepareTask: Task<Void, Never>?
-    @ObservationIgnored private var activeURL: URL?
+    @ObservationIgnored var prepareTask: Task<Void, Never>?
+    @ObservationIgnored var activeURL: URL?
+    @ObservationIgnored var automaticTask: Task<Void, Never>?
+    @ObservationIgnored private var speedTask: Task<Void, Never>?
+    @ObservationIgnored private var speedSamples: [Double] = []
+    /// Called when a torrent stream closes, with the best download rate it held for a few
+    /// seconds (bytes a second): what the app learns the connection's speed from.
+    @ObservationIgnored public var onSessionSpeed: (@MainActor (Double) -> Void)?
+    /// How long an automatically chosen stream gets to show its first picture before the next is tried.
+    @ObservationIgnored var startTimeout: (torrent: Duration, direct: Duration) = (.seconds(30), .seconds(20))
+    /// How often a playing torrent's download rate is read.
+    @ObservationIgnored var speedSampleInterval = Duration.seconds(2)
+    /// At most this many streams are tried when Play chooses.
+    static let automaticAttempts = 3
 
     /// - Parameters:
     ///   - subtitleService: Told about subtitles that come with a stream, so the player can offer them.
@@ -122,6 +134,13 @@ public final class StreamPlayer {
 
     public func play(_ choice: StreamChoice, for video: StreamVideo) {
         cancel()
+        start(choice, for: video)
+    }
+
+    func start(_ choice: StreamChoice, for video: StreamVideo) {
+        prepareTask?.cancel()
+        prepareTask = nil
+        phase = .idle
         switch choice.stream.source {
         case let .url(url):
             playDirect(url, choice: choice, video: video)
@@ -145,6 +164,8 @@ public final class StreamPlayer {
 
     /// Stops looking for a torrent that has not started playing, and clears any message.
     public func cancel() {
+        automaticTask?.cancel()
+        automaticTask = nil
         prepareTask?.cancel()
         prepareTask = nil
         phase = .idle
@@ -153,6 +174,11 @@ public final class StreamPlayer {
     /// Waits for a stream that is being prepared. For tests.
     func waitUntilPrepared() async {
         await prepareTask?.value
+    }
+
+    /// Waits until Play has settled on a stream or given up. For tests.
+    func waitForAutomaticPlay() async {
+        await automaticTask?.value
     }
 
     // MARK: - Kinds of stream
@@ -228,6 +254,7 @@ public final class StreamPlayer {
             }
             activeTorrent = infoHash
             activeURL = stream.url
+            sampleSpeed(of: infoHash)
             phase = .idle
             noteStarted(video, choice: choice)
             // No seek-bar stills: they would open a second reader far from the playhead and
@@ -277,8 +304,33 @@ public final class StreamPlayer {
         }
     }
 
-    private func closeActiveTorrent() {
+    /// Reads the torrent's download rate every so often for as long as it is the one playing.
+    private func sampleSpeed(of infoHash: String) {
+        speedTask?.cancel()
+        speedSamples = []
+        speedTask = Task { [weak self, manager] in
+            while !Task.isCancelled {
+                guard let interval = self?.speedSampleInterval else { return }
+                try? await Task.sleep(for: interval)
+                guard !Task.isCancelled, let status = await manager.status(of: infoHash) else { continue }
+                guard let self, activeTorrent == infoHash else { return }
+                // A finished file downloads nothing more, which says nothing about the connection.
+                if !status.isFinished {
+                    speedSamples.append(Double(status.downloadRate))
+                }
+            }
+        }
+    }
+
+    func closeActiveTorrent() {
         guard let infoHash = activeTorrent else { return }
+        speedTask?.cancel()
+        speedTask = nil
+        let best = ConnectionSpeed.bestSustained(speedSamples)
+        speedSamples = []
+        if best > 0 {
+            onSessionSpeed?(best)
+        }
         activeTorrent = nil
         activeURL = nil
         Task { [manager] in
