@@ -82,7 +82,9 @@ public enum SyncTuning {
     /// to look at something together, and a jump while paused costs nothing.
     public static let pausedTolerance = 0.1
     /// Further out of step than this is put right with a jump; less, by playing slightly faster or slower.
-    public static let jumpThreshold = 1.5
+    public static let jumpThreshold = 1.0
+    /// A first jump that lands further off than this is followed by a second, better-aimed one.
+    public static let retryThreshold = 0.3
     /// How long to wait after a jump before judging whether another is needed.
     public static let jumpCooldown = 2.0
     /// How long a player that was in step may stall before the party pauses for it.

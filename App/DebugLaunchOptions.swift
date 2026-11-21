@@ -242,9 +242,10 @@
                 logStats(of: player, after: max(defaults.double(forKey: "stats"), 1))
             }
             if let keys = defaults.string(forKey: "keys") {
-                // After the file has had time to open, as most commands need one.
+                // After the file has had time to open, as most commands need one; `-keysAfter <seconds>` waits longer.
+                let delay = defaults.object(forKey: "keysAfter") != nil ? defaults.double(forKey: "keysAfter") : 2
                 Task {
-                    try? await Task.sleep(for: .seconds(2))
+                    try? await Task.sleep(for: .seconds(max(delay, 0)))
                     player.pressKeys(keys)
                 }
             }

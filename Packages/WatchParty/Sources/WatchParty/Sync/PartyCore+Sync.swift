@@ -159,15 +159,22 @@ public extension PartyCore {
         }
     }
 
-    /// The first look after a jump shows how long jumps take here, and the next one aims that
-    /// much further ahead. If this one landed well off, it is repeated at once with what was just
-    /// learnt, rather than followed by many seconds of playing fast. Returns whether it was.
+    /// The first look after a jump has landed shows how long jumps take here, and the next one
+    /// aims that much further ahead. If this one landed well off, it is repeated at once with what
+    /// was just learnt, rather than followed by many seconds of playing fast. Returns whether it was.
     private mutating func retriesAfterLanding(delta: Double, expected: Double, now: TimeInterval, into effects: inout [Effect]) -> Bool {
         guard local.awaitsSeekLanding, let lastSeekAt = local.lastSeekAt, now - lastSeekAt >= 0.2 else { return false }
+        guard abs(delta) < 3 else {
+            // Nowhere near yet: the player has not got round to the jump. Keep waiting for it,
+            // until it is time to conclude that it went wrong and to jump again.
+            if now - lastSeekAt >= SyncTuning.jumpCooldown {
+                local.awaitsSeekLanding = false
+            }
+            return false
+        }
         local.awaitsSeekLanding = false
-        guard abs(delta) < 3 else { return false }
         local.seekLead = min(max(local.seekLead - delta, 0.1), 6)
-        guard abs(delta) > 0.5, !local.hasRetriedJump else { return false }
+        guard abs(delta) > SyncTuning.retryThreshold, !local.hasRetriedJump else { return false }
         local.hasRetriedJump = true
         jump(to: expected + local.seekLead, now: now, into: &effects)
         return true

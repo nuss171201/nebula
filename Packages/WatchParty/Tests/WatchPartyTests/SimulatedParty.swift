@@ -17,6 +17,9 @@ struct SimulatedPlayer {
     /// How long a jump takes before the picture moves again.
     var seekLatency = 0.15
     var stalledUntil = 0.0
+    /// How long the player takes to get round to a jump it was asked for; until then it plays on where it was.
+    var seekStartDelay = 0.0
+    private var queuedSeek: (target: Double, at: Double)?
     /// A jump the person asked for that has not been reported as landed yet.
     var hasPendingJump = false
     var directives: [PlayerDirective] = []
@@ -33,6 +36,10 @@ struct SimulatedPlayer {
     }
 
     mutating func advance(by seconds: Double, at time: Double) {
+        if let queued = queuedSeek, time >= queued.at {
+            queuedSeek = nil
+            land(queued.target, at: time)
+        }
         guard hasMedia, !isPaused, !hasEnded, !isStalled(at: time) else { return }
         position += seconds * rate * adjustment * clockSkew
         if let duration, position >= duration {
@@ -49,14 +56,22 @@ struct SimulatedPlayer {
         case let .seek(to: target):
             // A jump from the party takes the place of one of the person's own.
             hasPendingJump = false
-            position = min(target, duration ?? target)
-            hasEnded = false
-            stalledUntil = max(stalledUntil, time + seekLatency)
+            if seekStartDelay > 0 {
+                queuedSeek = (target, time + seekStartDelay)
+            } else {
+                land(target, at: time)
+            }
         case let .setRate(rate):
             self.rate = rate
         case let .adjustRate(adjustment):
             self.adjustment = adjustment
         }
+    }
+
+    private mutating func land(_ target: Double, at time: Double) {
+        position = min(target, duration ?? target)
+        hasEnded = false
+        stalledUntil = max(stalledUntil, time + seekLatency)
     }
 
     var jumps: Int {

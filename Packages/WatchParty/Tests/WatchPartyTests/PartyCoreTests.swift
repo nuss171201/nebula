@@ -164,6 +164,23 @@ struct PartyCoreTests {
         #expect(!party.player(host).isPaused)
     }
 
+    @Test("A player that is slow to start a jump, and slow to finish it, is still in step within a few seconds")
+    func sluggishPlayer() {
+        var party = SimulatedParty()
+        let host = party.join("Asha", isHost: true)
+        party.open(SimulatedParty.film, for: host, at: 600)
+        party.advance(1)
+        let guest = party.join("Ravi")
+        party.nodes[guest]?.player.seekStartDelay = 0.45
+        party.nodes[guest]?.player.seekLatency = 0.6
+        party.open(SimulatedParty.film, for: guest)
+        party.advance(6)
+        #expect(party.spread < 0.15)
+        #expect(party.player(guest).jumps <= 2)
+        #expect(party.player(guest).adjustment == 1)
+        #expect(!party.player(host).isPaused)
+    }
+
     @Test("Three people stay together through a pause, a jump and a change of speed")
     func threePeople() {
         var (party, host, guest) = partyOfTwo(guestClockOffset: -300)

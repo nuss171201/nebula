@@ -94,7 +94,8 @@ during Stage 1. Debug builds accept launch arguments that open a given state
 `-play <path or URL>`, `-silent YES`, `-engine "name=value,…"`, `-panel video|audio|subtitles|queue` (a
 player side panel), `-seekPreview <0…1>` (the seek bar's hover preview at that fraction), `-enqueue <path>`
 (a second file for the queue), `-keys "]]l"` (plain key presses sent through the player's key bindings
-two seconds after launch: the only way to check a binding and its on-screen notice without the keyboard).
+two seconds after launch, or `-keysAfter <seconds>` after it: the only way to check a binding and its
+on-screen notice without the keyboard).
 `-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
 `-window pictureInPicture|mini` puts the player window in that mode.
 `-settings general|playback|streaming|shortcuts|advanced` opens the Settings window on that tab.
@@ -822,6 +823,93 @@ Carried over or not verified in Stage 9:
   file with no playable sound at all was announced as such on every pass. It now converts once, says
   there is no sound, and stops until the user picks a track.
 
+### Stage 10 contents
+
+| Where | Added | Tests |
+|---|---|---|
+| WatchParty (new package) | `PartyCore` (+Messages, +Sync), `ClockSync`, `SyncTuning`, `PartyMessage`, `PartyInvite` / `PartyServer` / `SignalSeal`, signalling frames and `SignalingConnection`, `WebRTCTransport` (+Links, +Voice) and `PeerLink`, `PartySession`; target `WatchPartyTestSupport` (`LoopbackSignalServer`, `InMemoryPartyNetwork`) | 47 (1 skipped here: see below) |
+| Server | `signal.ts`: the signalling server | 2 of the above run it |
+| PlayerKit | `PlaybackIntent` and `followingExternal` (`PlayerModel+Following`), `speedAdjustment`, `hasPendingUserSeek`, `PlayerAccessory` + its panel and button, `announce` made public; volume and stop moved to `PlayerModel+Volume` | 180 |
+| AppUI | `PartyCenter`, `PlayerPartyBridge`, `PartyEnvironment`, `PartyPanel`, `PartySetupView`, `PartyStatusBar`, `PartyCommands`, name and server in Settings → General, `StreamPlayer.nowPlayingURL` | 143 |
+| App, Config, Scripts | `-partyHost` / `-partyJoin` and friends, `PARTY_SERVER_URL`, microphone usage text and entitlement (`Config/App.entitlements` for signed builds), WebRTC in `package.sh`, `licenses.lock` and `ThirdParty.json`, `party-check.sh` | — |
+
+Decided by the user: option B of the four that were laid out (peer to peer over WebRTC, with a
+signalling server), and Google's WebRTC as the prebuilt stasel/WebRTC framework rather than
+libdatachannel or a from-source build. Decided here, and easy to change: Deno for the server (it is
+installed, needs no dependencies, and the protocol is a dozen JSON frames, so porting it is an hour);
+everyone controls playback unless the host says otherwise; a party holds eight.
+
+What was checked, and how:
+
+- **The sync logic** in `SimulatedParty`: joining with clocks a day apart, pause, jump, speed, a stalled
+  player, the holder leaving, a slow or sluggish player's jumps, a player running 1 % slow for two
+  minutes (never more than 0.2 s out, no jumps), three people, host-only control, changes of video.
+- **Real connections**: WebRTC peers in one process over the loopback interface, through the in-process
+  server and through `Server/signal.ts` itself: two and three peers, leaving, the server going away and
+  coming back, a wrong invitation, a full room, everyone renegotiating at once five times over.
+- **Real players**: two engines in one process kept within 0.25 s while playing and 0.15 s paused,
+  through a pause, a jump while paused, a resume and a change of speed; once over an in-memory network
+  and once over real WebRTC connections.
+- **Two copies of the app** (`party-check.sh`, background, silent, loopback): both windows show the
+  panel with both people "Watching", the chat line sent by one arrives at the other, and at the same
+  wall-clock moment the two players were 0.083 s apart playing (one frame of the 12-frames-a-second
+  sample) and 0 to 0.083 s apart after a pause made in either copy; a speed change made by the guest
+  showed in the host's control bar.
+
+Three bugs found by those checks, each now covered by a test:
+
+- **A person's own jump could be undone.** The position changes before the player reports that a jump
+  has landed; a sync tick in between saw the player far from the party and pulled it back. The party
+  now leaves a player alone while `hasPendingUserSeek`.
+- **A newcomer could take the party over.** Someone who opened a video in the first quarter-second
+  after connecting, before the party's state had arrived, published theirs, and a coin toss between the
+  two versions decided. Nobody decides what is watched until they know how the party stands
+  (`isInformed`), and the host publishes what is playing at once rather than at the first tick.
+- **Catching up took fifteen seconds.** If the player had not started a jump by the first look after it,
+  the landing was never noticed and a gap of up to a second and a half was closed at 8 %. The landing
+  is now waited for, a jump more than 0.3 s off is repeated once with what was learnt, and anything
+  over a second is jumped rather than played off.
+
+Carried over or not verified in Stage 10:
+
+- **Nobody has spoken or heard a word.** Voice is built on WebRTC's defaults and has never carried
+  sound: checks may not open the microphone or play audio. The one test that negotiates audio (one
+  person in the voice chat, which sends nothing) is skipped on this Mac because the microphone question
+  has never been answered for the test runner; it runs where it has. Two people in the voice chat, the
+  microphone prompt, echo cancellation, muting as heard by the other side, and whether the film's own
+  sound leaks into the microphone badly enough to need push-to-talk are all untried.
+- **No two networks have been connected.** Everything ran on one Mac's loopback interface: no STUN, no
+  TURN, no NAT, no real latency or packet loss, no second Mac, no Intel Mac. That connections form
+  between Germany, Singapore and India rests on WebRTC and on a relay being available where needed
+  (see the decisions table). Clock comparison was tested with simulated delay only.
+- **The server has only run on this Mac**, over plain http on loopback. TLS in front of it, a real host,
+  many rooms, the TURN credential it issues (written to coturn's documented scheme, never tried against
+  coturn) and its rate limits under abuse are untested.
+- **Nothing was clicked or typed.** The panel was seen through debug arguments. Typing in the chat field
+  (and whether the player's key bindings stay out of the way while typing), the start/join sheet, the
+  File menu items, the Settings fields, Copy Invitation and the clipboard, "Show It" and bringing the
+  main window forward, the host's control switch, Join Voice and Mute, and the unread badge on the
+  people button are covered by view-model tests or not at all.
+- **Streams from add-ons in a party were not tried**: only local files. A catalog title's identity
+  (`video:<type>:<id>`) and the stall rule for paused streams are unit-tested; a torrent that needs a
+  minute to start, two people on different streams of different lengths or with different intros, and
+  next-episode autoplay in a party are untried. Two cuts of a film stay "in sync" by position, which is
+  not the same scene.
+- **An A-B loop does not hold in a party** (the loop's jump back is corrected as drift), by reading the
+  code; not tried. Frame stepping is shared as a pause and a jump.
+- A party survives the signalling server restarting, but not a Mac sleeping: connections time out and
+  the person has to join again with the link. There is no rejoin by itself, and no way to remove someone.
+- The invitation's secret is in the link; anyone who is given the link can join. The people in a party
+  learn each other's internet addresses, as in any direct call.
+- WebRTC's own third-party notices are not collected (decisions table). The x86_64 half of
+  `WebRTC.framework` is checked with `lipo` only.
+- The user's own running copy of the app (an older build, open since 17 November) crashed twice during
+  this stage, in libmpv's CoreAudio hot-plug callback (`hotplug_cb` → `mp_msg`, a null context) when the
+  list of audio devices changed. Not this branch's code, and not reproduced. The test runs here are
+  probably not what changed the list: a listener on the system's device list saw no change through the
+  second half of the engine tests, all of the AppUI and WatchParty tests, a Release launch and packaging.
+  Worth its own investigation: a device appearing or going away should not take the app down.
+
 ## Performance log
 
 Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K HDR < 600 MB;
@@ -896,6 +984,12 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 9 | Packaged app | Idle memory, launched from the mounted disk image | 70 MB |
 | 2026-11-17 | 9 | Packaged app | With the audio conversion helper (15 MB): app as built / stripped; disk image | 147 MB / 117 MB; 52 MB |
 
+| 2026-11-21 | 10 | Release, universal | Launch to first screen / Home content, first run after the build (with WebRTC linked) | 191 ms / 372 ms |
+| 2026-11-21 | 10 | Release, universal | Idle memory, Home loaded (nothing of WebRTC is started until a party is) | 69 MB |
+| 2026-11-21 | 10 | Packaged app | App as built / stripped; disk image (WebRTC.framework is 28 MB of it, both architectures) | 178 MB / 146 MB; 65 MB |
+| 2026-11-21 | 10 | Debug app, two copies | Watch party on loopback: how far apart the two players were at the same moment, playing / after a pause | 0.083 s (one frame at 12 fps) / 0–0.083 s |
+| 2026-11-21 | 10 | In a test | Two engines in one process, over real WebRTC on loopback: from the guest opening the file to within 0.25 s of the host | under 3 s for the whole test |
+
 **The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
 10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)
 and, through a parsing slip, dropped CPU samples under 10 %, which hid the idle ones. The script now
@@ -925,6 +1019,9 @@ Reading the Stage 2 numbers: launch and memory are well inside the targets. The 
 is met most of the time while artwork streams in but not always (run 2); that is SwiftUI committing
 many image updates at once, and it is the first thing to look at in Stage 8. Scrolling itself has not
 been measured.
+
+Not measured in Stage 10: CPU and memory while a party is on (a data channel, four ticks a second and,
+with voice, WebRTC's audio pipeline), and anything about voice.
 
 Not yet measured: a true cold launch (after reboot or `sudo purge`), anything on an M1, and the
 Allocations instrument (footprint, `heap`, `vmmap` and `leaks` were used instead).
