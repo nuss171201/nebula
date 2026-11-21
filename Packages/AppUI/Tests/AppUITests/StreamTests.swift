@@ -259,6 +259,21 @@ struct StreamPlayerTests {
         #expect(starting.hasPrefix("Starting: 4 connections, ") && starting.hasSuffix("/s") && starting.contains("MB"))
     }
 
+    @Test("While the player waits for a torrent, what the torrent is doing is said in a few words")
+    func waitingNote() {
+        var status = TorrentStatus(
+            hasMetadata: true, downloadRate: 0, uploadRate: 0, peers: 0, seeds: 0,
+            wantedBytes: 100, wantedBytesDone: 0, isFinished: false, errorMessage: nil
+        )
+        #expect(StreamPlayer.waitingNote(for: status) == "Looking for people sharing this…")
+        status.peers = 1
+        status.downloadRate = 140_000
+        let one = StreamPlayer.waitingNote(for: status)
+        #expect(one.hasPrefix("1 connection · ") && one.hasSuffix("/s") && one.lowercased().contains("kb"))
+        status.peers = 12
+        #expect(StreamPlayer.waitingNote(for: status).hasPrefix("12 connections · "))
+    }
+
     @Test("A torrent nobody is sharing fails with an explanation, and can be cancelled while it is being looked for")
     func torrentFailures() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("streams-\(UUID().uuidString)")

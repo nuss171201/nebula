@@ -57,19 +57,50 @@ struct PiecePrioritizerTests {
         #expect(plan.priorities.count == 100)
     }
 
-    @Test("Around the playhead: urgent pieces in order, then a stretch fetched ahead, then the rest; behind is low")
+    @Test("Around the playhead: what is waited for jumps the queue, the rest ahead follows in file order, nothing behind is fetched")
     func aroundThePlayhead() {
         // Reading from the middle of piece 20.
         let plan = PiecePrioritizer.plan(map: map, readers: [(20 << 20) + 500_000], window: window) { _ in false }
         // 4 MiB from mid-piece 20 reaches into piece 24.
         #expect(plan.deadlines == [20: 0, 21: 250, 22: 500, 23: 750, 24: 1000])
-        for piece in 25 ... 34 {
+        for piece in 20 ... 24 {
             #expect(plan.priorities[piece] == .high, "piece \(piece)")
         }
-        #expect(plan.priorities[35] == .normal)
-        #expect(plan.priorities[99] == .normal)
-        #expect(plan.priorities[19] == .low)
-        #expect(plan.priorities[0] == .low)
+        for piece in 25 ... 99 {
+            #expect(plan.priorities[piece] == .normal, "piece \(piece)")
+        }
+        // A connection that only just keeps up must not be spent on what was skipped over.
+        #expect(plan.priorities[19] == .skip)
+        #expect(plan.priorities[0] == .skip)
+        #expect(plan.priorities.count == 100)
+    }
+
+    @Test("What was skipped over is fetched once everything ahead is there, and only for a file kept whole")
+    func behindComesLast() {
+        let almost = PiecePrioritizer.plan(map: map, readers: [20 << 20], window: window) { $0 >= 20 && $0 != 99 }
+        #expect(almost.priorities[19] == .skip)
+        let done = PiecePrioritizer.plan(map: map, readers: [20 << 20], window: window) { $0 >= 20 }
+        #expect(done.deadlines.isEmpty)
+        #expect(done.priorities.count == 20)
+        #expect(done.priorities.values.allSatisfy { $0 == .low })
+        let tooLarge = PiecePrioritizer.plan(map: map, readers: [20 << 20], window: window, fetchesWholeFile: false) { $0 >= 20 }
+        #expect(tooLarge.priorities.values.allSatisfy { $0 == .skip })
+        // With two readers it is the earlier one that says what is behind.
+        let two = PiecePrioritizer.plan(map: map, readers: [99 << 20, 20 << 20], window: window) { _ in false }
+        #expect(two.priorities[19] == .skip && two.priorities[50] == .normal && two.priorities[99] == .high)
+    }
+
+    @Test("The urgent stretch is a megabyte unless said otherwise: a piece or two, whatever their size")
+    func defaultWindow() {
+        let small = PieceMap(pieceLength: 256 * 1024, fileOffset: 0, fileSize: 64 << 20)
+        #expect(PiecePrioritizer.plan(map: small, readers: [0]) { _ in false }.deadlines.keys.sorted() == [0, 1, 2, 3])
+        let large = PieceMap(pieceLength: 16 << 20, fileOffset: 0, fileSize: 640 << 20)
+        #expect(PiecePrioritizer.plan(map: large, readers: [0]) { _ in false }.deadlines.keys.sorted() == [0])
+        // Close to the end of a piece, the next is about to be needed as well.
+        #expect(PiecePrioritizer.plan(map: large, readers: [(16 << 20) - 1000]) { _ in false }.deadlines.keys.sorted() == [0, 1])
+        // Of a file that is not kept whole, a quarter of a gigabyte ahead is fetched: seventeen pieces here.
+        let windowed = PiecePrioritizer.plan(map: large, readers: [0], fetchesWholeFile: false) { _ in false }
+        #expect(windowed.priorities.values.filter { $0 != .skip }.count == 17)
     }
 
     @Test("Pieces that are already there are not asked for, and the ones after them keep their place in line")
@@ -79,7 +110,7 @@ struct PiecePrioritizerTests {
         #expect(plan.deadlines == [21: 250, 23: 750])
         #expect(plan.priorities[30] == nil)
         #expect(plan.priorities[20] == nil)
-        #expect(plan.priorities[29] == .high)
+        #expect(plan.priorities[29] == .normal)
     }
 
     @Test("Near the end of the file the windows stop at the last piece")
@@ -127,7 +158,7 @@ struct PiecePrioritizerTests {
 
         let playing = PiecePrioritizer.plan(map: map, readers: [20 << 20], window: window, fetchesWholeFile: false) { _ in false }
         #expect(playing.deadlines.keys.sorted() == [20, 21, 22, 23])
-        #expect(playing.priorities[24] == .high && playing.priorities[33] == .high)
+        #expect(playing.priorities[20] == .high && playing.priorities[24] == .normal && playing.priorities[33] == .normal)
         #expect(playing.priorities[34] == .skip)
         #expect(playing.priorities[19] == .skip)
         #expect(playing.priorities.values.filter { $0 != .skip }.count == 14)
@@ -142,8 +173,8 @@ struct PiecePrioritizerTests {
         #expect(changes.deadlinesToClear == [20])
         // 21…23 move a step sooner and 24 is new.
         #expect(changes.deadlinesToSet == [21: 0, 22: 250, 23: 500, 24: 750])
-        // The stretch fetched ahead moves on by one piece; piece 24 was already in it.
-        #expect(changes.prioritiesToSet == [34: .high])
+        // Piece 24 is now among the ones waited for; nothing else changes its standing.
+        #expect(changes.prioritiesToSet == [24: .high])
         #expect(after.changes(from: after).isEmpty)
         // From nothing, everything is new.
         #expect(before.changes(from: PiecePlan()).deadlinesToSet == before.deadlines)

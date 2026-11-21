@@ -209,6 +209,32 @@ struct PlaybackOptionsTests {
         #expect(options.headerOption == "http-header-fields=%7%X-Ok: 1")
         #expect(PlaybackOptions(httpHeaders: ["X-Bad": "a\nb"]).headerOption == nil)
     }
+
+    @Test("A source that is still arriving is waited for longer; its options join any headers")
+    func stillArriving() {
+        #expect(PlaybackOptions().fileOptions == nil)
+        #expect(PlaybackOptions(arrivalFailureMessage: "It did not arrive.").fileOptions == "network-timeout=90")
+        let both = PlaybackOptions(httpHeaders: ["X-Ok": "1"], arrivalFailureMessage: "It did not arrive.")
+        #expect(both.fileOptions == "http-header-fields=%7%X-Ok: 1,network-timeout=90")
+        #expect(PlaybackOptions(httpHeaders: ["X-Ok": "1"]).fileOptions == "http-header-fields=%7%X-Ok: 1")
+    }
+
+    @Test("A stream that never opened after a long wait is said not to have arrived; anything else keeps the engine's reason")
+    func failureMessages() {
+        let engine = "This file is not in a format that can be played."
+        let arrival = "It did not arrive."
+        func message(arrival: String?, hadOpened: Bool, waited: Duration?) -> String {
+            PlaybackOptions.failureMessage(engine: engine, arrival: arrival, hadOpened: hadOpened, waited: waited)
+        }
+        #expect(message(arrival: arrival, hadOpened: false, waited: .seconds(160)) == arrival)
+        // Refused at once: there were bytes, and they were not a film.
+        #expect(message(arrival: arrival, hadOpened: false, waited: .seconds(2)) == engine)
+        // It had been playing: whatever went wrong was not a failure to arrive at all.
+        #expect(message(arrival: arrival, hadOpened: true, waited: .seconds(600)) == engine)
+        // An ordinary file or address has no such message.
+        #expect(message(arrival: nil, hadOpened: false, waited: .seconds(160)) == engine)
+        #expect(message(arrival: arrival, hadOpened: false, waited: nil) == engine)
+    }
 }
 
 @MainActor

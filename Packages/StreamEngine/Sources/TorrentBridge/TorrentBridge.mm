@@ -49,9 +49,17 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
     lt::settings_pack pack;
     pack.set_str(lt::settings_pack::user_agent, toStdString(settings.userAgent));
     pack.set_str(lt::settings_pack::listen_interfaces, toStdString(settings.listenInterfaces));
-    pack.set_int(lt::settings_pack::alert_mask,
-                 lt::alert_category::error | lt::alert_category::status | lt::alert_category::storage
-                     | lt::alert_category::piece_progress);
+    // The hash table's alerts are always wanted: one of them says when it is ready to be asked.
+    lt::alert_category_t mask = lt::alert_category::error | lt::alert_category::status | lt::alert_category::storage
+        | lt::alert_category::piece_progress | lt::alert_category::dht;
+    if (settings.diagnosticLevel >= 1) {
+        mask |= lt::alert_category::tracker | lt::alert_category::port_mapping;
+    }
+    if (settings.diagnosticLevel >= 2) {
+        mask |= lt::alert_category::session_log | lt::alert_category::dht_log | lt::alert_category::connect
+            | lt::alert_category::peer;
+    }
+    pack.set_int(lt::settings_pack::alert_mask, static_cast<int>(static_cast<std::uint32_t>(mask)));
     pack.set_int(lt::settings_pack::connections_limit, static_cast<int>(settings.connectionsLimit));
     pack.set_int(lt::settings_pack::download_rate_limit, static_cast<int>(settings.downloadRateLimit));
     pack.set_int(lt::settings_pack::upload_rate_limit, static_cast<int>(settings.uploadRateLimit));
@@ -60,6 +68,20 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
     pack.set_bool(lt::settings_pack::enable_upnp, settings.mapsPorts);
     pack.set_bool(lt::settings_pack::enable_natpmp, settings.mapsPorts);
     pack.set_bool(lt::settings_pack::allow_multiple_connections_per_ip, settings.allowsSeveralConnectionsPerAddress);
+    if (settings.usesDHT) {
+        // Where a hash table that knows nobody yet asks first. libtorrent's own default is the
+        // first of these alone; the others are the routers every client starts from.
+        pack.set_str(lt::settings_pack::dht_bootstrap_nodes,
+                     "dht.libtorrent.org:25401,router.bittorrent.com:6881,dht.transmissionbt.com:6881,router.utorrent.com:6881");
+    }
+    // Every tracker a stream names is asked at once. The default asks one, and moves to the
+    // next only when that one has failed, which with a list of dead trackers takes minutes.
+    pack.set_bool(lt::settings_pack::announce_to_all_trackers, true);
+    pack.set_bool(lt::settings_pack::announce_to_all_tiers, true);
+    // A torrent that has everything it wants for the moment is "finished" to libtorrent, which
+    // then hangs up on every seed. For a stream that moment comes whenever the download gets
+    // ahead of the player, and the seeds are needed again seconds later.
+    pack.set_bool(lt::settings_pack::close_redundant_connections, false);
     // The app says who it is in `user_agent`; the peer id keeps libtorrent's own prefix.
     pack.set_bool(lt::settings_pack::anonymous_mode, false);
     return pack;
@@ -162,6 +184,7 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
     __weak id<TBSessionDelegate> _delegate;
     dispatch_queue_t _events;
     std::atomic<bool> _isShutDown;
+    std::atomic<bool> _logs;
 }
 
 - (instancetype)initWithSettings:(TBSessionSettings *)settings delegate:(id<TBSessionDelegate>)delegate {
@@ -169,6 +192,7 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
         _delegate = delegate;
         _events = dispatch_queue_create("torrent.bridge.events", DISPATCH_QUEUE_SERIAL);
         _isShutDown = false;
+        _logs = settings.diagnosticLevel > 0;
         lt::session_params params(makeSettings(settings));
         _session = std::make_unique<lt::session>(std::move(params));
 
@@ -195,6 +219,7 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
 
 - (void)applySettings:(TBSessionSettings *)settings {
     if (_session) {
+        _logs = settings.diagnosticLevel > 0;
         _session->apply_settings(makeSettings(settings));
     }
 }
@@ -220,6 +245,9 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
     }
     // Nothing is wanted until the caller has seen the file list and chosen.
     params.flags |= lt::torrent_flags::default_dont_download;
+    // In file order, which is playing order: without this the pieces of equal priority come
+    // rarest first, which between seeds means at random.
+    params.flags |= lt::torrent_flags::sequential_download;
     params.flags &= ~lt::torrent_flags::auto_managed;
     params.flags &= ~lt::torrent_flags::paused;
     return [self add:std::move(params) error:message] != nil;
@@ -350,10 +378,16 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
     for (NSNumber *piece in cleared) {
         handle.reset_piece_deadline(lt::piece_index_t(piece.intValue));
     }
+    // In one call: a plan for a large file names tens of thousands of pieces.
+    __block std::vector<std::pair<lt::piece_index_t, lt::download_priority_t>> levels;
+    levels.reserve(priorities.count);
     [priorities enumerateKeysAndObjectsUsingBlock:^(NSNumber *piece, NSNumber *priority, BOOL *) {
         const int level = std::min(std::max(priority.intValue, 0), 7);
-        handle.piece_priority(lt::piece_index_t(piece.intValue), lt::download_priority_t(static_cast<std::uint8_t>(level)));
+        levels.emplace_back(lt::piece_index_t(piece.intValue), lt::download_priority_t(static_cast<std::uint8_t>(level)));
     }];
+    if (!levels.empty()) {
+        handle.prioritize_pieces(levels);
+    }
     [deadlines enumerateKeysAndObjectsUsingBlock:^(NSNumber *piece, NSNumber *milliseconds, BOOL *) {
         handle.set_piece_deadline(lt::piece_index_t(piece.intValue), milliseconds.intValue);
     }];
@@ -369,6 +403,13 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
         return;
     }
     handle.read_piece(lt::piece_index_t(static_cast<int>(piece)));
+}
+
+- (void)lookForPeersOfTorrent:(NSString *)infoHash {
+    lt::torrent_handle handle = [self handleFor:infoHash];
+    if (handle.is_valid()) {
+        handle.force_dht_announce();
+    }
 }
 
 - (void)connectTorrent:(NSString *)infoHash toPeerAtAddress:(NSString *)address port:(NSInteger)port {
@@ -393,6 +434,7 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
     if (!delegate) {
         return;
     }
+    const bool logs = _logs.load() && [delegate respondsToSelector:@selector(sessionDidLog:)];
     for (lt::alert *alert : alerts) {
         if (auto *metadata = lt::alert_cast<lt::metadata_received_alert>(alert)) {
             [delegate torrentDidReceiveMetadata:hashString(metadata->handle.info_hashes().get_best())];
@@ -417,6 +459,37 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
         } else if (auto *fileError = lt::alert_cast<lt::file_error_alert>(alert)) {
             [delegate torrent:hashString(fileError->handle.info_hashes().get_best())
                 didFailWithMessage:toNSString(fileError->error.message())];
+        } else if (auto *chosen = lt::alert_cast<lt::file_prio_alert>(alert)) {
+            if ([delegate respondsToSelector:@selector(torrentDidApplyFileChoice:)]) {
+                [delegate torrentDidApplyFileChoice:hashString(chosen->handle.info_hashes().get_best())];
+            }
+        } else if (lt::alert_cast<lt::dht_bootstrap_alert>(alert)) {
+            // A torrent added before the hash table was up was never looked for in it:
+            // libtorrent only asks at once for torrents added while the table is running, and
+            // otherwise leaves them to a round that comes every fifteen minutes.
+            [self announceEveryTorrent];
+            if (logs) {
+                [delegate sessionDidLog:@"the hash table is ready"];
+            }
+        } else if (logs && !(alert->category() & lt::alert_category::piece_progress)) {
+            // Everything else, in libtorrent's words; the block-by-block chatter is left out.
+            [delegate sessionDidLog:toNSString(std::string(alert->what()) + ": " + alert->message())];
+        }
+    }
+}
+
+/// Asks the hash table for people sharing each torrent, now.
+- (void)announceEveryTorrent {
+    std::vector<lt::torrent_handle> handles;
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        for (const auto &entry : _handles) {
+            handles.push_back(entry.second);
+        }
+    }
+    for (const lt::torrent_handle &handle : handles) {
+        if (handle.is_valid()) {
+            handle.force_dht_announce();
         }
     }
 }

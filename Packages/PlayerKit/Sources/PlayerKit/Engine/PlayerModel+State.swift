@@ -55,3 +55,35 @@ public extension PlayerModel {
         client.commandResult(arguments)
     }
 }
+
+// MARK: - Events as they are passed on
+
+extension PlayerModel {
+    /// Adds an event to `eventTrace`, if tracing is on, with the milliseconds since the player
+    /// was made; at the moments that matter, also where the engine itself says it is.
+    func trace(_ event: PlayerEvent) {
+        guard eventTrace != nil else { return }
+        if event.isWorthTracing {
+            let milliseconds = Int((ContinuousClock.now - traceStart) / .milliseconds(1))
+            eventTrace?.append("\(milliseconds):\(event.traceDescription)")
+        }
+        if event == .playbackRestarted || event == .fileLoaded || event == .property(.reachedEnd(true)) {
+            let details = ["time-pos", "aid", "current-ao", "audio-pts", "pause", "speed"]
+                .map { "\($0)=\(client.string($0) ?? "-")" }
+                .joined(separator: " ")
+            eventTrace?.append("[\(details)]")
+        }
+    }
+
+    /// The event as the rest of the player should see it. A stream that never arrived is not
+    /// "a file in an unknown format", whatever the engine makes of an empty file.
+    func inOurWords(_ event: PlayerEvent) -> PlayerEvent {
+        guard case let .ended(.failed(reason)) = event else { return event }
+        return .ended(.failed(PlaybackOptions.failureMessage(
+            engine: reason,
+            arrival: source.flatMap { arrivalFailureMessages[$0.engineArgument] },
+            hadOpened: state.hasMedia,
+            waited: openedAt.map { ContinuousClock.now - $0 }
+        )))
+    }
+}

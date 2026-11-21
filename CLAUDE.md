@@ -37,6 +37,8 @@ swiftformat .                     # apply formatting
 # One package, fast (no Xcode project needed):
 cd Packages/MediaCore && swift test
 LIVE_ADDON_TESTS=1 swift test --filter LiveAddonTests   # opt-in: hits the real default add-ons
+cd Packages/StreamEngine && LIVE_TORRENT_HASH=<40 hex> swift test --filter LiveSwarmTests   # opt-in, REAL network: see the rule below
+#   LIVE_TORRENT_LOG=1 adds what explains a slow start (trackers, hash table); 2 adds libtorrent's own commentary
 cd Packages/AppUI && LIVE_ADDON_TESTS=1 swift test --filter LiveSubtitleServiceTests   # opt-in: lists, never downloads
 
 # Prerequisites that ci.sh runs for you (both skip work that is already done):
@@ -120,6 +122,14 @@ affected: they run under the terminal's own permission.
 interfaces and talks to the router, and macOS then asks the user to allow incoming connections (if the
 firewall is on) and local-network access. Tests use `TorrentEngineSettings.loopback()`; in the app,
 `-profile` does the same. Never play a torrent stream in the app without `-profile`.
+The one exception is `LiveSwarmTests`, which exists because loopback tests cannot show how the engine
+does among strangers (they hid three faults, see "How streaming fits together"). It runs only when a
+torrent is named, **only with the user's go-ahead each time** (it downloads from the internet), and only
+against something free to share: on 22 Nov 2026 the user allowed Ubuntu's own disc image, "up to
+about 300 MB"; three runs took 326 MB, because the fetch window was 256 MB then (it is 16 MB in the
+test now) and the first runs did not delete what they fetched (it does now, before returning). It keeps local discovery and port mapping off, so macOS has nothing to ask about the local
+network, and it fetches little more than it reads. The firewall was off, so no prompt was seen; with
+the firewall on, a test binary that listens would raise one.
 
 **Never touch the user's own session.** The user now runs the app themselves. A copy without `-profile`
 shares their library and stream cache, and a second copy trims the cache at launch without knowing what
@@ -243,11 +253,45 @@ StreamPlayer ─┬─ web address ───────────────
   (`TORRENT_NO_DEPRECATE` selects the ABI namespace) shows up as undefined symbols at link time.
 - **Swift never sees C++.** `TorrentBridge` is Objective-C on the outside; `TorrentEngine` is an actor
   that turns its callbacks into an ordered event stream and async calls with cancellable waiters.
-- **`PiecePrioritizer` is pure.** From where each reader is: the next 8 MB are urgent (deadlines rising
-  piece by piece), the next 48 MB are fetched ahead, the rest of the file is background; before the
-  player asks for anything, both ends of the file are urgent (containers keep their index there).
-  Only the difference between two plans is sent to libtorrent. A file larger than the cache budget is
-  not fetched whole.
+- **A torrent is fetched in file order, which is playing order** (`sequential_download`), and
+  **`PiecePrioritizer` (pure) says only what is not wanted and what jumps the queue.** From the
+  earliest place the player reads: the megabyte being waited for has deadlines (libtorrent makes those
+  top priority and asks several peers for a late block), everything after it follows in file order,
+  and nothing behind it is fetched until everything ahead is there. Before the player asks for
+  anything, both ends of the file come first (containers keep their index there). A file larger than
+  the cache budget is not fetched whole: 256 MB ahead of the player and no more. Only the difference
+  between two plans is sent to libtorrent. Keep the urgent stretch small: libtorrent fetches its
+  top-priority pieces in no order among themselves (with 8 MB urgent and 256 KiB pieces, the piece
+  being waited for could be the twenty-eighth to arrive).
+- **Three things about libtorrent that cost the first real session its films**, each found by measuring
+  and each with a comment where it is handled:
+  1. *A torrent added before the hash table (DHT) is up is never looked for in it.* libtorrent asks at
+     once only for torrents added while the table is running; the others wait for a round that comes
+     every fifteen minutes. The engine is started for the very torrent it is then given, so the first
+     stream of every session found nobody unless it came with trackers (most do not: 435 of 500 in one
+     real answer). `TorrentEngine.peerSearchSchedule` asks again at 0, 1, 2, 4… seconds until the
+     description arrives, and the bridge asks for every torrent when the table reports ready.
+  2. *Choosing the file wipes the piece priorities set after it.* `prioritize_files` takes effect when
+     its disk job returns, and at that moment libtorrent sets every piece back to its file's priority.
+     The plan sent in between was lost, and the whole file (25 GB, say) was fetched in random order.
+     The bridge reports `file_prio_alert` and the engine then sends the whole plan again.
+  3. *A torrent with nothing wanted for the moment is "finished", and libtorrent hangs up on every
+     seed* (`close_redundant_connections`, on by default). For a stream that moment comes whenever the
+     download gets ahead of the player. It is off.
+  Also set: every tracker is asked at once (`announce_to_all_trackers`/`_tiers`; the default asks one
+  and tries the next only when it fails), and the table starts from four well-known routers, not one.
+- **The engine keeps an eye on what readers wait for** (`TorrentEngine+Watch`): every two seconds it
+  asks the session directly whether a waited-for piece is there (an event lost to a full alert queue
+  would otherwise leave a reader waiting for ever), and a wait of 10, 20, 40… seconds is logged with
+  peers, seeds and rate. Those lines and "description after N s" are what to read first when a film
+  will not start: `/usr/bin/log show --last 30m --predicate 'subsystem == "<bundle id>"'` (in zsh,
+  `log` alone is a shell builtin).
+- **The player waits for a torrent, and says what it is waiting for.** A source opened with
+  `PlaybackOptions.arrivalFailureMessage` gets a 90-second network timeout instead of 30 (four attempts,
+  so about six minutes), the busy indicator shows connections and speed (`PlayerModel.waitingNote`,
+  written only while the player is busy), and a source that never opened after 45 seconds or more is
+  reported with that message. Before, a film that arrived too slowly ended as "not in a format that
+  can be played", which is what the engine makes of an empty file.
 - **The player reads torrents over HTTP from `StreamServer`**: loopback only, a random 128-bit token in
   every address, and the Host header must be a loopback name (so a web page cannot be tricked into
   fetching a stream). One connection is one reader; when the player hangs up (every seek), the reader
@@ -577,9 +621,10 @@ Carried over or not verified in Stage 4:
 
 Carried over or not verified in Stage 5:
 
-- **The engine has never talked to anyone but itself.** Every test is two engines on this machine's
-  loopback interface: no tracker, no hash table (DHT), no router mapping, no peer from the internet,
-  no HTTPS tracker. That real swarms work rests on libtorrent, not on anything checked here.
+- **Until 22 Nov 2026 the engine had never talked to anyone but itself**, and it showed: see the three
+  faults under "How streaming fits together". It has since been measured against one legal torrent by
+  hash alone (hash table, peers from the internet). Still never tried: a tracker of any kind, router
+  mapping, an incoming connection.
 - **macOS will ask the user two things the first time a real torrent plays** (allow incoming
   connections, if the firewall is on; local-network access). Neither prompt has been seen.
 - CPU and memory while a torrent streams were not measured in the app (only the test's loopback run).
@@ -803,6 +848,47 @@ Carried over or not verified:
   rebuilt. It still has the crash above until `Scripts/package.sh` is run with the app closed.
 - The 190 MB of GPU memory is still there with the scripts off (194 MB measured).
 
+### After Stage 9: the film that would not play
+
+The user played a film in another app and it ran; here it ended as "This file is not in a format that
+can be played". The file was fine (its first 28 MB were on disk, starting with the Matroska signature):
+the player had waited 2 min 40 s for bytes arriving at about 140 kB/s, and a torrent with 74 people
+sharing it had found nobody at all. The causes and fixes are the three libtorrent points, the fetch
+order, the watch and the player's patience described under "How streaming fits together".
+
+| Where | Changed | Tests |
+|---|---|---|
+| StreamEngine | peer search (schedule, bridge call, on hash-table-ready), whole plan re-sent after the file choice, file-order fetching with a one-megabyte urgent stretch, seeds kept, all trackers at once, four bootstrap routers, the watch, arrival order kept for tests, a diagnostic level, `LiveSwarmTests` | 46 (1 opt-in live) |
+| PlayerKit | `arrivalFailureMessage`, per-file network timeout, `waitingNote` under the busy indicator | 183 |
+| AppUI | torrent streams opened as "still arriving", the waiting note from the torrent's status | 157 |
+
+Measured on the real network, Ubuntu 26.04 desktop image (6.5 GB, 256 KiB pieces), found by hash alone:
+before, no peer in 90 seconds; after, the description in 3.1 to 3.8 s, first bytes in 5.7 s in one run
+and 17 s in another (its first piece failed its hash check once and was fetched again), 30 to 68
+peers, 3 to 9 MB/s. On loopback the arrival order went from random (a lead of 300 pieces over the
+reader) to file order.
+
+Carried over or not verified:
+
+- **Not tried with the film that failed, or with any film**: I do not start those torrents. The user's
+  next attempt is the test. If a film still will not start, the log now says why (see the watch).
+- **One run had ten pieces fail their hash check** in twenty seconds (piece 0 among them), another had
+  none. Bad data from someone in the swarm is the likely cause (libtorrent bans such peers by itself);
+  not confirmed, because peer alerts were off in that run.
+- **Large pieces (8 to 16 MiB, usual for films) were only tried on loopback.** Ubuntu's are 256 KiB.
+- **A file larger than the cache budget still ends up on disk whole as it is watched**: only the
+  stretch ahead is fetched, but nothing behind is given back until the stream closes. A 70 GB film
+  takes 70 GB by its end. Not addressed.
+- **In a file kept whole, what was skipped by a jump is fetched only when the player next moves on a
+  piece after everything ahead is in.** A player left paused there fetches nothing more.
+- **A torrent that stalls in mid-film** is waited for (the engine reconnects after each 90 seconds of
+  silence, four times) and then the file ends as if it were over; the next-episode offer could then
+  appear. Not handled.
+- The hash table still starts from nothing at every launch (3 to 4 s to a description, 17 s in the
+  slowest run to "ready"); its state is not saved between launches.
+- Nothing was clicked; the waiting note under the busy indicator was not seen in the running app.
+- **The packaged app in `build/dist` does not have these fixes until it is rebuilt** with the app closed.
+
 ## Performance log
 
 Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K HDR < 600 MB;
@@ -876,6 +962,11 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-17 | 9 | Packaged app | App bundle as built / after stripping local symbols; disk image | 132 MB / 102 MB; 44 MB |
 | 2026-11-17 | 9 | Packaged app | Idle memory, launched from the mounted disk image | 70 MB |
 | 2026-11-17 | 9 | Packaged app | With the audio conversion helper (15 MB): app as built / stripped; disk image | 147 MB / 117 MB; 52 MB |
+
+| 2026-11-22 | after 9 | Debug, in a test | Real swarm, by hash alone (Ubuntu image, thousands sharing): peers after 90 s, as shipped | 0 |
+| 2026-11-22 | after 9 | Debug, in a test | Same, with the peer search put right: description / peers at 50 s / rate | 20 s (when the hash table reported ready) / 68 / about 3 MB/s |
+| 2026-11-22 | after 9 | Debug, in a test | Same, asking early and in file order: description / first bytes / rate (two runs) | 3.1 and 3.8 s / 17 and 5.7 s / 3 to 9 MB/s |
+| 2026-11-22 | after 9 | Debug, in a test | Loopback, 256 KiB pieces: how far arrivals ran ahead of the reader, before / after | 300 pieces and more / 2 |
 
 **The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
 10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)

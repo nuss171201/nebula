@@ -259,7 +259,12 @@ public final class StreamPlayer {
             noteStarted(video, choice: choice)
             // No seek-bar stills: they would open a second reader far from the playhead and
             // take pieces from what is about to be watched.
-            coordinator.play(playable, options: PlaybackOptions(memoryKeys: video.memoryKeys, generatesThumbnails: false, title: video.title))
+            coordinator.play(playable, options: PlaybackOptions(
+                memoryKeys: video.memoryKeys,
+                generatesThumbnails: false,
+                title: video.title,
+                arrivalFailureMessage: Self.didNotArriveMessage
+            ))
         case let .failure(error as TorrentError):
             phase = .failed(title: video.title, message: error.userMessage)
         case .failure(is CancellationError):
@@ -318,8 +323,29 @@ public final class StreamPlayer {
                 if !status.isFinished {
                     speedSamples.append(Double(status.downloadRate))
                 }
+                showWaitingNote(for: status)
             }
         }
+    }
+
+    /// What the player says if a torrent's file never opens.
+    nonisolated static let didNotArriveMessage =
+        "This stream did not arrive. Too few people may be sharing it at the moment, or the connection to them is too slow. Try another one."
+
+    /// While the player is waiting for the torrent, says under its busy indicator how the
+    /// torrent is doing. Only then: during ordinary playback nothing is written, so nothing redraws.
+    private func showWaitingNote(for status: TorrentStatus) {
+        guard let player = coordinator.player else { return }
+        let note = player.state.isBusy ? Self.waitingNote(for: status) : nil
+        if player.waitingNote != note {
+            player.waitingNote = note
+        }
+    }
+
+    nonisolated static func waitingNote(for status: TorrentStatus) -> String {
+        guard status.peers > 0 else { return "Looking for people sharing this…" }
+        let speed = ByteCountFormatter.string(fromByteCount: Int64(status.downloadRate), countStyle: .file)
+        return "\(status.peers) \(status.peers == 1 ? "connection" : "connections") · \(speed)/s"
     }
 
     func closeActiveTorrent() {

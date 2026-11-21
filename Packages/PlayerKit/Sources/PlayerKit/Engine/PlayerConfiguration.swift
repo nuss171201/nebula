@@ -79,17 +79,46 @@ public struct PlaybackOptions: Sendable, Equatable {
     public var httpHeaders: [String: String]
     /// What to call it, when the caller knows better than the file's own name does.
     public var title: String?
+    /// Set for a source that is still being fetched while it plays (a torrent behind the app's
+    /// own server). Silence from such a source means "slow", not "gone": the engine then waits
+    /// longer for data, and if the source never opens after a long wait, this is said instead
+    /// of the engine's own reason. (A film that arrived too slowly used to be reported as
+    /// "not in a format that can be played", which is what the engine makes of an empty file.)
+    public var arrivalFailureMessage: String?
+
+    /// Seconds the engine waits for data from a source that is still arriving, per attempt.
+    /// It makes four attempts, so a stream gets about six minutes before it is given up on.
+    static let patientTimeout = 90
+    /// A failure to open that comes later than this is taken to be for want of data: a file
+    /// in a format the engine does not know is refused within a second or two of its first bytes.
+    static let starvedAfter = Duration.seconds(45)
 
     public init(
         memoryKeys: [String]? = nil,
         generatesThumbnails: Bool = true,
         httpHeaders: [String: String] = [:],
-        title: String? = nil
+        title: String? = nil,
+        arrivalFailureMessage: String? = nil
     ) {
         self.title = title
         self.memoryKeys = memoryKeys
         self.generatesThumbnails = generatesThumbnails
         self.httpHeaders = httpHeaders
+        self.arrivalFailureMessage = arrivalFailureMessage
+    }
+
+    /// Everything that is set for this file only, as the engine's list of options; `nil` when
+    /// there is nothing to set.
+    var fileOptions: String? {
+        let options = [headerOption, arrivalFailureMessage == nil ? nil : "network-timeout=\(Self.patientTimeout)"].compactMap(\.self)
+        return options.isEmpty ? nil : options.joined(separator: ",")
+    }
+
+    /// What to say when a source fails: the engine's reason, unless the source was still
+    /// arriving and never opened after a long wait.
+    static func failureMessage(engine: String, arrival: String?, hadOpened: Bool, waited: Duration?) -> String {
+        guard let arrival, !hadOpened, let waited, waited >= starvedAfter else { return engine }
+        return arrival
     }
 
     /// The headers as the engine's per-file option, or `nil` when there are none to send.

@@ -12,6 +12,10 @@ extension TorrentEngine {
         case let .pieceFinished(infoHash, piece):
             guard torrents[infoHash] != nil else { return }
             torrents[infoHash]?.completed.insert(piece)
+            torrents[infoHash]?.arrivals.append(piece)
+            if let count = torrents[infoHash]?.arrivals.count, count > 600 {
+                torrents[infoHash]?.arrivals.removeFirst(count - 400)
+            }
             for index in torrents[infoHash]?.streams.keys.map(\.self) ?? [] {
                 torrents[infoHash]?.streams[index]?.plan.deadlines[piece] = nil
                 torrents[infoHash]?.streams[index]?.plan.priorities[piece] = nil
@@ -29,6 +33,18 @@ extension TorrentEngine {
                 waiters.forEach { $0.continuation.resume(throwing: TorrentError.failed(message ?? "A piece could not be read.")) }
             }
 
+        case let .fileChoiceApplied(infoHash):
+            // libtorrent has just set every piece back to its file's priority: what it was told
+            // before is gone, so it is told everything again, not only what changed.
+            for index in torrents[infoHash]?.streams.keys.map(\.self) ?? [] {
+                torrents[infoHash]?.streams[index]?.plan = PiecePlan()
+                replan(file: index, of: infoHash)
+            }
+
+        case let .log(line):
+            logger.info("\(line, privacy: .public)")
+            onDiagnostic?(line)
+
         case let .failed(infoHash, message):
             guard var torrent = torrents[infoHash] else { return }
             logger.error("torrent \(infoHash, privacy: .public) failed: \(message, privacy: .public)")
@@ -43,7 +59,12 @@ extension TorrentEngine {
     }
 
     func refreshMetadata(of infoHash: String) {
-        guard torrents[infoHash] != nil, torrents[infoHash]?.info == nil, let bridged = session.info(forTorrent: infoHash) else { return }
+        guard let torrent = torrents[infoHash], torrent.info == nil, let bridged = session.info(forTorrent: infoHash) else { return }
+        let took = (ContinuousClock.now - torrent.addedAt) / .seconds(1)
+        logger.notice("""
+        \(infoHash.prefix(8), privacy: .public): description after \(String(format: "%.1f", took), privacy: .public) s, \
+        pieces of \(bridged.pieceLength / 1024, privacy: .public) KiB
+        """)
         let info = TorrentInfo(
             name: bridged.name,
             pieceLength: bridged.pieceLength,

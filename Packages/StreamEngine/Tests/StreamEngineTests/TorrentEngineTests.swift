@@ -129,6 +129,82 @@ struct TorrentEngineTests {
         #expect(FileManager.default.fileExists(atPath: stored.path))
     }
 
+    /// How far beyond the next piece in file order the arrivals ran, at the worst, counting
+    /// from `start` and leaving out `ignored` (the file's last pieces, which are asked for
+    /// before the player has said where it reads).
+    private func worstLead(of arrivals: [Int], from start: Int, ignoring ignored: Range<Int>) -> Int {
+        var have = Set<Int>()
+        var next = start
+        var worst = 0
+        for piece in arrivals where piece >= start && !ignored.contains(piece) {
+            have.insert(piece)
+            while have.contains(next) {
+                next += 1
+            }
+            worst = max(worst, piece - next)
+        }
+        return worst
+    }
+
+    @Test("Pieces arrive in the order they are played in, whatever their size", arguments: [256 * 1024, 4 << 20])
+    func arrivesInPlayingOrder(pieceLength: Int) async throws {
+        let size = 40 << 20
+        let swarm = try await LoopbackSwarm.make(size: size, pieceLength: pieceLength)
+        defer { Task { await swarm.tearDown() } }
+        try await swarm.connect()
+        _ = try await swarm.leecher.metadata(of: swarm.infoHash, timeout: .seconds(20))
+        _ = try await swarm.leecher.open(file: 0, of: swarm.infoHash)
+
+        let reader = UUID()
+        var offset = 0
+        while offset < 16 << 20 {
+            offset += try await swarm.leecher.read(file: 0, of: swarm.infoHash, at: Int64(offset), maxLength: 1 << 20, reader: reader).count
+        }
+        let arrivals = await swarm.leecher.arrivalOrder(of: swarm.infoHash)
+        let pieceCount = size / pieceLength
+        let tail = pieceCount - max((2 << 20) / pieceLength, 1) ..< pieceCount
+        // Before this was put right the arrivals were in no order at all: the file choice,
+        // taking effect a moment after the plan, set every piece back to the same priority,
+        // and between seeds "rarest first" is at random (a lead of 300 pieces was measured).
+        // What is left is the megabyte being waited for, which comes in any order.
+        #expect(arrivals.count >= (16 << 20) / pieceLength)
+        #expect(worstLead(of: arrivals, from: 0, ignoring: tail) <= max((1 << 20) / pieceLength, 1))
+    }
+
+    @Test("After a jump ahead the download carries on from there, and what was skipped waits until the rest is in")
+    func carriesOnFromAJump() async throws {
+        let pieceLength = 256 * 1024
+        let size = 24 << 20
+        let swarm = try await LoopbackSwarm.make(size: size, pieceLength: pieceLength)
+        defer { Task { await swarm.tearDown() } }
+        try await swarm.connect()
+        _ = try await swarm.leecher.metadata(of: swarm.infoHash, timeout: .seconds(20))
+        _ = try await swarm.leecher.open(file: 0, of: swarm.infoHash)
+
+        // Straight to the middle, as when a film is resumed, and on to the end.
+        let reader = UUID()
+        let jump = 12 << 20
+        var offset = jump
+        while offset < size {
+            offset += try await swarm.leecher.read(file: 0, of: swarm.infoHash, at: Int64(offset), maxLength: 1 << 20, reader: reader).count
+        }
+        await swarm.leecher.close(reader: reader, file: 0, of: swarm.infoHash)
+        // With nothing left ahead, the first half follows.
+        for _ in 0 ..< 400 where await swarm.leecher.status(of: swarm.infoHash)?.progress != 1 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(await swarm.leecher.status(of: swarm.infoHash)?.progress == 1)
+
+        let arrivals = await swarm.leecher.arrivalOrder(of: swarm.infoHash)
+        let jumpPiece = jump / pieceLength
+        // The file's first two megabytes are asked for before the player says where it reads.
+        let skipped = (2 << 20) / pieceLength ..< jumpPiece
+        let lastAhead = try #require(arrivals.lastIndex { $0 >= jumpPiece })
+        let firstSkipped = try #require(arrivals.firstIndex { skipped.contains($0) })
+        #expect(firstSkipped > lastAhead)
+        #expect(worstLead(of: arrivals, from: jumpPiece, ignoring: 0 ..< 0) <= 4)
+    }
+
     @Test("With nobody to ask, waiting for the description gives up after the timeout")
     func metadataTimeout() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("lonely-\(UUID().uuidString)")

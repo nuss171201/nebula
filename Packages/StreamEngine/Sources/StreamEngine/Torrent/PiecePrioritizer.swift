@@ -50,8 +50,11 @@ public struct PieceMap: Sendable, Equatable {
 /// How much is fetched around each place the player is reading from.
 public struct StreamingWindow: Sendable, Equatable {
     /// Bytes from a reader's position that are wanted at once, each piece with a deadline.
+    /// Kept small: the engine fetches urgent pieces in no particular order among themselves,
+    /// so a long urgent stretch is a stretch that arrives scrambled (measured: with 8 MB urgent
+    /// and 256 KiB pieces, the first piece could be the twenty-eighth to arrive).
     public var urgentBytes: Int64
-    /// Bytes after those that are fetched ahead of the rest of the file.
+    /// Bytes after those that are fetched as well, of a file that is not fetched whole.
     public var readAheadBytes: Int64
     /// Bytes at each end of the file wanted before playback starts: containers keep their
     /// index there, and the player asks for it before the first frame.
@@ -62,8 +65,8 @@ public struct StreamingWindow: Sendable, Equatable {
     public var maximumReaders: Int
 
     public init(
-        urgentBytes: Int64 = 8 << 20,
-        readAheadBytes: Int64 = 48 << 20,
+        urgentBytes: Int64 = 1 << 20,
+        readAheadBytes: Int64 = 256 << 20,
         edgeBytes: Int64 = 2 << 20,
         deadlineStep: Int = 250,
         maximumReaders: Int = 3
@@ -76,17 +79,24 @@ public struct StreamingWindow: Sendable, Equatable {
     }
 }
 
-/// What to ask the torrent engine for: which pieces are needed by when, and how keen to be
-/// about every other piece of the file.
+/// What to ask the torrent engine for: which pieces are needed by when, and which of the
+/// file's other pieces are fetched at all.
+///
+/// The engine fetches a torrent's pieces in file order (`sequential_download`), which is the
+/// order a film is watched in. A plan therefore says little: which pieces are not wanted
+/// (everything behind the player, until what lies ahead is there), and which few jump the
+/// queue because something is waiting for them this moment.
 public struct PiecePlan: Sendable, Equatable {
     public enum Priority: Int, Sendable, Comparable {
-        /// Not fetched at all: the file is too large to keep whole.
+        /// Not fetched: behind the player while there is still something to fetch ahead of
+        /// it, or beyond what is kept of a file too large to keep whole.
         case skip = 0
-        /// Behind the player: fetched when nothing else is wanted, for seeking back.
+        /// Fetched in file order, after everything ahead of the player is there.
         case low = 1
-        /// Ahead of the player, but not soon.
+        /// Fetched in file order.
         case normal = 4
-        /// Just beyond the urgent window.
+        /// Fetched before anything else: what a reader is waiting for. These are the pieces
+        /// with deadlines; among themselves they come in no particular order, so they are few.
         case high = 7
 
         public static func < (lhs: Priority, rhs: Priority) -> Bool {
@@ -130,16 +140,17 @@ public struct PiecePlan: Sendable, Equatable {
 
 /// Decides which pieces of a file to fetch first so that it can be played while it downloads.
 ///
-/// Around each place the player reads from: the next few megabytes are urgent, with deadlines
-/// that rise piece by piece so they arrive in order; the stretch after that is fetched ahead
-/// of everything else; the rest of the file ahead comes at normal priority and what lies
-/// behind at low priority. Before the player has asked for anything, both ends of the file
-/// are urgent, because that is where containers keep the index the player reads first.
+/// From the earliest place the player reads from, the file is fetched in order: the megabyte a
+/// reader is waiting for jumps the queue and has a deadline (the engine asks several peers for
+/// a block that is late), and the rest follows in file order. Nothing behind the player is fetched while anything ahead of it is missing: a
+/// connection that is only just fast enough must not spend itself on what was skipped over.
+/// Before the player has asked for anything, both ends of the file come first, because that is
+/// where containers keep the index the player reads before the first frame.
 public enum PiecePrioritizer {
     /// - Parameters:
     ///   - readers: Offsets within the file that are being read, most recently active first.
-    ///   - fetchesWholeFile: Whether the rest of the file is fetched in the background as well.
-    ///     `false` keeps to what the player is about to need, for files larger than the cache allows.
+    ///   - fetchesWholeFile: Whether the rest of the file is fetched as well. `false` keeps to
+    ///     what the player is about to need, for files larger than the cache allows.
     ///   - isComplete: Whether a piece has been downloaded and verified.
     public static func plan(
         map: PieceMap,
@@ -149,7 +160,7 @@ public enum PiecePrioritizer {
         isComplete: (Int) -> Bool
     ) -> PiecePlan {
         guard map.fileSize > 0 else { return PiecePlan() }
-        let readers = Array(readers.prefix(window.maximumReaders))
+        let positions = readers.prefix(window.maximumReaders).map { min(max($0, 0), map.fileSize - 1) }
         var plan = PiecePlan()
 
         func want(_ pieces: ClosedRange<Int>, startingAt firstDeadline: Int) {
@@ -165,33 +176,37 @@ public enum PiecePrioritizer {
             }
         }
 
-        // Everything missing starts at the bottom; the stretches that matter are raised below.
-        let background: PiecePlan.Priority = fetchesWholeFile ? .normal : .skip
-        raise(map.pieces, to: fetchesWholeFile ? .low : .skip)
+        // Every missing piece is in the plan, so that the engine is told about each of them.
+        raise(map.pieces, to: .skip)
 
-        if readers.isEmpty {
+        if positions.isEmpty {
             // Nothing has been asked for yet: get both ends, the start first.
-            want(map.piece(containing: 0) ... map.piece(containing: window.edgeBytes - 1), startingAt: 0)
+            let head = map.piece(containing: 0) ... map.piece(containing: window.edgeBytes - 1)
+            want(head, startingAt: 0)
             if map.fileSize > window.edgeBytes {
                 want(map.piece(containing: map.fileSize - window.edgeBytes) ... map.lastPiece, startingAt: window.deadlineStep)
             }
-            raise(map.pieces, to: background)
+            if fetchesWholeFile {
+                raise(map.pieces, to: .normal)
+            }
         }
 
-        for (rank, reader) in readers.enumerated() {
-            let position = min(max(reader, 0), map.fileSize - 1)
+        for (rank, position) in positions.enumerated() {
             let first = map.piece(containing: position)
             let lastUrgent = map.piece(containing: position + window.urgentBytes - 1)
             // A reader that has been quiet for a while waits behind the ones in use.
             want(first ... lastUrgent, startingAt: rank * window.deadlineStep * 4)
 
-            if lastUrgent < map.lastPiece, window.readAheadBytes > 0 {
-                let lastAhead = map.piece(containing: position + window.urgentBytes + window.readAheadBytes - 1)
-                raise(lastUrgent + 1 ... max(lastAhead, lastUrgent + 1), to: .high)
-            }
-            raise(first ... map.lastPiece, to: background)
+            let lastAhead = map.piece(containing: position + window.urgentBytes + window.readAheadBytes - 1)
+            raise(first ... (fetchesWholeFile ? map.lastPiece : max(lastAhead, lastUrgent)), to: .normal)
         }
-        // Urgent pieces are also the keenest in the ordinary ordering.
+
+        // What was skipped over comes last, and only for a file that is kept whole.
+        let earliest = positions.map { map.piece(containing: $0) }.min() ?? map.firstPiece
+        if fetchesWholeFile, earliest > map.firstPiece, (earliest ... map.lastPiece).allSatisfy(isComplete) {
+            raise(map.firstPiece ... earliest - 1, to: .low)
+        }
+        // A piece with a deadline jumps the queue (the engine does this by itself; the plan says so too).
         for piece in plan.deadlines.keys {
             plan.priorities[piece] = .high
         }

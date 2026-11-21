@@ -130,6 +130,9 @@ public struct TorrentEngineSettings: Sendable, Equatable {
     public var mapsPorts: Bool
     /// Several peers at one address: only for peers on this machine, as in tests.
     public var allowsSeveralConnectionsPerAddress: Bool
+    /// How much the engine logs about finding people: 0 nothing, 1 what explains a slow start,
+    /// 2 libtorrent's own commentary as well.
+    public var diagnosticLevel = 0
     public var window: StreamingWindow
 
     public init(

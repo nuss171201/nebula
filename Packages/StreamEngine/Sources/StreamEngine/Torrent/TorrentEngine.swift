@@ -8,6 +8,8 @@ enum TorrentEvent: Sendable {
     case pieceFinished(String, Int)
     case pieceRead(String, Int, Data?, String?)
     case failed(String, String)
+    case fileChoiceApplied(String)
+    case log(String)
 }
 
 /// Receives the bridge's callbacks (on its private queue) and forwards them as a stream.
@@ -37,6 +39,14 @@ private final class EventRelay: NSObject, TBSessionDelegate, Sendable {
 
     func torrent(_ infoHash: String, didFailWithMessage message: String) {
         continuation.yield(.failed(infoHash, message))
+    }
+
+    func torrentDidApplyFileChoice(_ infoHash: String) {
+        continuation.yield(.fileChoiceApplied(infoHash))
+    }
+
+    func sessionDidLog(_ line: String) {
+        continuation.yield(.log(line))
     }
 }
 
@@ -78,6 +88,12 @@ public actor TorrentEngine {
         var pieceWaiters: [Int: [Waiter<Void>]] = [:]
         var readWaiters: [Int: [Waiter<Data>]] = [:]
         var cachedPieces: [(piece: Int, data: Data)] = []
+        /// Pieces in the order they arrived, most recent last (the last few hundred).
+        var arrivals: [Int] = []
+        /// When a reader started waiting for each piece that is being waited for.
+        var waitingSince: [Int: ContinuousClock.Instant] = [:]
+        /// When the torrent was added, for saying how long things took.
+        var addedAt = ContinuousClock.now
     }
 
     public let directory: URL
@@ -87,7 +103,15 @@ public actor TorrentEngine {
     let logger: Logger
     var torrents: [String: Torrent] = [:]
     private var activity = 0
-    private var isShutDown = false
+    var isShutDown = false
+    /// Looks in on what is being waited for (`TorrentEngine+Watch`).
+    var watchTask: Task<Void, Never>?
+    /// Where diagnostic lines go besides the log. For the live measurement.
+    var onDiagnostic: (@Sendable (String) -> Void)?
+
+    func setDiagnosticHandler(_ handler: (@Sendable (String) -> Void)?) {
+        onDiagnostic = handler
+    }
 
     /// - Parameter directory: Where torrents keep their data, one folder per torrent.
     public init(settings: TorrentEngineSettings, directory: URL, logSubsystem: String = "stream.engine") {
@@ -116,6 +140,7 @@ public actor TorrentEngine {
         bridged.usesLocalDiscovery = settings.usesLocalDiscovery
         bridged.mapsPorts = settings.mapsPorts
         bridged.allowsSeveralConnectionsPerAddress = settings.allowsSeveralConnectionsPerAddress
+        bridged.diagnosticLevel = settings.diagnosticLevel
         return bridged
     }
 
@@ -154,6 +179,7 @@ public actor TorrentEngine {
         torrents[source.infoHash] = Torrent()
         // Data from an earlier session may already be on disk.
         refreshMetadata(of: source.infoHash)
+        lookForPeers(of: source.infoHash)
     }
 
     /// Shares a file that is already on disk, described by a .torrent file. Returns its info hash.
@@ -188,6 +214,12 @@ public actor TorrentEngine {
             isFinished: status.isFinished,
             errorMessage: torrent.failure ?? status.errorMessage
         )
+    }
+
+    /// The pieces that arrived since the torrent was added, in order (the last few hundred).
+    /// What the engine was asked for first should be what came first.
+    public func arrivalOrder(of infoHash: String) -> [Int] {
+        torrents[infoHash]?.arrivals ?? []
     }
 
     /// Info hashes of the torrents the engine currently has.
@@ -282,6 +314,8 @@ public actor TorrentEngine {
     public func shutdown() {
         guard !isShutDown else { return }
         isShutDown = true
+        watchTask?.cancel()
+        watchTask = nil
         for torrent in torrents.values {
             fail(torrent, with: TorrentError.removed)
         }
@@ -296,7 +330,7 @@ public actor TorrentEngine {
 
     // MARK: - Internals
 
-    private func replan(file index: Int, of infoHash: String) {
+    func replan(file index: Int, of infoHash: String) {
         guard let torrent = torrents[infoHash], let stream = torrent.streams[index] else { return }
         let readers = stream.readers.values.sorted { $0.lastActive > $1.lastActive }.map(\.offset)
         let plan = PiecePrioritizer.plan(map: stream.map, readers: readers, window: window, fetchesWholeFile: stream.fetchesWholeFile) {
@@ -325,6 +359,10 @@ public actor TorrentEngine {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 torrents[infoHash]?.pieceWaiters[piece, default: []].append(Waiter(id: id, continuation: continuation))
+                if torrents[infoHash]?.waitingSince[piece] == nil {
+                    torrents[infoHash]?.waitingSince[piece] = .now
+                }
+                startWatching()
             }
         } onCancel: {
             Task { [weak self] in

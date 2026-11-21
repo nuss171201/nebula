@@ -78,7 +78,7 @@ public struct PlayerView: View {
             if let surface = model.surface {
                 PlayerSurface(surface: surface)
             }
-            PlayerStatusOverlay(state: model.state)
+            PlayerStatusOverlay(state: model.state, note: model.waitingNote)
 
             VStack {
                 Spacer()
@@ -132,6 +132,8 @@ public struct PlayerView: View {
 /// A busy indicator while opening or stalled, and the message when playback fails.
 struct PlayerStatusOverlay: View {
     let state: PlaybackState
+    /// What is being waited for, if whoever fetches the source has said.
+    var note: String?
 
     var body: some View {
         if case let .failed(message) = state.phase {
@@ -147,9 +149,17 @@ struct PlayerStatusOverlay: View {
             .frame(maxWidth: 520)
             .accessibilityElement(children: .combine)
         } else if state.isBusy {
-            ProgressView()
-                .controlSize(.large)
-                .accessibilityLabel(state.phase == .loading ? "Opening" : "Buffering")
+            VStack(spacing: 14) {
+                ProgressView()
+                    .controlSize(.large)
+                    .accessibilityLabel(state.phase == .loading ? "Opening" : "Buffering")
+                if let note {
+                    Text(note)
+                        .font(.callout)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .shadow(radius: 3)
+                }
+            }
         }
     }
 }

@@ -23,6 +23,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) BOOL mapsPorts;
 /// Allows several peers at one address. Only wanted when the peers are on this machine, as in tests.
 @property (nonatomic) BOOL allowsSeveralConnectionsPerAddress;
+/// How much the session says about what it is doing, through `-sessionDidLog:`: 0 nothing,
+/// 1 the events that explain a slow start (listening, trackers, the hash table, port mapping),
+/// 2 libtorrent's own running commentary as well. For finding out why nobody is found.
+@property (nonatomic) NSInteger diagnosticLevel;
 @end
 
 /// One file of a torrent.
@@ -69,6 +73,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)torrent:(NSString *)infoHash didReadPiece:(NSInteger)piece data:(nullable NSData *)data error:(nullable NSString *)message;
 /// The torrent cannot go on (disk full, files unreadable, …).
 - (void)torrent:(NSString *)infoHash didFailWithMessage:(NSString *)message;
+@optional
+/// The choice of file made with `-wantOnlyFile:ofTorrent:` has taken effect. libtorrent resets
+/// every piece's priority to its file's at that moment, so priorities set before it are gone.
+- (void)torrentDidApplyFileChoice:(NSString *)infoHash;
+/// Something the session did or met, in libtorrent's words. Only with a diagnostic level above 0.
+- (void)sessionDidLog:(NSString *)line;
 @end
 
 @interface TBSession : NSObject
@@ -120,6 +130,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Reads a complete piece from disk; the delegate gets the answer.
 - (void)readPiece:(NSInteger)piece ofTorrent:(NSString *)infoHash;
+
+/// Asks the hash table for people sharing the torrent, now. Does nothing if it is not running.
+- (void)lookForPeersOfTorrent:(NSString *)infoHash;
 
 /// Tells the torrent about a peer directly.
 - (void)connectTorrent:(NSString *)infoHash toPeerAtAddress:(NSString *)address port:(NSInteger)port;

@@ -71,6 +71,9 @@ public final class PlayerModel {
     public internal(set) var audioProblem: String?
     /// What is offered to play next, while the offer stands. Set by whoever makes it.
     public var upNext: UpNextOffer?
+    /// A line under the busy indicator saying what is being waited for ("12 connections ·
+    /// 1.4 MB/s"). Set by whoever is fetching the source, and only while the player is busy.
+    public var waitingNote: String?
 
     /// The view the video is drawn into; `nil` when the configuration has no video output.
     @ObservationIgnored public let surface: PlayerSurfaceView?
@@ -80,7 +83,7 @@ public final class PlayerModel {
     @ObservationIgnored let client: MPVClient
     @ObservationIgnored let logger: Logger
     @ObservationIgnored private var eventTask: Task<Void, Never>?
-    @ObservationIgnored private var openedAt: ContinuousClock.Instant?
+    @ObservationIgnored var openedAt: ContinuousClock.Instant?
     @ObservationIgnored private(set) var hasShutDown = false
     @ObservationIgnored let userAgent: String
     @ObservationIgnored let screenshotDirectory: URL
@@ -97,12 +100,14 @@ public final class PlayerModel {
     @ObservationIgnored var explicitMemoryKeys: [String: [String]] = [:]
     /// Sources (by engine argument) for which no seek-bar stills are made.
     @ObservationIgnored var sourcesWithoutThumbnails: Set<String> = []
+    /// What to say if a source that is still arriving never opens, by engine argument.
+    @ObservationIgnored var arrivalFailureMessages: [String: String] = [:]
     /// Titles given by whoever opened a source (by engine argument), which win over the file's own.
     @ObservationIgnored var givenTitles: [String: String] = [:]
     /// When set, every engine event is appended here (playhead updates left out). A debugging
     /// aid for working out what the engine did in which order; off unless someone turns it on.
     @ObservationIgnored public var eventTrace: [String]?
-    @ObservationIgnored private let traceStart = ContinuousClock.now
+    @ObservationIgnored let traceStart = ContinuousClock.now
     /// What is remembered for the file that is open, once it has been looked up.
     @ObservationIgnored var rememberedForCurrentFile = RememberedTracks()
     /// Counts files, so work started for one file is dropped if another has replaced it.
@@ -190,6 +195,8 @@ public final class PlayerModel {
         if !options.generatesThumbnails {
             sourcesWithoutThumbnails.insert(source.engineArgument)
         }
+        arrivalFailureMessages[source.engineArgument] = options.arrivalFailureMessage
+        waitingNote = nil
         // Before the state is reset for the new file.
         savePosition()
         resume = ResumeState()
@@ -206,9 +213,9 @@ public final class PlayerModel {
         // Until the new file shows what it is, it is treated as standard range.
         updateHDROutput()
         client.set("pause", to: .flag(false))
-        if let headers = options.headerOption {
+        if let fileOptions = options.fileOptions {
             // The fourth argument holds options for this file only; -1 is "no position in the queue".
-            client.command(["loadfile", source.engineArgument, "replace", "-1", headers])
+            client.command(["loadfile", source.engineArgument, "replace", "-1", fileOptions])
         } else {
             client.command(["loadfile", source.engineArgument, "replace"])
         }
@@ -338,24 +345,9 @@ public final class PlayerModel {
 
     // MARK: - Events
 
-    /// Adds an event to `eventTrace`, if tracing is on, with the milliseconds since the player
-    /// was made; at the moments that matter, also where the engine itself says it is.
-    private func trace(_ event: PlayerEvent) {
-        guard eventTrace != nil else { return }
-        if event.isWorthTracing {
-            let milliseconds = Int((ContinuousClock.now - traceStart) / .milliseconds(1))
-            eventTrace?.append("\(milliseconds):\(event.traceDescription)")
-        }
-        if event == .playbackRestarted || event == .fileLoaded || event == .property(.reachedEnd(true)) {
-            let details = ["time-pos", "aid", "current-ao", "audio-pts", "pause", "speed"]
-                .map { "\($0)=\(client.string($0) ?? "-")" }
-                .joined(separator: " ")
-            eventTrace?.append("[\(details)]")
-        }
-    }
-
-    private func handle(_ event: PlayerEvent) {
-        trace(event)
+    private func handle(_ reported: PlayerEvent) {
+        trace(reported)
+        let event = inOurWords(reported)
         let previousSourceSize = sourceVideoSize
         if event == .startedLoading {
             // The engine is moving on by itself (next in queue): note where this file was left.
