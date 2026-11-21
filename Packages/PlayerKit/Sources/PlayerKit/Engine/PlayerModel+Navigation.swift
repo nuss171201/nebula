@@ -6,14 +6,17 @@ public extension PlayerModel {
     func seek(toChapter index: Int) {
         guard state.chapters.indices.contains(index) else { return }
         client.set("chapter", to: .int(Int64(index)))
+        noteSeek()
     }
 
     func nextChapter() {
         client.command(["add", "chapter", "1"])
+        noteSeek()
     }
 
     func previousChapter() {
         client.command(["add", "chapter", "-1"])
+        noteSeek()
     }
 
     /// Replaces the queue with these sources, in this order, and starts playing the one at `index`.
@@ -66,11 +69,15 @@ public extension PlayerModel {
     /// Advances one frame and pauses.
     func stepFrameForward() {
         client.command(["frame-step"])
+        report(.setPaused(true))
+        noteSeek()
     }
 
     /// Goes back one frame and pauses.
     func stepFrameBackward() {
         client.command(["frame-back-step"])
+        report(.setPaused(true))
+        noteSeek()
     }
 
     /// Marks the loop start, then the loop end, then clears the loop.

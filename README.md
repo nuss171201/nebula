@@ -29,6 +29,10 @@ piece by piece in playing order and served to the player from this Mac only).
 - Picture in picture, a mini player, media keys and Now Playing.
 - Resume where you left off; the next episode starts after a countdown.
 
+**Watching together.** A watch party keeps the players of up to eight people, wherever they are, on the
+same frame: play, pause, jumps and speed are shared, a party waits when someone's video stalls, and there
+is a text chat and a voice chat. Everyone plays their own copy or stream; no video travels between people.
+
 ## Building
 
 Tools, from [Homebrew](https://brew.sh):
@@ -88,6 +92,41 @@ there adds shortcuts. Settings → Advanced → Show Folder opens it. The app re
 leaves out what it must control (the window, the output, track selection) and anything that would run
 scripts or write files; Settings → Advanced lists every line it left out and why. Files in
 `~/.config/mpv` are not read.
+
+### Watch parties
+
+Start one from File → Start or Join Watch Party… or from the people button in the player. You get an
+invitation link (it is copied for you); friends paste it in the same place. Then play something: whoever
+has the same title open is brought to where the party is, and anyone who has not is told what is on and,
+for a title from a catalog, taken to its page to choose their own stream. A file counts as a copy of
+whatever the party is watching, since two people's copies rarely have the same name.
+
+- **What is shared:** which title, the position, play and pause, and the speed. Sound and subtitle
+  tracks, volume and picture settings stay each person's own.
+- **Who controls:** everyone, unless the person who started the party keeps the controls to themselves
+  (a switch in the party panel).
+- **Voice:** Join Voice in the party panel; macOS asks for the microphone the first time. Use headphones:
+  the microphone hears the film from your speakers, and your friends would hear it twice.
+- **Privacy:** the apps connect directly to each other (WebRTC) and what they say is encrypted between
+  them. The link holds a secret that never reaches the party server; the server only sees that some
+  apps want to meet in a room it cannot name, and passes sealed messages between them while they connect.
+  People in a party do see each other's internet address, as in any direct call.
+
+**The party server.** Apps in different places cannot find each other without help, so a party needs a
+small meeting point. It is one file with no dependencies, `Server/signal.ts`, for whoever builds the app
+to run somewhere that is reachable over https:
+
+```bash
+deno run --allow-net --allow-env Server/signal.ts     # PORT, HOST, ROOM_LIMIT, ICE_SERVERS, TURN_URLS, TURN_SECRET
+```
+
+Run a single instance (rooms are kept in memory), behind anything that gives it https. Its address goes
+in `PARTY_SERVER_URL` in `Config/Branding.xcconfig` for a build, or in Settings → General on one Mac;
+with neither, the app can still join a party from a link, which names its own server. The server tells
+the apps which helper servers to use for finding a path to each other (two public STUN servers unless you
+say otherwise). On some networks, mobile and company ones especially, no direct path exists, and two
+people then connect only if you also run a relay (a TURN server such as coturn) and name it in
+`TURN_URLS` and `TURN_SECRET`.
 
 ### Where things are kept
 
@@ -149,7 +188,9 @@ Packages/
   MediaLibrary   SQLite (GRDB): settings, library, history, installed add-ons
   StreamEngine   torrent engine (libtorrent), piece ordering, local HTTP server, cache
   PlayerKit      libmpv wrapper, player model and views, key bindings, config file parsing
+  WatchParty     watch parties: sync logic, invitations, signalling client, WebRTC connections
   AppUI          every screen and its view model
+Server/     the watch party's signalling server (one file, runs with Deno)
 Config/     build settings, default add-ons, pinned third-party versions and hashes
 Scripts/    CI, framework builds, packaging, measuring
 ```
@@ -164,6 +205,10 @@ Scripts/    CI, framework builds, packaging, measuring
 - The first time a torrent plays, macOS may ask whether to allow incoming connections and access to the
   local network.
 - A file in Documents, Desktop or Downloads makes macOS ask for permission the first time.
+- Watch parties need a party server that someone runs (see above), and a relay as well for people whose
+  networks allow no direct connection. Everyone is connected to everyone, so a party holds eight people.
+- In a watch party, the voice chat removes the echo of your friends' voices, not the sound of the film:
+  without headphones the others hear your speakers. An A-B loop is not shared and does not hold in a party.
 - No localisation yet: the interface is in English.
 
 What was measured, and what was never tried by hand, is listed stage by stage in `CLAUDE.md`.
@@ -177,6 +222,11 @@ by its author.
 `Config/ThirdParty.json`. The versions and hashes of everything prebuilt are pinned in
 `Config/mpv-libraries.lock`, `Config/torrent-libraries.lock`, `Config/ffmpeg-helper.lock` and
 `Config/licenses.lock`.
+
+WebRTC (BSD) is a separate dynamic library too, `WebRTC.framework`, used as published by the
+stasel/WebRTC project and pinned by checksum in `Packages/WatchParty/Package.swift`. It contains other
+open-source code of its own (BoringSSL, libsrtp, Opus and more); their notices are not yet collected
+into the Acknowledgements window and must be before the app is given to anyone.
 
 The playback engine (mpv, FFmpeg, libplacebo and their dependencies) is under the LGPL. It is built as a
 separate dynamic library, `Libmpv.framework`, so that it can be replaced with a build of your own; after

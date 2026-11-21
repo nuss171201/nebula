@@ -34,11 +34,11 @@ public extension PartyCore {
         case let .setPaused(isPaused):
             guard isPaused != previous?.isPaused || previous?.holder != nil else { return [] }
             publishPlayback(position: snapshot.position, isPaused: isPaused, reason: .user, now: now, into: &effects)
-        case .seeked:
+        case let .seeked(position):
             // A jump while the party waits for someone keeps it waiting, now for whoever jumped.
             let isPaused = previous?.isPaused ?? snapshot.isPaused
             let holder = previous?.holder == nil ? nil : me
-            publishPlayback(position: snapshot.position, isPaused: isPaused, holder: holder, reason: .user, now: now, into: &effects)
+            publishPlayback(position: position, isPaused: isPaused, holder: holder, reason: .user, now: now, into: &effects)
             local.lastSeekAt = now
         case let .rate(rate):
             guard rate != previous?.rate else { return [] }
@@ -56,29 +56,33 @@ public extension PartyCore {
 
     // MARK: - What is being watched
 
-    /// Notices that the player has moved to a different video. Someone who controls the party and
-    /// was watching with it takes the party along; anyone else has simply gone their own way, or
-    /// has just opened what the party is watching.
+    /// Decides whether what this player has open becomes what the party watches. It does when
+    /// the party has nothing on yet, and when someone who was watching with the party moves on to
+    /// another video; in both cases only for someone who controls the party and knows how it stands.
+    /// Anyone else has simply gone their own way, or has just opened what the party is watching.
     private mutating func noteContent(_ snapshot: PlaybackSnapshot, now: TimeInterval, into effects: inout [Effect]) {
         let key = snapshot.content?.key
-        guard key != local.contentKey else { return }
+        let hasChanged = key != local.contentKey
         let wasInStep = local.hasSynced
-        local.contentKey = key
-        local.hasSynced = false
-        local.stallSince = nil
-        local.awaitsSeekLanding = false
-        local.lastSeekAt = nil
-        setAdjustment(1, into: &effects)
+        if hasChanged {
+            local.contentKey = key
+            local.hasSynced = false
+            local.stallSince = nil
+            local.awaitsSeekLanding = false
+            local.lastSeekAt = nil
+            setAdjustment(1, into: &effects)
+        }
 
-        guard let mine = snapshot.content, canControl else { return }
+        guard let mine = snapshot.content, canControl, isInformed else { return }
         let shared = content?.content
-        guard shared == nil || (wasInStep && shared?.key != mine.key) else { return }
+        let movesThePartyOn = hasChanged && wasInStep && shared?.key != mine.key
+        guard shared == nil || movesThePartyOn else { return }
         let published = SharedContent(content: mine.sanitized(), version: nextVersion())
         content = published
         effects.append(.send(.content(published), to: nil))
         addEvent("You started \(mine.title).", flashes: false)
         if snapshot.hasMedia {
-            // Already playing when the party began: the party is wherever this player is.
+            // Already playing: the party is wherever this player is.
             publishPlayback(position: snapshot.position, isPaused: snapshot.isPaused, rate: snapshot.rate, reason: .content, now: now, into: &effects)
         } else {
             // Still opening: the party waits at the start until it has.
@@ -90,7 +94,9 @@ public extension PartyCore {
     // MARK: - Following the party
 
     private mutating func follow(_ snapshot: PlaybackSnapshot, now: TimeInterval, into effects: inout [Effect]) {
-        guard let target = playback, isWatching(snapshot) else { return }
+        // A jump of the person's own that is still on its way is about to become where the party
+        // is; pulling the player back to where the party was would undo it.
+        guard let target = playback, isWatching(snapshot), !snapshot.hasPendingJump else { return }
         if abs(snapshot.rate - target.rate) > 0.001 {
             effects.append(.player(.setRate(target.rate)))
         }

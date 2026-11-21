@@ -76,6 +76,8 @@ ENGINE="$APP/Contents/Frameworks/Libmpv.framework"
 HELPER="$APP/Contents/MacOS/ffmpeg"
 [[ -x "$HELPER" ]] || fail "the audio conversion helper is not in the app; run Scripts/build-ffmpeg-helper.sh and build again"
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+WEBRTC="$APP/Contents/Frameworks/WebRTC.framework"
+[[ -d "$WEBRTC" ]] || fail "WebRTC.framework is not in the app"
 
 # The licence texts must go out with the app.
 LICENSES="$(find "$APP/Contents/Resources/Licenses" -type f 2>/dev/null | wc -l | tr -d ' ')"
@@ -103,13 +105,15 @@ sign "$SPARKLE/Autoupdate"
 sign "$SPARKLE/Updater.app"
 sign "$APP/Contents/Frameworks/Sparkle.framework"
 sign "$ENGINE"
+sign "$WEBRTC"
 # A program of its own, started by the app: no entitlements.
 sign "$HELPER"
 if [[ "$KIND" == "ad-hoc" ]]; then
     # No Team ID to tie the app to its frameworks: see Config/LocalSigning.entitlements.
     sign --entitlements Config/LocalSigning.entitlements "$APP"
 else
-    sign "$APP"
+    # The microphone, for the watch party's voice chat; nothing else.
+    sign --entitlements Config/App.entitlements "$APP"
 fi
 
 step "Check the app"
@@ -120,7 +124,8 @@ if [[ "$KIND" != "ad-hoc" && "$ENTITLEMENTS" == *disable-library-validation* ]];
 fi
 DETAILS="$(codesign -d --verbose=2 "$APP" 2>&1)"
 [[ "$DETAILS" =~ flags=[^[:space:]]*runtime ]] || fail "the hardened runtime is not on"
-for code in "$BINARY" "$ENGINE/Versions/A/Libmpv" "$HELPER"; do
+[[ "$ENTITLEMENTS" == *device.audio-input* ]] || fail "the app may not use the microphone; the voice chat would be silent"
+for code in "$BINARY" "$ENGINE/Versions/A/Libmpv" "$WEBRTC/Versions/A/WebRTC" "$HELPER"; do
     ARCHS="$(lipo -archs "$code")"
     [[ "$ARCHS" == *arm64* && "$ARCHS" == *x86_64* ]] || fail "$(basename "$code") is not universal ($ARCHS)"
 done

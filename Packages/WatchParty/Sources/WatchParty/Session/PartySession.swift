@@ -108,6 +108,8 @@ public final class PartySession {
             }
         }
         transport.start()
+        // What is already playing becomes what the party watches before anyone can arrive.
+        step { core, now in core.tick(self.playback.snapshot, now: now) }
     }
 
     /// Leaves the party. The player carries on by itself.

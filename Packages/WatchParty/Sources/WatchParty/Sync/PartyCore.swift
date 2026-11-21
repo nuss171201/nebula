@@ -69,6 +69,10 @@ public struct PartyCore: Sendable {
     public var isMuted = false
 
     var local = LocalState()
+    /// Whether this app knows how the party stands: it started the party, or someone already
+    /// in it has said everything there was to say. Until then it must not decide what the party
+    /// watches, because it would be deciding without knowing that something is already on.
+    var isInformed: Bool
     /// The highest version counter seen on any shared value.
     var counter = 0
     var eventCount = 0
@@ -78,6 +82,7 @@ public struct PartyCore: Sendable {
     public init(me: MemberID, name: String, isHost: Bool) {
         self.me = me
         self.name = WireLimits.clean(name, limit: WireLimits.nameLength)
+        isInformed = isHost
         if isHost {
             settings = RoomSettings(hostID: me, everyoneControls: true, version: RegisterVersion(counter: 1, author: me))
             counter = 1

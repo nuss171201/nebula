@@ -45,6 +45,13 @@
       ]
     },
     {
+      "title": "Watch party",
+      "note": "Direct connections between the apps in a watch party, and its voice chat, are WebRTC: a separate dynamic library inside the app (Contents/Frameworks/WebRTC.framework), built from Google's source by the stasel/WebRTC project and used as published. WebRTC itself contains other open-source code (BoringSSL, libsrtp, Opus, Abseil, libyuv and more) under licences of the same permissive kind; their notices are not collected here yet.",
+      "components": [
+        {"name": "WebRTC", "version": "M158", "license": "BSD 3-Clause, with a patent grant", "url": "https://webrtc.org", "files": ["WebRTC-LICENSE.txt"]}
+      ]
+    },
+    {
       "title": "App",
       "note": "Linked into the app.",
       "components": [

@@ -57,6 +57,19 @@ struct PartyCoreTests {
         #expect(party.core(host).chat.contains { $0.text == "Ravi jumped to 5:00." })
     }
 
+    @Test("A jump that takes a moment to be reported is not undone in the meantime", arguments: [0.3, 1.0, 2.6])
+    func slowToLandSeek(delay: Double) {
+        var (party, host, guest) = partyOfTwo()
+        party.advance(8)
+        let jumpsBefore = party.player(guest).jumps
+        party.userSeeks(to: 300, for: guest, landingAfter: delay)
+        // Nothing pulled the guest back to where the party was.
+        #expect(party.player(guest).jumps == jumpsBefore)
+        party.advance(6)
+        #expect(party.position(of: host) > 300)
+        #expect(party.spread < 0.15)
+    }
+
     @Test("With the controls left to the host, a guest's pause is undone and not passed on")
     func hostOnlyControl() {
         var (party, host, guest) = partyOfTwo()
@@ -215,6 +228,43 @@ struct PartyCoreTests {
         party.open(SimulatedParty.episode, for: guest)
         party.advance(2)
         #expect(party.core(host).content?.content == SimulatedParty.episode)
+    }
+
+    @Test("Someone who opens a video the moment they arrive, before hearing what is on, does not take the party over")
+    func arrivingWithoutKnowing() {
+        var party = SimulatedParty()
+        party.latency = 0.4
+        let host = party.join("Asha", isHost: true)
+        party.open(SimulatedParty.film, for: host, at: 1200)
+        party.advance(1)
+        let guest = party.join("Ravi")
+        // Connected, but what the host has to say is still on its way.
+        party.open(SimulatedParty.episode, for: guest)
+        party.advance(0.3)
+        #expect(party.core(guest).content == nil)
+        party.advance(5)
+        #expect(party.core(host).content?.content == SimulatedParty.film)
+        #expect(party.core(guest).content?.content == SimulatedParty.film)
+        #expect(!party.player(host).isPaused)
+        #expect(party.position(of: host) > 1205)
+        #expect(party.player(host).jumps == 0)
+    }
+
+    @Test("If the party has nothing on, what a newcomer already has open becomes what it watches")
+    func arrivingWithSomethingOpen() {
+        var party = SimulatedParty()
+        let host = party.join("Asha", isHost: true)
+        party.advance(1)
+        let guest = party.join("Ravi")
+        party.open(SimulatedParty.film, for: guest, at: 700)
+        party.advance(3)
+        #expect(party.core(host).content?.content == SimulatedParty.film)
+        #expect(party.core(host).chat.contains { $0.text == "Ravi started A Film." })
+        party.open(SimulatedParty.film, for: host)
+        party.advance(8)
+        #expect(party.spread < 0.15)
+        #expect(party.position(of: guest) > 708)
+        #expect(party.player(guest).jumps == 0)
     }
 
     @Test("A file counts as a copy of whatever the party is watching")

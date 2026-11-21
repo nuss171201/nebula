@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import os
 import Testing
@@ -44,11 +45,11 @@ struct TestEndpoint {
     let transport: WebRTCTransport
     let log = EventLog()
 
-    init(_ name: String, invite: PartyInvite) {
+    init(_ name: String, invite: PartyInvite, allowsVoice: Bool = false) {
         guard let id = MemberID(name) else { preconditionFailure("bad test name") }
         self.id = id
         transport = WebRTCTransport(configuration: .init(
-            invite: invite, me: id, userAgent: "tests", staysOnThisMachine: true, allowsVoice: false, logSubsystem: "tests"
+            invite: invite, me: id, userAgent: "tests", staysOnThisMachine: true, allowsVoice: allowsVoice, logSubsystem: "tests"
         ))
         let (events, log) = (transport.events, log)
         Task {
@@ -187,6 +188,85 @@ struct WebRTCTransportTests {
         try await Task.sleep(for: .seconds(1))
         #expect(first.log.connectedPeers.isEmpty)
         #expect(server.relayedCount == 0)
+    }
+
+    @Test("When everyone proposes a change at the same moment, one side of each pair gives way and all connections survive")
+    func simultaneousRenegotiation() async throws {
+        let server = try LoopbackSignalServer()
+        defer { server.stop() }
+        let invite = try await makeInvite(server)
+        let endpoints = ["alpha", "beta", "gamma"].map { TestEndpoint($0, invite: invite) }
+        defer { endpoints.forEach { $0.transport.stop() } }
+        await eventually("everyone connected to everyone") { endpoints.allSatisfy { $0.log.connectedPeers.count == 2 } }
+
+        for round in 1 ... 5 {
+            endpoints.forEach { $0.transport.renegotiateAll() }
+            await eventually("round \(round) settles") {
+                for endpoint in endpoints where await !endpoint.transport.isSettled() {
+                    return false
+                }
+                return true
+            }
+        }
+        for endpoint in endpoints {
+            endpoint.transport.send(Data("after from \(endpoint.id)".utf8), to: nil)
+        }
+        await eventually("messages still flow between every pair") {
+            endpoints.allSatisfy { receiver in
+                endpoints.filter { $0.id != receiver.id }.allSatisfy { sender in
+                    receiver.log.texts(from: sender.id) == ["after from \(sender.id)"]
+                }
+            }
+        }
+        #expect(endpoints.allSatisfy { $0.log.connectedPeers.count == 2 })
+        #expect(endpoints.allSatisfy { endpoint in !endpoint.log.events.contains {
+            if case .peerDisconnected = $0 {
+                true
+            } else {
+                false
+            }
+        } })
+    }
+
+    /// The microphone is opened only when sound actually flows, which needs two people in the
+    /// voice chat; here only one ever is. Even so, the test runs only where the question of the
+    /// microphone has already been answered either way, so that nothing it does could put the
+    /// system's question on screen.
+    @Test(
+        "Joining the voice chat alone is agreed with the others without sound flowing, and leaving it is agreed too",
+        .enabled(if: AVCaptureDevice.authorizationStatus(for: .audio) != .notDetermined, "the microphone question has not been answered on this Mac")
+    )
+    func voiceNegotiation() async throws {
+        let server = try LoopbackSignalServer()
+        defer { server.stop() }
+        let invite = try await makeInvite(server)
+        let talker = TestEndpoint("alpha", invite: invite, allowsVoice: true)
+        let listener = TestEndpoint("beta", invite: invite)
+        defer {
+            talker.transport.stop()
+            listener.transport.stop()
+        }
+        await eventually("connected") { talker.log.connectedPeers == [listener.id] && listener.log.connectedPeers == [talker.id] }
+        #expect(await talker.transport.voiceLinkStates() == [listener.id: .absent])
+
+        // Asked for where voice is switched off: nothing happens.
+        listener.transport.setVoice(isEnabled: true, isMuted: false)
+        // Asked for where it is on: the connection gains audio, which the other side declines.
+        talker.transport.setVoice(isEnabled: true, isMuted: false)
+        await eventually("audio is agreed on, and silent") {
+            let (mine, theirs) = await (talker.transport.voiceLinkStates(), listener.transport.voiceLinkStates())
+            return mine == [listener.id: .inactive] && theirs == [talker.id: .inactive]
+        }
+        // The connection is none the worse for having been renegotiated.
+        talker.transport.send(Data("still talking in text".utf8), to: nil)
+        await eventually("messages still arrive") { listener.log.texts(from: talker.id) == ["still talking in text"] }
+
+        talker.transport.setVoice(isEnabled: false, isMuted: false)
+        talker.transport.setVoice(isEnabled: true, isMuted: true)
+        talker.transport.setVoice(isEnabled: false, isMuted: false)
+        listener.transport.send(Data("and back".utf8), to: nil)
+        await eventually("and in the other direction, after joining and leaving again") { talker.log.texts(from: listener.id) == ["and back"] }
+        #expect(await talker.transport.voiceLinkStates() == [listener.id: .inactive])
     }
 
     @Test("A full room turns the next person away")

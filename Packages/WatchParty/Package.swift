@@ -15,7 +15,6 @@ let package = Package(
         .library(name: "WatchPartyTestSupport", targets: ["WatchPartyTestSupport"]),
     ],
     dependencies: [
-        .package(path: "../MediaCore"),
         // Google's WebRTC as a prebuilt dynamic framework (BSD). Pinned exactly, like every other
         // dependency; the package names the archive's checksum, which the package manager verifies.
         .package(url: "https://github.com/stasel/WebRTC.git", exact: "158.0.0"),
@@ -23,7 +22,7 @@ let package = Package(
     targets: [
         .target(
             name: "WatchParty",
-            dependencies: ["MediaCore", .product(name: "WebRTC", package: "WebRTC")],
+            dependencies: [.product(name: "WebRTC", package: "WebRTC")],
             swiftSettings: strictSettings
         ),
         .target(name: "WatchPartyTestSupport", dependencies: ["WatchParty"], swiftSettings: strictSettings),

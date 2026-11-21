@@ -34,6 +34,9 @@ public enum PartyMessage: Sendable, Equatable {
     case content(SharedContent)
     case settings(RoomSettings)
     case chat(ChatWire)
+    /// Said after telling someone who has just connected everything there is to tell: they now
+    /// know what the party is watching and where it is.
+    case caughtUp
 
     /// The version of this conversation the app speaks.
     public static let protocolVersion = 1
@@ -42,6 +45,7 @@ public enum PartyMessage: Sendable, Equatable {
 extension PartyMessage: Codable {
     private enum Kind: String, Codable {
         case hello, status, ping, pong, playback, content, settings, chat
+        case caughtUp = "caught-up"
     }
 
     private enum Keys: String, CodingKey {
@@ -86,6 +90,8 @@ extension PartyMessage: Codable {
             self = try .settings(container.decode(RoomSettings.self, forKey: .body))
         case .chat:
             self = try .chat(container.decode(ChatWire.self, forKey: .body))
+        case .caughtUp:
+            self = .caughtUp
         }
     }
 
@@ -116,6 +122,8 @@ extension PartyMessage: Codable {
         case let .chat(chat):
             try container.encode(Kind.chat, forKey: .kind)
             try container.encode(chat, forKey: .body)
+        case .caughtUp:
+            try container.encode(Kind.caughtUp, forKey: .kind)
         }
     }
 

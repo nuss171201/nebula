@@ -9,6 +9,9 @@ public struct PlaybackSnapshot: Sendable, Equatable {
     public var isPaused: Bool
     /// Whether the picture cannot advance right now: waiting for data, or in the middle of a seek.
     public var isStalled: Bool
+    /// Whether the person here has asked for a jump that has not landed yet. Until it has (and
+    /// is reported as theirs), the position is neither here nor there and must not be corrected.
+    public var hasPendingJump: Bool
     /// Whether playback has reached the end of the file.
     public var hasEnded: Bool
     public var position: Double
@@ -21,6 +24,7 @@ public struct PlaybackSnapshot: Sendable, Equatable {
         hasMedia: Bool = false,
         isPaused: Bool = false,
         isStalled: Bool = false,
+        hasPendingJump: Bool = false,
         hasEnded: Bool = false,
         position: Double = 0,
         duration: Double? = nil,
@@ -30,6 +34,7 @@ public struct PlaybackSnapshot: Sendable, Equatable {
         self.hasMedia = hasMedia
         self.isPaused = isPaused
         self.isStalled = isStalled
+        self.hasPendingJump = hasPendingJump
         self.hasEnded = hasEnded
         self.position = position
         self.duration = duration
@@ -54,8 +59,8 @@ public enum PlayerDirective: Sendable, Equatable {
 /// Something the person at this Mac did with their player.
 public enum LocalIntent: Sendable, Equatable {
     case setPaused(Bool)
-    /// A jump of theirs has landed; where is in the snapshot.
-    case seeked
+    /// A jump of theirs has landed at this position, in seconds.
+    case seeked(to: Double)
     case rate(Double)
 }
 

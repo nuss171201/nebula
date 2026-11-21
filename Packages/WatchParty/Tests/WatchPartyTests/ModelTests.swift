@@ -100,6 +100,7 @@ struct PartyMessageTests {
         )),
         .settings(RoomSettings(hostID: author, everyoneControls: false, version: RegisterVersion(counter: 5, author: author))),
         .chat(ChatWire(id: "abc", text: "hello")),
+        .caughtUp,
     ]
 
     @Test("Every message survives the trip", arguments: samples)

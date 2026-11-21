@@ -3,6 +3,7 @@ import MediaCore
 import MediaLibrary
 import Observation
 import PlayerKit
+import WatchParty
 
 /// Root view model: owns navigation state and the per-screen view models, and
 /// keeps them in step with the installed add-ons.
@@ -23,6 +24,7 @@ public final class AppModel {
     public let nextEpisode: NextEpisodeController
     public let calendar: CalendarModel
     public let settings: SettingsModel
+    public let party: PartyCenter
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -108,6 +110,7 @@ public final class AppModel {
             nextEpisode: nextEpisode,
             configFolder: dependencies.engineConfigFolder
         )
+        party = PartyCenter(environment: dependencies.party, settings: settings, coordinator: player, streamPlayer: streamPlayer)
         selection = initialSection
         currentSection = initialSection
         usesStartSection = initialSection == .home
@@ -115,6 +118,9 @@ public final class AppModel {
         self.reportMilestone = reportMilestone ?? { LaunchMetrics.report($0, subsystem: subsystem) }
         home.onFirstContent = { [weak self] in
             self?.reached(.homeContent)
+        }
+        party.onOpenContent = { [weak self] reference in
+            self?.open(reference)
         }
     }
 
@@ -173,6 +179,18 @@ public final class AppModel {
             pendingEpisodes[video.titleID] = video.videoID
         }
         path.append(MediaRoute(type: video.type, id: video.titleID))
+    }
+
+    /// Opens the page of what a watch party is watching, on the episode in question, so that the
+    /// person can choose their own stream for it.
+    public func open(_ reference: PartyContent.CatalogReference) {
+        if reference.videoID != reference.titleID {
+            pendingEpisodes[reference.titleID] = reference.videoID
+        }
+        let route = MediaRoute(type: MediaType(rawValue: reference.type), id: reference.titleID)
+        if path.last != route {
+            path.append(route)
+        }
     }
 
     /// Plays one of the streams listed on the detail page that was opened last, as a click on

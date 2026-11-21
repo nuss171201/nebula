@@ -223,8 +223,7 @@ public final class PlayerWindowController: NSObject, NSWindowDelegate {
         if model.upNext != nil {
             onUpNextDecision?(false)
         } else if chrome.isSidePanelVisible {
-            chrome.isSettingsPanelVisible = false
-            chrome.isQueueVisible = false
+            chrome.closeSidePanels()
         } else if isFullScreen {
             toggleFullScreen()
         } else if mode != .standard {

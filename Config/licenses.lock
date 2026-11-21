@@ -38,3 +38,4 @@ Nettle-COPYING.LESSERv3.txt  e3a994d82e644b03a792a930f574002658412f62407f5fee083
 GMP-COPYING.LESSERv3.txt     a853c2ffec17057872340eee242ae4d96cbf2b520ae27d903e1b2fef1a5f9d1c https://raw.githubusercontent.com/alisw/GMP/2bbd52703e5af82509773264bfbd20ff8464804f/COPYING.LESSERv3
 GRDB-LICENSE.txt             9853f9dce81365fcc1d9b46004633354450164b8d17904e92e80c444545f7e87 https://raw.githubusercontent.com/groue/GRDB.swift/v7.12.0/LICENSE
 Sparkle-LICENSE.txt          389a4e4e9a32f059775b13a06e25a591445ba229d2838d26dd3e7c0c45127cfe https://raw.githubusercontent.com/sparkle-project/Sparkle/2.10.1/LICENSE
+WebRTC-LICENSE.txt           843529896bae499c92af3ecade86855128f930334ba97530695ccecef56e966d https://raw.githubusercontent.com/stasel/WebRTC/158.0.0/LICENSE.md

@@ -55,7 +55,7 @@ final class RealSignalServer: Sendable {
 
 @Suite("Against the signalling server itself", .serialized, .enabled(if: RealSignalServer.isAvailable, "Deno is not installed"))
 struct RealServerTests {
-    @Test("Three apps meet through the server, one drops off the server and comes back, and a full room refuses")
+    @Test("Three apps meet through the server, a full room refuses, and leaving frees a place")
     func meetThroughTheRealServer() async throws {
         let server = try await RealSignalServer(roomLimit: 3)
         defer { server.stop() }

@@ -17,6 +17,8 @@ struct SimulatedPlayer {
     /// How long a jump takes before the picture moves again.
     var seekLatency = 0.15
     var stalledUntil = 0.0
+    /// A jump the person asked for that has not been reported as landed yet.
+    var hasPendingJump = false
     var directives: [PlayerDirective] = []
 
     func isStalled(at time: Double) -> Bool {
@@ -26,7 +28,7 @@ struct SimulatedPlayer {
     func snapshot(at time: Double) -> PlaybackSnapshot {
         PlaybackSnapshot(
             content: content, hasMedia: hasMedia, isPaused: isPaused, isStalled: hasMedia && isStalled(at: time),
-            hasEnded: hasEnded, position: position, duration: duration, rate: rate
+            hasPendingJump: hasPendingJump, hasEnded: hasEnded, position: position, duration: duration, rate: rate
         )
     }
 
@@ -45,6 +47,8 @@ struct SimulatedPlayer {
         case let .setPaused(isPaused):
             self.isPaused = isPaused
         case let .seek(to: target):
+            // A jump from the party takes the place of one of the person's own.
+            hasPendingJump = false
             position = min(target, duration ?? target)
             hasEnded = false
             stalledUntil = max(stalledUntil, time + seekLatency)
@@ -137,7 +141,18 @@ struct SimulatedParty {
     /// The person at this Mac jumps to a position.
     mutating func userSeeks(to position: Double, for id: MemberID) {
         nodes[id]?.player.position = position
-        intent(.seeked, for: id)
+        intent(.seeked(to: position), for: id)
+    }
+
+    /// The person jumps, and the player takes `delay` seconds to say that the jump has landed:
+    /// its position is already the new one, but nobody has been told that this was the person's doing.
+    mutating func userSeeks(to position: Double, for id: MemberID, landingAfter delay: Double) {
+        nodes[id]?.player.position = position
+        nodes[id]?.player.hasPendingJump = true
+        advance(delay)
+        guard nodes[id]?.player.hasPendingJump == true else { return }
+        nodes[id]?.player.hasPendingJump = false
+        intent(.seeked(to: nodes[id]?.player.position ?? position), for: id)
     }
 
     mutating func intent(_ intent: LocalIntent, for id: MemberID) {

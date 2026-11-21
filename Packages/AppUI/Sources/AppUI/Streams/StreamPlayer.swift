@@ -97,6 +97,8 @@ public final class StreamPlayer {
     public private(set) var nowPlaying: StreamVideo?
     /// The stream it was played from.
     public private(set) var nowPlayingChoice: StreamChoice?
+    /// The address handed to the player for it, which tells it from anything opened in the player since.
+    public private(set) var nowPlayingURL: URL?
     @ObservationIgnored private let openExternal: @MainActor (URL) -> Void
     @ObservationIgnored private let subtitleService: AddonSubtitleService?
     @ObservationIgnored private var prepareTask: Task<Void, Never>?
@@ -162,6 +164,7 @@ public final class StreamPlayer {
             let source = try PlayableSource(url: url)
             closeActiveTorrent()
             noteStarted(video, choice: choice)
+            nowPlayingURL = source.url
             coordinator.play(source, options: PlaybackOptions(
                 memoryKeys: video.memoryKeys,
                 httpHeaders: choice.stream.behaviorHints.requestHeaders,
@@ -230,6 +233,7 @@ public final class StreamPlayer {
             activeURL = stream.url
             phase = .idle
             noteStarted(video, choice: choice)
+            nowPlayingURL = playable.url
             // No seek-bar stills: they would open a second reader far from the playhead and
             // take pieces from what is about to be watched.
             coordinator.play(playable, options: PlaybackOptions(memoryKeys: video.memoryKeys, generatesThumbnails: false, title: video.title))
@@ -274,6 +278,7 @@ public final class StreamPlayer {
         if !isOpen {
             nowPlaying = nil
             nowPlayingChoice = nil
+            nowPlayingURL = nil
         }
     }
 

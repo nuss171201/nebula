@@ -1,5 +1,20 @@
 import Foundation
 import Observation
+import SwiftUI
+
+/// A side panel the app adds to the player, with a button for it in the control bar: a watch
+/// party's people and chat, for one. The player knows nothing of what is in it.
+public struct PlayerAccessory {
+    public var title: String
+    public var systemImage: String
+    public var content: AnyView
+
+    public init(title: String, systemImage: String, content: AnyView) {
+        self.title = title
+        self.systemImage = systemImage
+        self.content = content
+    }
+}
 
 /// Decides when the on-screen controls are visible: shown on any mouse movement,
 /// hidden again after a pause in movement, but only while the picture is playing
@@ -16,6 +31,7 @@ public final class PlayerChromeModel {
             if isSettingsPanelVisible {
                 // One side panel at a time.
                 isQueueVisible = false
+                isAccessoryVisible = false
                 isVisible = true
             }
             scheduleHide()
@@ -27,15 +43,48 @@ public final class PlayerChromeModel {
         didSet {
             if isQueueVisible {
                 isSettingsPanelVisible = false
+                isAccessoryVisible = false
                 isVisible = true
             }
             scheduleHide()
         }
     }
 
-    /// Whether either side panel is taking up the trailing edge.
+    /// The app's own side panel, if it has one for this player.
+    public var accessory: PlayerAccessory? {
+        didSet {
+            if accessory == nil {
+                isAccessoryVisible = false
+                accessoryBadge = 0
+            }
+        }
+    }
+
+    /// A count shown on the accessory's button while its panel is closed (unread messages, say).
+    public var accessoryBadge = 0
+
+    /// Whether the app's side panel is open. Controls stay up while it is.
+    public var isAccessoryVisible = false {
+        didSet {
+            if isAccessoryVisible {
+                isSettingsPanelVisible = false
+                isQueueVisible = false
+                isVisible = true
+            }
+            scheduleHide()
+        }
+    }
+
+    /// Whether a side panel is taking up the trailing edge.
     public var isSidePanelVisible: Bool {
-        isSettingsPanelVisible || isQueueVisible
+        isSettingsPanelVisible || isQueueVisible || isAccessoryVisible
+    }
+
+    /// Closes whichever side panel is open.
+    public func closeSidePanels() {
+        isSettingsPanelVisible = false
+        isQueueVisible = false
+        isAccessoryVisible = false
     }
 
     public var settingsTab = PlayerSettingsTab.video

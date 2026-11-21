@@ -23,6 +23,11 @@ public final class PlayerCoordinator {
         didSet { controller?.bindings = keyBindings }
     }
 
+    /// The app's own side panel in the player window (the watch party's), for the open player and the next.
+    @ObservationIgnored public var accessory: PlayerAccessory? {
+        didSet { controller?.chrome.accessory = accessory }
+    }
+
     @ObservationIgnored private let usesSystemNowPlaying: Bool
     @ObservationIgnored private let memory: (any PlayerMemory)?
     @ObservationIgnored private let subtitleService: (any OnlineSubtitleService)?
@@ -105,6 +110,7 @@ public final class PlayerCoordinator {
             controller.onUpNextDecision = { [weak self] isAccepted in
                 self?.onUpNextDecision?(isAccepted)
             }
+            controller.chrome.accessory = accessory
             self.controller = controller
             isPlayerOpen = true
             watchDefaults(of: model)
@@ -213,6 +219,23 @@ public final class PlayerCoordinator {
     /// Puts the player window into a mode (normal, picture in picture, mini), if a player is open.
     public func setWindowMode(_ mode: PlayerWindowMode) {
         controller?.setMode(mode)
+    }
+
+    /// Opens the app's own side panel in the player, if there is one and a player is open.
+    public func showAccessory() {
+        controller?.chrome.isAccessoryVisible = controller?.chrome.accessory != nil
+    }
+
+    /// Whether the app's side panel is showing in the player.
+    public var isAccessoryVisible: Bool {
+        controller?.chrome.isAccessoryVisible ?? false
+    }
+
+    /// Sets the count on the accessory's button.
+    public func setAccessoryBadge(_ count: Int) {
+        if let chrome = controller?.chrome, chrome.accessoryBadge != count {
+            chrome.accessoryBadge = count
+        }
     }
 
     /// Opens the player's queue panel, if a player is open.

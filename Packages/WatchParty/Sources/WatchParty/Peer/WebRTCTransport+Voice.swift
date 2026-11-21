@@ -49,3 +49,61 @@ extension WebRTCTransport {
         return connection.addTransceiver(with: microphone, init: settings) != nil
     }
 }
+
+/// How the audio on the connection to one person stands, for checks.
+package enum VoiceLinkState: Sendable, Equatable {
+    /// Audio has never been part of this connection.
+    case absent
+    /// Agreed on, and flowing in neither direction.
+    case inactive
+    /// Agreed on; this side may send, receive or both.
+    case flowing
+    /// Asked for on this side, not yet agreed with the other.
+    case pending
+}
+
+package extension WebRTCTransport {
+    /// The state of the audio on every connection, read on the mesh's queue.
+    func voiceLinkStates() async -> [MemberID: VoiceLinkState] {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                var states: [MemberID: VoiceLinkState] = [:]
+                for link in links.values {
+                    guard let transceiver = link.connection?.transceivers.first(where: { $0.mediaType == .audio }) else {
+                        states[link.id] = .absent
+                        continue
+                    }
+                    var direction = RTCRtpTransceiverDirection.inactive
+                    if !transceiver.currentDirection(&direction) {
+                        states[link.id] = .pending
+                    } else {
+                        states[link.id] = direction == .inactive ? .inactive : .flowing
+                    }
+                }
+                continuation.resume(returning: states)
+            }
+        }
+    }
+
+    /// Proposes every connection's shape to the other side again, as a change to the voice chat
+    /// does. For checking what happens when both sides do so at once.
+    func renegotiateAll() {
+        queue.async { [self] in
+            for link in links.values {
+                link.needsNegotiation = true
+                negotiateIfNeeded(link)
+            }
+        }
+    }
+
+    /// Whether every connection has finished agreeing on its shape.
+    func isSettled() async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                continuation.resume(returning: links.values.allSatisfy { link in
+                    !link.needsNegotiation && !link.isMakingOffer && link.connection?.signalingState == .stable
+                })
+            }
+        }
+    }
+}

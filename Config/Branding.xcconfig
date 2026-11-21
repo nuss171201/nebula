@@ -12,3 +12,9 @@ BRAND_BUNDLE_ID = dev.orbit.placeholder.app
 // address as  https:/$()/updates.example.com/appcast.xml
 UPDATE_FEED_URL =
 UPDATE_PUBLIC_KEY =
+
+// Watch parties. The address of the signalling server (Server/signal.ts, run by whoever builds
+// the app) that new parties are started at. Empty, as here, the app comes with none: people can
+// name one in Settings, and can always join with an invitation link, which carries its own.
+// Must be https; written like the feed address above:  https:/$()/party.example.com
+PARTY_SERVER_URL =

@@ -19,6 +19,7 @@ public extension PartyCore {
         if let status = local.lastStatus {
             effects.append(.send(.status(status), to: id))
         }
+        effects.append(.send(.caughtUp, to: id))
         return effects
     }
 
@@ -63,6 +64,8 @@ public extension PartyCore {
             accept(shared)
         case let .settings(incoming):
             accept(incoming)
+        case .caughtUp:
+            isInformed = true
         case let .chat(wire):
             let text = WireLimits.clean(wire.text, limit: WireLimits.chatLength)
             let id = String(wire.id.prefix(64))
