@@ -87,7 +87,7 @@ if [[ "$BUILD_RELEASE" == "1" ]]; then
     # with the reason in the log, instead of as a crash dialog from a normal launch.
     codesign --verify --deep --strict "$APP" 2>"$LOGS/codesign-release.log" \
         || { cat "$LOGS/codesign-release.log" >&2; fail "Release app signature does not verify"; }
-    OTHER_COPY="$(pgrep -f "/Contents/MacOS/$(basename "$BINARY")( |\$)" || true)"
+    OTHER_COPY="$(pgrep -fl "/Contents/MacOS/$(basename "$BINARY")( |\$)" | grep -v -F "$BINARY" | cut -d' ' -f1 | head -1 || true)"
     if [[ -n "$OTHER_COPY" ]]; then
         # The Release app uses the user's own library and caches, and a second copy quits by
         # itself in favour of the one that is open: there is nothing to launch and nothing to measure.
