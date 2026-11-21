@@ -384,6 +384,8 @@ StreamPlayer ─┬─ web address ───────────────
   longer depends on what the user has installed. `nasm` is not installed, so the Intel half has no
   hand-written assembly. **Downloading that archive needed the user's explicit go-ahead** (the
   permission system refused it until then): ask before fetching anything new from a new place.
+  Go-aheads given so far: FFmpeg's release archive; github.com/stasel/WebRTC; Google's source servers
+  (`*.googlesource.com`), for licence texts.
 - **Disk image by `hdiutil`**, not `create-dmg`: nothing to install, and no Finder scripting (which
   would open windows on the user's screen). The image has no background picture or icon layout.
 
@@ -460,7 +462,7 @@ PartyCenter (AppUI) ─ PartySession ─┬─ PartyCore            pure: what t
 | user | Party server | Someone has to run `Server/signal.ts` where it can be reached over https, and put its address in `PARTY_SERVER_URL` or Settings. Not deployed anywhere: creating an account at a host is the user's to do. One instance only (rooms are in memory); a host that runs several copies of a program would split rooms. |
 | user | Relay for people who cannot connect directly | With STUN alone, some pairs of networks (carrier-grade NAT on mobile and many home connections in India, company networks) will not connect. A TURN relay fixes that and costs money or a server: coturn on a small machine (`TURN_URLS`, `TURN_SECRET`), or a hosted one. Not set up; nothing has been tried between two real networks. |
 | user | Public STUN servers | The server's default list names Cloudflare's and Google's public STUN servers, which learn the address of everyone who joins a party. Change `ICE_SERVERS` to use others or your own. |
-| user | Notices for what WebRTC contains | WebRTC bundles BoringSSL, libsrtp, Opus, Abseil and more; their notices must ship with the app. Only WebRTC's own licence is collected. The texts are in Google's repositories, which nothing has been fetched from: needs the user's go-ahead (new place), then entries in `Config/licenses.lock`. |
+| done | Notices for what WebRTC contains | Collected, on the user's go-ahead to fetch from Google's repositories (`*.googlesource.com`): see "Stage 10 contents". |
 | later | WebRTC from source | The framework is stasel/WebRTC's build of Google's source (one maintainer, like MPVKit), pinned by checksum. Building it here means Google's tools, about 20 GB of source and hours; the user chose the prebuilt one. |
 | user | Source for the LGPL libraries | Whoever distributes the app must make the source of the LGPL libraries available (or offer it in writing). The binaries are MPVKit's; pointing at MPVKit is not the same as providing the source. Not arranged. |
 
@@ -856,6 +858,15 @@ What was checked, and how:
   sample) and 0 to 0.083 s apart after a pause made in either copy; a speed change made by the guest
   showed in the host's control bar.
 
+**The notices of what WebRTC contains** (added after the user's go-ahead to fetch from Google's
+repositories): 26 texts in `Config/licenses.lock`, from `webrtc.googlesource.com`,
+`chromium.googlesource.com`, `boringssl.googlesource.com` and `aomedia.googlesource.com`, each at the
+revision that WebRTC's `DEPS` pins for commit `fb1c41a9` (branch-heads/8127, the commit stasel's
+release notes for 158.0.0 name; the binary's own source stamp, 2026-10-26, agrees). Those servers
+answer in base64 (`?format=TEXT`), which `collect-licenses.sh` now decodes before checking the hash.
+Rust's texts come from Chromium's mirror of rust-lang/rust at the toolchain's revision. 60 licence
+files in all go into the app.
+
 Three bugs found by those checks, each now covered by a test:
 
 - **A person's own jump could be undone.** The position changes before the player reports that a jump
@@ -901,8 +912,16 @@ Carried over or not verified in Stage 10:
   the person has to join again with the link. There is no rejoin by itself, and no way to remove someone.
 - The invitation's secret is in the link; anyone who is given the link can join. The people in a party
   learn each other's internet addresses, as in any direct call.
-- WebRTC's own third-party notices are not collected (decisions table). The x86_64 half of
-  `WebRTC.framework` is checked with `lipo` only.
+- **Which libraries WebRTC contains was worked out, not read off a manifest.** The framework ships no
+  list. The 16 components in `Config/ThirdParty.json` are the ones WebRTC's own licence generator
+  (`tools_webrtc/libs/generate_licenses.py` at the built commit) maps to a notice and of which the
+  binary shows a trace (file paths and version strings), plus the ones every build includes but that
+  leave no strings (CRC32C, PFFFT, RNNoise, the in-tree FFTs, G.711/G.722 and square root) and `cxx`,
+  which WebRTC's one Rust module needs. Left out for want of any trace: zlib, libjpeg-turbo, jsoncpp,
+  perfetto, the third-party SFrame library, and `foldhash` (whose licence asks nothing of a binary).
+  LLVM's compiler-rt and libc are under the same text as libc++, which is included. The certain way
+  to settle the list is WebRTC's generator run on a real checkout of the build, which was not done.
+- The x86_64 half of `WebRTC.framework` is checked with `lipo` only.
 - The user's own running copy of the app (an older build, open since 17 November) crashed twice during
   this stage, in libmpv's CoreAudio hot-plug callback (`hotplug_cb` → `mp_msg`, a null context) when the
   list of audio devices changed. Not this branch's code, and not reproduced. The test runs here are

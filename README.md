@@ -224,9 +224,9 @@ by its author.
 `Config/licenses.lock`.
 
 WebRTC (BSD) is a separate dynamic library too, `WebRTC.framework`, used as published by the
-stasel/WebRTC project and pinned by checksum in `Packages/WatchParty/Package.swift`. It contains other
-open-source code of its own (BoringSSL, libsrtp, Opus and more); their notices are not yet collected
-into the Acknowledgements window and must be before the app is given to anyone.
+stasel/WebRTC project and pinned by checksum in `Packages/WatchParty/Package.swift`. The open-source code
+it contains in turn (BoringSSL, Opus, libvpx, libaom, dav1d, libsrtp, Abseil and more) is listed with it,
+each with its notice taken from Google's repositories at the revision WebRTC's source pins.
 
 The playback engine (mpv, FFmpeg, libplacebo and their dependencies) is under the LGPL. It is built as a
 separate dynamic library, `Libmpv.framework`, so that it can be replaced with a build of your own; after

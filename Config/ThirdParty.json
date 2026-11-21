@@ -46,9 +46,25 @@
     },
     {
       "title": "Watch party",
-      "note": "Direct connections between the apps in a watch party, and its voice chat, are WebRTC: a separate dynamic library inside the app (Contents/Frameworks/WebRTC.framework), built from Google's source by the stasel/WebRTC project and used as published. WebRTC itself contains other open-source code (BoringSSL, libsrtp, Opus, Abseil, libyuv and more) under licences of the same permissive kind; their notices are not collected here yet.",
+      "note": "Direct connections between the apps in a watch party, and its voice chat, are WebRTC: a separate dynamic library inside the app (Contents/Frameworks/WebRTC.framework), built from Google's source by the stasel/WebRTC project and used as published. The libraries listed with it are the ones WebRTC contains in this build: those its own licence list names for it and of which the library shows a trace, plus the audio and networking routines every build includes. Their texts are taken at the revisions WebRTC's source pins.",
       "components": [
-        {"name": "WebRTC", "version": "M158", "license": "BSD 3-Clause, with a patent grant", "url": "https://webrtc.org", "files": ["WebRTC-LICENSE.txt"]}
+        {"name": "WebRTC", "version": "M158", "license": "BSD 3-Clause, with a patent grant", "url": "https://webrtc.org", "files": ["WebRTC-LICENSE.txt", "WebRTC-PATENTS.txt"]},
+        {"name": "BoringSSL, with fiat-crypto", "version": "", "license": "Apache 2.0; parts under ISC, MIT and BSD licences", "url": "https://boringssl.googlesource.com/boringssl", "files": ["BoringSSL-LICENSE.txt", "fiat-crypto-LICENSE.txt"]},
+        {"name": "Abseil", "version": "", "license": "Apache 2.0", "url": "https://abseil.io", "files": ["Abseil-LICENSE.txt"]},
+        {"name": "Opus", "version": "", "license": "BSD 3-Clause", "url": "https://opus-codec.org", "files": ["Opus-COPYING.txt"]},
+        {"name": "libvpx", "version": "", "license": "BSD 3-Clause, with a patent grant", "url": "https://www.webmproject.org", "files": ["libvpx-LICENSE.txt", "libvpx-PATENTS.txt"]},
+        {"name": "libaom", "version": "", "license": "BSD 2-Clause, with the Alliance for Open Media Patent License 1.0", "url": "https://aomedia.org", "files": ["libaom-LICENSE.txt", "libaom-PATENTS.txt"]},
+        {"name": "dav1d (the copy inside WebRTC)", "version": "", "license": "BSD 2-Clause", "url": "https://www.videolan.org/projects/dav1d.html", "files": ["dav1d-WebRTC-LICENSE.txt"]},
+        {"name": "libsrtp", "version": "", "license": "BSD 3-Clause", "url": "https://github.com/cisco/libsrtp", "files": ["libsrtp-LICENSE.txt"]},
+        {"name": "libyuv", "version": "", "license": "BSD 3-Clause", "url": "https://chromium.googlesource.com/libyuv/libyuv", "files": ["libyuv-LICENSE.txt"]},
+        {"name": "Protocol Buffers", "version": "", "license": "BSD 3-Clause", "url": "https://protobuf.dev", "files": ["protobuf-LICENSE.txt"]},
+        {"name": "CRC32C", "version": "", "license": "BSD 3-Clause", "url": "https://github.com/google/crc32c", "files": ["crc32c-LICENSE.txt"]},
+        {"name": "PFFFT", "version": "", "license": "BSD-style (the FFTPACK licence)", "url": "https://bitbucket.org/jpommier/pffft", "files": ["pffft-LICENSE.txt"]},
+        {"name": "RNNoise", "version": "", "license": "BSD 3-Clause", "url": "https://gitlab.xiph.org/xiph/rnnoise", "files": ["RNNoise-COPYING.txt"]},
+        {"name": "libc++ and libc++abi", "version": "", "license": "Apache 2.0 with LLVM exceptions", "url": "https://libcxx.llvm.org", "files": ["libcxx-LICENSE.txt", "libcxxabi-LICENSE.txt"]},
+        {"name": "Rust standard library", "version": "", "license": "MIT or Apache 2.0", "url": "https://www.rust-lang.org", "files": ["Rust-LICENSE-MIT.txt", "Rust-LICENSE-APACHE.txt"]},
+        {"name": "cxx", "version": "", "license": "MIT or Apache 2.0", "url": "https://cxx.rs", "files": ["cxx-LICENSE-MIT.txt", "Rust-LICENSE-APACHE.txt"]},
+        {"name": "Small routines kept in WebRTC's own source: an FFT by Mark Olesen, another by Takuya Ooura, G.711 and G.722 from SpanDSP, a square root by Wilco Dijkstra", "version": "", "license": "Public domain and permissive notices", "url": "https://webrtc.googlesource.com/src", "files": ["WebRTC-fft-LICENSE.txt", "WebRTC-ooura-LICENSE.txt", "WebRTC-g711-LICENSE.txt", "WebRTC-g722-LICENSE.txt", "WebRTC-spl_sqrt_floor-LICENSE.txt"]}
       ]
     },
     {
