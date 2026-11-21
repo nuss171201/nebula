@@ -31,7 +31,7 @@ BINARY="$APP/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecuta
 # The Release app uses the user's own library and caches, and a second copy quits by itself in
 # favour of one that is open: with the app open there is nothing to measure.
 # (A leftover of this very binary does not count: it is quit below.)
-if pgrep -fl "/Contents/MacOS/$(basename "$BINARY")( |\$)" | grep -v -F "$BINARY" | grep -q .; then
+if [[ -n "$(Scripts/other-copies.sh "$BINARY")" ]]; then
     echo "The app is open. Quit it, then run this again." >&2
     exit 1
 fi

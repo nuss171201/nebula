@@ -128,6 +128,9 @@ copy with `-profile` shares nothing and may run alongside); `measure-playback.sh
 use a scratch profile; `screenshot.sh` without `-profile`, `measure-launch.sh` and the Release launch
 check in `ci.sh` refuse or skip while the app is open; and **`package.sh` refuses to replace
 `build/dist` while the app is running from it**. Ask the user to quit before rebuilding the package.
+The scripts find running copies with `Scripts/other-copies.sh`, which looks at what is running; searching
+command lines for the app's path (`pgrep -f`) also finds any command that mentions it, and twice reported
+the app as open when it was not.
 
 **Never make a sound the user did not ask for:** every `-play` used for a check must come with
 `-silent YES` (the scripts do this), and tests create players with `playsAudio: false` or volume 0.

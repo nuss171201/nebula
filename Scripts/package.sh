@@ -66,10 +66,10 @@ if [[ "$IDENTITY" != "-" ]]; then
 fi
 
 # The folder is about to be replaced. Not from under a copy of the app that is running from it.
-if pgrep -f "$DIST/image/.*/Contents/MacOS/" >/dev/null 2>&1; then
+OTHER_COPY="$(Scripts/other-copies.sh "$BUILT/Contents/MacOS/$EXECUTABLE" | head -1)"
+if [[ -n "$OTHER_COPY" && "$(ps -o comm= -p "$OTHER_COPY" 2>/dev/null)" == "$DIST/"* ]]; then
     fail "the app is running from $DIST. Quit it first, then run this again."
 fi
-OTHER_COPY="$(pgrep -f "/Contents/MacOS/$EXECUTABLE( |\$)" || true)"
 
 step "Stage $NAME $VERSION ($BUILD_NUMBER), $KIND signing"
 rm -rf "$DIST"

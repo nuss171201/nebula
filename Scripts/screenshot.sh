@@ -46,7 +46,7 @@ set -- ${ARGS[@]+"${ARGS[@]}"}
 quit_app
 # Without a profile of its own the app would share the user's library, and a second copy quits
 # by itself in favour of one that is open.
-if [[ " $* " != *" -profile "* ]] && pgrep -f "/Contents/MacOS/$(basename "$BINARY")( |\$)" >/dev/null 2>&1; then
+if [[ " $* " != *" -profile "* && -n "$(Scripts/other-copies.sh "$BINARY")" ]]; then
     echo "The app is open. Pass -profile <folder>, or quit it first." >&2
     exit 1
 fi
