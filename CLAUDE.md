@@ -599,6 +599,17 @@ StreamPlayer ─┬─ web address ───────────────
   **macOS keys this permission to a build's identity, and every ad-hoc build is a new one**: a
   Developer ID signature is what would make it stick. **Not seen working between two Macs yet**; the
   real check has run nowhere but on the user's own machines, by them.
+- **What to read when a party between two Macs will not connect** (added 22 Nov 2026, after three
+  rounds of guessing): the party server notes every connection with the address it came from, who
+  joined a party and who left, and each direct connection notes its state (`category == "party"`).
+  A guest that never shows as "connection from" did not reach this Mac; one that joined and whose
+  direct connection stays "connecting" was introduced and cannot be reached. The port after the
+  server's (8788) serves a plain page (`PartyReachPage`, shown in Settings as "Check Page"): a browser
+  on the other device is under none of the app's restrictions there, so a page means the network is
+  fine and the other device's own Local Network switch is what is off. That was the cause on the
+  user's second MacBook, found by a session run there: a record for the app that was never set to
+  allow. The user's line is also behind carrier-grade NAT (router address 100.114.x.x), so a server
+  on this Mac can never serve friends elsewhere; that needs a hosted server and a TURN relay.
 - The version is 0.1.2 (build 3) from here (0.1.1 was the first with the local-network check), so that two Macs can be told to have the same build.
 - **Accounts** (decided by the user, 22 Nov 2026: a hosted Supabase project): `AccountClient` speaks
   Supabase's sign-in REST interface directly (sign up, log in, refresh, log out, password reset; no

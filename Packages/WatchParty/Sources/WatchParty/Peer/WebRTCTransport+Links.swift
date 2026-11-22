@@ -166,16 +166,32 @@ extension WebRTCTransport {
             if state == .open, !link.isOpen {
                 link.isOpen = true
                 reconnectAttempts[id] = nil
+                logger.notice("direct connection to someone in the party: open")
                 emit(.peerConnected(id))
             } else if state == .closed {
                 drop(link, announce: true)
             }
         case let .connectionState(state):
+            // "connecting" that never becomes "connected" is two apps that were introduced by the
+            // server and cannot reach each other: the local network, on one side or the other.
+            logger.notice("direct connection to someone in the party: \(Self.name(of: state), privacy: .public)")
             guard state == .failed || state == .closed else { return }
             drop(link, announce: true)
             if state == .failed {
                 reconnectLater(to: id)
             }
+        }
+    }
+
+    private static func name(of state: RTCPeerConnectionState) -> String {
+        switch state {
+        case .new: "new"
+        case .connecting: "connecting"
+        case .connected: "connected"
+        case .disconnected: "disconnected"
+        case .failed: "failed"
+        case .closed: "closed"
+        @unknown default: "unknown"
         }
     }
 

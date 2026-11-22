@@ -12,11 +12,14 @@ public final class PartyHost {
     public private(set) var server: PartyServer?
     /// Why it could not be started, in words.
     public private(set) var problem: String?
+    /// A page to open in a browser on another device, to see whether it can reach this Mac.
+    public private(set) var checkAddress: URL?
     public private(set) var isStarting = false
 
     @ObservationIgnored private var running: PartyHostServer?
     @ObservationIgnored private let reach: PartyHostServer.Reach
     @ObservationIgnored private let logger: Logger
+    @ObservationIgnored private let logSubsystem: String
     /// The switch as it was last asked to be, so that a start overtaken by a stop does not win.
     @ObservationIgnored private var wanted = false
     /// Asked to find out whether macOS lets the app onto the local network, once the server is
@@ -32,6 +35,7 @@ public final class PartyHost {
     public init(staysOnThisMachine: Bool, logSubsystem: String = "party") {
         reach = staysOnThisMachine ? .thisMac : .localNetwork
         logger = Logger(subsystem: logSubsystem, category: "party")
+        self.logSubsystem = logSubsystem
     }
 
     public var isRunning: Bool {
@@ -45,6 +49,7 @@ public final class PartyHost {
             running?.stop()
             running = nil
             server = nil
+            checkAddress = nil
             problem = nil
             return
         }
@@ -52,7 +57,7 @@ public final class PartyHost {
         isStarting = true
         defer { isStarting = false }
         do {
-            let host = try PartyHostServer(reach: reach, port: UInt16(exactly: port))
+            let host = try PartyHostServer(reach: reach, port: UInt16(exactly: port), logSubsystem: logSubsystem)
             let address = try await host.start()
             guard wanted else {
                 host.stop()
@@ -65,6 +70,7 @@ public final class PartyHost {
             }
             running = host
             self.server = server
+            checkAddress = server.isLocal ? nil : host.checkAddress
             problem = nil
             if server.isOnLocalNetwork {
                 // A server nobody is allowed to reach is no server: find out now, not when a

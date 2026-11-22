@@ -33,6 +33,7 @@ public final class PartyHostServer: Sendable {
         var clients: [ObjectIdentifier: Client] = [:]
         var relayedCount = 0
         var didResumeStart = false
+        var isPageServing = false
     }
 
     private let state = OSAllocatedUnfairLock(initialState: State())
@@ -40,15 +41,29 @@ public final class PartyHostServer: Sendable {
     private let queue = DispatchQueue(label: "PartyHostServer")
     private let roomLimit: Int
     private let reach: Reach
+    private let logger: Logger?
+    /// A page for a browser on the port after this one, when the port is a fixed one.
+    private let page: PartyReachPage?
+    private let pagePort: UInt16?
 
-    /// - Parameter port: The port to listen on, so that an invitation made today still works
-    ///   tomorrow; `nil` takes any free one.
-    public init(reach: Reach = .thisMac, port: UInt16? = nil, roomLimit: Int = 8) throws {
+    /// - Parameters:
+    ///   - port: The port to listen on, so that an invitation made today still works
+    ///     tomorrow; `nil` takes any free one. With a fixed port, the port after it serves a
+    ///     page that says the server can be reached (`checkAddress`).
+    ///   - logSubsystem: Where to note who reached the server and who left; `nil` notes nothing.
+    public init(reach: Reach = .thisMac, port: UInt16? = nil, roomLimit: Int = 8, logSubsystem: String? = nil) throws {
         self.roomLimit = roomLimit
         self.reach = reach
+        let logger = logSubsystem.map { Logger(subsystem: $0, category: "party") }
+        self.logger = logger
+        let host: NWEndpoint.Host = reach == .thisMac ? .ipv4(.loopback) : .ipv4(.any)
+        // The page is a help, not the server: if its port is taken, the server runs without it.
+        let pagePort = port.flatMap { $0 > 0 && $0 < UInt16.max ? $0 + 1 : nil }
+        page = pagePort.flatMap { try? PartyReachPage(host: host, port: $0, logger: logger) }
+        self.pagePort = pagePort
         let parameters = NWParameters.tcp
         let wanted = port.flatMap(NWEndpoint.Port.init(rawValue:)) ?? .any
-        parameters.requiredLocalEndpoint = .hostPort(host: reach == .thisMac ? .ipv4(.loopback) : .ipv4(.any), port: wanted)
+        parameters.requiredLocalEndpoint = .hostPort(host: host, port: wanted)
         parameters.allowLocalEndpointReuse = true
         let webSocket = NWProtocolWebSocket.Options()
         webSocket.autoReplyPing = true
@@ -66,6 +81,9 @@ public final class PartyHostServer: Sendable {
         let host = reach == .localNetwork ? (Self.localNetworkAddress() ?? "127.0.0.1") : "127.0.0.1"
         listener.newConnectionHandler = { [weak self] connection in
             self?.accept(connection)
+        }
+        if let page, await page.start() {
+            state.withLock { $0.isPageServing = true }
         }
         return try await withCheckedThrowingContinuation { continuation in
             listener.stateUpdateHandler = { [state, listener] update in
@@ -93,7 +111,16 @@ public final class PartyHostServer: Sendable {
 
     public func stop() {
         listener.cancel()
+        page?.stop()
         dropConnections()
+    }
+
+    /// An address to open in a browser on another device: a page there means that device can
+    /// reach this Mac. `nil` when the server has no fixed port.
+    public var checkAddress: URL? {
+        guard let pagePort, state.withLock(\.isPageServing) else { return nil }
+        let host = reach == .localNetwork ? (Self.localNetworkAddress() ?? "127.0.0.1") : "127.0.0.1"
+        return URL(string: "http://\(host):\(pagePort)/")
     }
 
     /// Hangs up on everyone, as a server that restarts would. The listener stays up.
@@ -120,9 +147,17 @@ public final class PartyHostServer: Sendable {
     private func accept(_ connection: NWConnection) {
         let key = ObjectIdentifier(connection)
         state.withLock { $0.clients[key] = Client(connection: connection) }
-        connection.stateUpdateHandler = { [weak self] update in
+        let from = Self.describe(connection.endpoint)
+        connection.stateUpdateHandler = { [weak self, logger] update in
             switch update {
-            case .failed, .cancelled:
+            case .ready:
+                logger?.notice("party server: connection from \(from, privacy: .public)")
+            case let .failed(error):
+                // A browser, or anything else that does not speak the server's language, ends here.
+                logger?.notice("party server: connection from \(from, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+                self?.remove(key)
+            case .cancelled:
+                logger?.notice("party server: connection from \(from, privacy: .public) ended")
                 self?.remove(key)
             default:
                 break
@@ -162,9 +197,12 @@ public final class PartyHostServer: Sendable {
                 return (others, false, previous?.value.connection)
             }
             if isFull {
+                logger?.notice("party server: \(Self.describe(connection.endpoint), privacy: .public) found its party full")
                 send(.error(code: "room-full"), on: connection)
                 return
             }
+            let from = Self.describe(connection.endpoint)
+            logger?.notice("party server: \(from, privacy: .public) joined a party with \(others.count) other(s) in it")
             send(.joined(peers: others.compactMap(\.peer), iceServers: []), on: connection)
             if let previous {
                 previous.cancel()
@@ -203,6 +241,14 @@ public final class PartyHostServer: Sendable {
         let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
         let context = NWConnection.ContentContext(identifier: "frame", metadata: [metadata])
         connection.send(content: data, contentContext: context, isComplete: true, completion: .idempotent)
+    }
+
+    /// "192.168.1.20" for a connection's other end; the port says nothing worth keeping.
+    static func describe(_ endpoint: NWEndpoint) -> String {
+        if case let .hostPort(host, _) = endpoint {
+            return "\(host)"
+        }
+        return "\(endpoint)"
     }
 
     /// This Mac's address on the network it is joined to (Wi-Fi or cable): the first private

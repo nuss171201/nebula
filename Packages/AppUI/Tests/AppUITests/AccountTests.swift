@@ -327,6 +327,8 @@ struct PartyHostTests {
         await host.setRunning(true, port: 0)
         let server = try #require(host.server)
         #expect(host.isRunning && host.problem == nil && server.isLocal)
+        // A server only this Mac can reach has nobody to offer a check page to.
+        #expect(host.checkAddress == nil)
         #expect(server.url.host == "127.0.0.1" && (server.url.port ?? 0) > 0)
 
         // It is a real party server: an app can connect and be told who else is there.

@@ -135,6 +135,13 @@ struct PartySettingsPane: View {
                                 }
                             }
                         }
+                        if let check = host.checkAddress {
+                            LabeledContent("Check Page") {
+                                Text(check.absoluteString)
+                                    .monospaced()
+                                    .textSelection(.enabled)
+                            }
+                        }
                     } else if host.isStarting {
                         ProgressView()
                             .controlSize(.small)
@@ -148,6 +155,12 @@ struct PartySettingsPane: View {
                                 .foregroundStyle(.orange)
                         }
                         Text(host.reachNote)
+                        if host.checkAddress != nil {
+                            Text("""
+                            If someone cannot join, have them open the check page in a browser on their device. \
+                            A page there means their device reaches this Mac, and what stops the party is on their side.
+                            """)
+                        }
                         if let gate = model.localNetwork, host.server?.isOnLocalNetwork == true {
                             LocalNetworkNotice(gate: gate, appName: ProcessInfo.processInfo.processName)
                             if gate.state == .allowed {
