@@ -176,7 +176,8 @@ struct EngineMappingTests {
         }
         #expect(table["ytdl"] == "no")
         #expect(table["keep-open"] == "yes")
-        #expect(table["ao"] == nil)
+        // One audio output and no falling back to the engine's others (`audioOutput` says why).
+        #expect(table["ao"] == "avfoundation")
         #expect(table["volume"] == "100.0")
         // The stream cache is kept small enough for 4K to stay inside the memory target,
         // and an options file can still say otherwise (its options come later).
@@ -206,14 +207,15 @@ struct EngineMappingTests {
         #expect(quietTable["ao"] == "null")
         #expect(quietTable["profile"] == nil)
 
-        // Extra options come last, so they can override anything above.
+        // Extra options come after the app's, so they can override anything above; only the
+        // audio output follows them.
         let extra = PlayerConfiguration(
             userAgent: "x",
             logSubsystem: "test",
             additionalEngineOptions: PlayerConfiguration.EngineOption.parse("hwdec=no, deband ,=bad,scale=bilinear")
         ).engineOptions
-        #expect(extra.suffix(3).map(\.name) == ["hwdec", "deband", "scale"])
-        #expect(extra.suffix(3).map(\.value) == ["no", "yes", "bilinear"])
+        #expect(extra.suffix(4).map(\.name) == ["hwdec", "deband", "scale", "ao"])
+        #expect(extra.suffix(4).map(\.value) == ["no", "yes", "bilinear", "avfoundation"])
         #expect(PlayerConfiguration.EngineOption.parse("").isEmpty)
     }
 

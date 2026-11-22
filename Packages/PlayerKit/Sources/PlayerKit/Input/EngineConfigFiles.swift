@@ -38,6 +38,8 @@ public enum EngineConfigFile {
         // The picture is laid out in a fixed canvas that the app scales; these would fight it.
         "keepaspect", "keepaspect-window", "video-unscaled", "panscan", "video-crop", "sub-use-margins", "sub-ass-force-margins",
         "speed", "chapter", "end", "length", "volume-max", "shuffle", "playlist-start",
+        // The engine's Core Audio output must never be started (see `PlayerConfiguration.audioOutput`).
+        "ao", "audio-fallback-to-null",
     ]
     private static let controlledPrefixes = ["input-", "window-", "autofit", "watch-later", "osd-playing", "ytdl-", "load-", "macos-"]
     /// Options that reach beyond playback: other files, programs, sockets, recordings.

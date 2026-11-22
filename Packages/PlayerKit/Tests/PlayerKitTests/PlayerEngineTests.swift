@@ -267,10 +267,11 @@ struct PlayerEngineTests {
         #expect(player.engineProperty("volume").flatMap(Double.init) == 0)
 
         try await open(TestMedia.multiTrack, in: player)
-        // A real system output, not the discard one. This engine build prefers AVFoundation.
+        // A real system output, not the discard one; and never the engine's Core Audio output,
+        // whose failed starts crash the app later (`PlayerConfiguration.audioOutput`).
         #expect(await eventually { player.engineProperty("current-ao") != nil })
-        let output = player.engineProperty("current-ao") ?? "none"
-        #expect(["avfoundation", "coreaudio"].contains(output), "audio output was \(output)")
+        #expect(player.engineProperty("current-ao") == "avfoundation")
+        #expect(player.engineProperty("ao") == "avfoundation" || player.engineProperty("options/ao") == "avfoundation")
         #expect(player.state.volume == 0)
 
         // The file's first three audio tracks are AC-3, E-AC-3 and DTS; each must decode.

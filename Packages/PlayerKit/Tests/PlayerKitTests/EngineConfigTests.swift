@@ -112,10 +112,23 @@ struct InputConfigFileTests {
     @Test("A silent player stays silent whatever an options file asks for")
     func silenceWins() {
         var configuration = PlayerConfiguration(userAgent: "Tests/1.0", logSubsystem: "test", playsAudio: false)
-        configuration.additionalEngineOptions = EngineConfigFile.parse("ao=coreaudio\nvolume=100").options
+        configuration.additionalEngineOptions = [PlayerConfiguration.EngineOption("ao", "coreaudio")]
         let audio = configuration.engineOptions.last { $0.name == "ao" }
         #expect(audio?.value == "null")
         #expect(configuration.engineOptions.last?.name == "ao")
+    }
+
+    @Test("The audio output is the app's choice: an options file cannot bring the engine's other outputs back")
+    func audioOutputIsFixed() {
+        let parsed = EngineConfigFile.parse("ao=coreaudio\naudio-fallback-to-null=yes\naudio-channels=stereo")
+        #expect(parsed.options.map(\.name) == ["audio-channels"])
+        #expect(parsed.ignored.map(\.reason) == ["The app controls this itself.", "The app controls this itself."])
+
+        // Even an option that got through some other way (an experiment's launch argument) loses.
+        var configuration = PlayerConfiguration(userAgent: "Tests/1.0", logSubsystem: "test")
+        configuration.additionalEngineOptions = [PlayerConfiguration.EngineOption("ao", "coreaudio,")]
+        #expect(configuration.engineOptions.last?.name == "ao")
+        #expect(configuration.engineOptions.last?.value == "avfoundation")
     }
 
     @Test("Commands with no equivalent are listed, never passed on; `ignore` unbinds")

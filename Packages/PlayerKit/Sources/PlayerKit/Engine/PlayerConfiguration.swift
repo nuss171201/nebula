@@ -193,6 +193,19 @@ public struct PlayerConfiguration: Sendable, Equatable {
     /// Used for the user's own engine configuration and for experiments.
     public var additionalEngineOptions: [EngineOption]
 
+    /// The one audio output the engine may use, with no falling back to its others.
+    ///
+    /// Left to choose, the engine tries its Core Audio output first. That output registers a
+    /// listener for changes to the system's audio devices before it knows it can start, and
+    /// does not take it back when it cannot. On the Mac this was written on it never can (the
+    /// audio unit refuses its channel layout, error -50), so every film left one behind, and
+    /// the next time a device came or went (headphones, a display going to sleep) the system
+    /// called into memory the engine had long since freed. That crashed the app three times in
+    /// its first two days, usually with no film playing. The AVFoundation output is the one
+    /// that was playing all along; it has no such listener.
+    /// Not a setting: it can be changed only from tests, to show the fault.
+    var audioOutput = "avfoundation"
+
     /// A "Screenshots" folder in the user's Pictures folder.
     public static var defaultScreenshotDirectory: URL {
         let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
@@ -334,10 +347,9 @@ public struct PlayerConfiguration: Sendable, Equatable {
             options.append(("alang", Self.engineLanguageList(trackPreferences.audioLanguages)))
         }
         options += additionalEngineOptions.map { ($0.name, $0.value) }
-        // Last, so that nothing above (an options file, an experiment) can make a silent player heard.
-        if !playsAudio {
-            options.append(("ao", "null"))
-        }
+        // Last, so that nothing above (an options file, an experiment) can make a silent player
+        // heard, or bring the engine's other audio outputs back.
+        options.append(("ao", playsAudio ? audioOutput : "null"))
         return options
     }
 }
