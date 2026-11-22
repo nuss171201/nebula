@@ -599,7 +599,7 @@ StreamPlayer ─┬─ web address ───────────────
   **macOS keys this permission to a build's identity, and every ad-hoc build is a new one**: a
   Developer ID signature is what would make it stick. **Not seen working between two Macs yet**; the
   real check has run nowhere but on the user's own machines, by them.
-- The version is 0.1.1 (build 2) from here, so that two Macs can be told to have the same build.
+- The version is 0.1.2 (build 3) from here (0.1.1 was the first with the local-network check), so that two Macs can be told to have the same build.
 - **Accounts** (decided by the user, 22 Nov 2026: a hosted Supabase project): `AccountClient` speaks
   Supabase's sign-in REST interface directly (sign up, log in, refresh, log out, password reset; no
   SDK), `AccountCenter` is the model, and the session lives in the keychain (`KeychainSessionStore`),
