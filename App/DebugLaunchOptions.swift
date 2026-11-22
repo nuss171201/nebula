@@ -146,12 +146,38 @@
                     model.showStreamsOfEpisode(withID: episode)
                 }
             }
+            applyStreamOptions(to: model, defaults: defaults)
+        }
+
+        /// The arguments that press Play or Download, or pick a stream from the list.
+        @MainActor
+        private static func applyStreamOptions(to model: AppModel, defaults: UserDefaults) {
             if defaults.bool(forKey: "pressPlay") {
                 // As soon as the page has streams to choose from (a slow network can take a
                 // while): press its Play button.
                 Task {
                     for _ in 0 ..< 200 where !model.pressPlayOnShownTitle() {
                         try? await Task.sleep(for: .milliseconds(100))
+                    }
+                }
+            }
+            if defaults.bool(forKey: "download"), profileDirectory != nil {
+                // As soon as the page has something that can be kept: press its Download button.
+                // Only ever in a scratch profile, whose downloads folder is its own.
+                Task {
+                    for _ in 0 ..< 200 where !model.downloadBestStreamOfShownTitle() {
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                }
+            }
+            if let peer = defaults.string(forKey: "peer"), profileDirectory != nil, let port = Int(peer.split(separator: ":").last ?? "") {
+                // A scratch profile's engine talks to this machine only and has no tracker to ask:
+                // for five minutes, every torrent it has is told where the test's seeder is.
+                let address = peer.split(separator: ":").dropLast().joined(separator: ":")
+                Task {
+                    for _ in 0 ..< 600 {
+                        await model.dependencies.streamManager.introduce(peerAt: address, port: port)
+                        try? await Task.sleep(for: .milliseconds(500))
                     }
                 }
             }

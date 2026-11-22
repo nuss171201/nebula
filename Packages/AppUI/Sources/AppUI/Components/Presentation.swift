@@ -55,11 +55,12 @@ public struct MediaRoute: Hashable, Sendable {
 }
 
 public extension MediaType {
-    /// Plural name for headings and pickers: "Movies", "Series", "Channels", "TV".
+    /// Plural name for headings and pickers: "Movies", "Series", "Anime", "Channels", "TV".
     var pluralTitle: String {
         switch self {
         case .movie: "Movies"
         case .series: "Series"
+        case .anime: "Anime"
         case .channel: "Channels"
         case .tv: "TV"
         default: rawValue.prefix(1).uppercased() + rawValue.dropFirst()

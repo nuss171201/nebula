@@ -109,6 +109,18 @@ public struct LibraryDatabase: Sendable {
             try db.create(index: "watchEntry_recent", on: "watchEntry", columns: ["lastWatchedAt"])
         }
 
+        migrator.registerMigration("v5-downloads") { db in
+            // Files kept for watching without a connection. They belong to this Mac alone (the
+            // file is here and nowhere else), so there is nothing to sync and no need for a
+            // column per value: each row is read whole, as JSON.
+            try db.create(table: "download") { table in
+                table.primaryKey("id", .text)
+                table.column("payload", .text).notNull()
+                table.column("addedAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull()
+            }
+        }
+
         return migrator
     }
 }

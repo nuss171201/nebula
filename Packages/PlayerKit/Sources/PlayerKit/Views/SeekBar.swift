@@ -45,15 +45,18 @@ struct SeekBar: View {
             let width = geometry.size.width
             let hoverX = chrome.seekHoverFraction.map { CGFloat($0) * width }
             ZStack(alignment: .leading) {
-                track(width: width)
+                track(width: width, isLively: hoverX != nil || isDragging)
                 marks(width: width)
                 if hoverX != nil || isDragging {
                     Circle()
                         .fill(.white)
-                        .frame(width: 12, height: 12)
-                        .offset(x: SeekBarGeometry.x(for: model.displayPosition, width: width, duration: duration) - 6)
+                        .frame(width: 13, height: 13)
+                        .shadow(color: Color.accentColor.opacity(0.9), radius: 6)
+                        .offset(x: SeekBarGeometry.x(for: model.displayPosition, width: width, duration: duration) - 6.5)
+                        .transition(.scale.combined(with: .opacity))
                 }
             }
+            .animation(.easeOut(duration: 0.15), value: hoverX != nil || isDragging)
             .frame(height: Self.hitHeight)
             .contentShape(Rectangle())
             .gesture(
@@ -123,7 +126,8 @@ struct SeekBar: View {
         Int(time / PlayerModel.thumbnailStep(duration: max(duration, 1)))
     }
 
-    private func track(width: CGFloat) -> some View {
+    /// - Parameter isLively: The pointer is on the bar: it thickens, to be easier to aim at.
+    private func track(width: CGFloat, isLively: Bool) -> some View {
         ZStack(alignment: .leading) {
             Capsule()
                 .fill(.white.opacity(0.22))
@@ -133,10 +137,10 @@ struct SeekBar: View {
                     .frame(width: width * buffered)
             }
             Capsule()
-                .fill(.white)
+                .fill(LinearGradient(colors: [Color.accentColor, .white], startPoint: .leading, endPoint: .trailing))
                 .frame(width: SeekBarGeometry.x(for: model.displayPosition, width: width, duration: duration))
         }
-        .frame(height: Self.barHeight)
+        .frame(height: isLively ? Self.barHeight + 2 : Self.barHeight)
     }
 
     /// Chapter starts as gaps in the bar, and the A-B loop's ends as coloured ticks.

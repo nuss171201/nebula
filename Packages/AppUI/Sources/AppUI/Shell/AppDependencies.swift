@@ -13,9 +13,13 @@ public struct AppDependencies: Sendable {
     public let playbackMemory: PlaybackMemoryStore
     public let libraryStore: LibraryStore
     public let watchHistory: WatchHistoryStore
+    /// The list of downloads.
+    public let downloadStore: DownloadStore
+    /// Where downloaded files are kept.
+    public let downloadsDirectory: URL
     public let imagePipeline: ImagePipeline
-    /// Manifest addresses installed on first launch.
-    public let defaultAddonAddresses: [String]
+    /// The add-ons installed without being asked for, each with the round it came in.
+    public let defaultAddons: [DefaultAddon]
     public let playerConfiguration: PlayerConfiguration
     /// Whether the player appears in the system's Now Playing display and answers media keys.
     /// Off for silent checks and tests, which must not take the user's media keys from their music.
@@ -35,12 +39,14 @@ public struct AppDependencies: Sendable {
         database: LibraryDatabase,
         imagePipeline: ImagePipeline,
         defaultAddonAddresses: [String],
+        defaultAddons: [DefaultAddon]? = nil,
         playerConfiguration: PlayerConfiguration? = nil,
         usesSystemNowPlaying: Bool = false,
         streamManager: StreamManager? = nil,
         subtitleHTTP: (any HTTPClient)? = nil,
         subtitleDirectory: URL? = nil,
         engineConfigFolder: EngineConfigFolder? = nil,
+        downloadsDirectory: URL? = nil,
         startupWarning: String? = nil
     ) {
         self.branding = branding
@@ -50,8 +56,12 @@ public struct AppDependencies: Sendable {
         playbackMemory = PlaybackMemoryStore(database: database)
         libraryStore = LibraryStore(database: database)
         watchHistory = WatchHistoryStore(database: database)
+        downloadStore = DownloadStore(database: database)
+        // Without a place of its own, downloads go to a folder that is cleared with the temporary files.
+        self.downloadsDirectory = downloadsDirectory ?? FileManager.default.temporaryDirectory
+            .appendingPathComponent("downloads-\(UUID().uuidString)", isDirectory: true)
         self.imagePipeline = imagePipeline
-        self.defaultAddonAddresses = defaultAddonAddresses
+        self.defaultAddons = defaultAddons ?? defaultAddonAddresses.map { DefaultAddon(address: $0) }
         self.playerConfiguration = playerConfiguration ?? PlayerConfiguration(
             userAgent: branding.userAgent,
             logSubsystem: branding.bundleIdentifier
@@ -88,7 +98,7 @@ public struct AppDependencies: Sendable {
     ///     hash table, no router). For checks.
     public static func live(
         branding: AppBranding,
-        defaultAddonAddresses: [String],
+        defaultAddons: [DefaultAddon],
         playsAudio: Bool = true,
         additionalEngineOptions: [PlayerConfiguration.EngineOption] = [],
         profileDirectory: URL? = nil,
@@ -134,7 +144,8 @@ public struct AppDependencies: Sendable {
                 http: imageClient,
                 directory: caches?.appendingPathComponent("Images", isDirectory: true)
             ),
-            defaultAddonAddresses: defaultAddonAddresses,
+            defaultAddonAddresses: [],
+            defaultAddons: defaultAddons,
             playerConfiguration: PlayerConfiguration(
                 userAgent: branding.userAgent,
                 logSubsystem: branding.bundleIdentifier,
@@ -157,6 +168,11 @@ public struct AppDependencies: Sendable {
             subtitleHTTP: apiClient,
             subtitleDirectory: (caches ?? files.temporaryDirectory).appendingPathComponent("Subtitles", isDirectory: true),
             engineConfigFolder: support.map(EngineConfigFolder.init(directory:)),
+            // Movies/<app name>: where a person would look for films, and a folder macOS lets an
+            // app write to without asking. A check's profile keeps its downloads to itself.
+            downloadsDirectory: profileDirectory?.appendingPathComponent("Downloads", isDirectory: true)
+                ?? files.urls(for: .moviesDirectory, in: .userDomainMask).first?
+                .appendingPathComponent(branding.name, isDirectory: true),
             startupWarning: warning
         )
     }

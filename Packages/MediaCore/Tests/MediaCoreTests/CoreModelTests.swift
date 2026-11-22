@@ -6,14 +6,14 @@ import Testing
 struct CoreModelTests {
     @Test("Media types decode from plain strings, including unknown ones")
     func mediaTypeCoding() throws {
-        let json = Data(#"["movie","series","anime"]"#.utf8)
+        let json = Data(#"["movie","series","anime","events"]"#.utf8)
         let types = try JSONDecoder().decode([MediaType].self, from: json)
-        #expect(types == [.movie, .series, MediaType(rawValue: "anime")])
-        #expect(types[0].isWellKnown)
-        #expect(!types[2].isWellKnown)
+        #expect(types == [.movie, .series, .anime, MediaType(rawValue: "events")])
+        #expect(types[0].isWellKnown && types[2].isWellKnown)
+        #expect(!types[3].isWellKnown)
 
         let encoded = try JSONEncoder().encode(types)
-        #expect(String(bytes: encoded, encoding: .utf8) == #"["movie","series","anime"]"#)
+        #expect(String(bytes: encoded, encoding: .utf8) == #"["movie","series","anime","events"]"#)
     }
 
     @Test("User agent is built from the branding values")

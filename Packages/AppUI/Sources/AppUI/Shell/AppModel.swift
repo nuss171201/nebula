@@ -23,6 +23,9 @@ public final class AppModel {
     public let nextEpisode: NextEpisodeController
     public let calendar: CalendarModel
     public let settings: SettingsModel
+    public let downloads: DownloadCenter
+    /// The Anime section's board: the catalogs of anime, with a banner of their own.
+    public let anime: HomeModel
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -70,9 +73,12 @@ public final class AppModel {
             client: client,
             store: dependencies.addonStore,
             settings: dependencies.settings,
-            defaultAddresses: dependencies.defaultAddonAddresses
+            defaults: dependencies.defaultAddons
         )
-        home = HomeModel(client: client)
+        // Anime has a section of its own, so Home leaves it out.
+        home = HomeModel(client: client) { !$0.isAnime }
+        anime = HomeModel(client: client) { $0.isAnime }
+        downloads = DownloadCenter(dependencies: dependencies)
         discover = DiscoverModel(client: client)
         search = SearchModel(client: client)
         addons = AddonsModel(registry: registry)
@@ -144,6 +150,8 @@ public final class AppModel {
         await dependencies.imagePipeline.trimDiskCache()
         // What earlier sessions streamed is kept up to the cache's budget.
         await dependencies.streamManager.trimCache()
+        // Carries on with what was being downloaded when the app was last quit.
+        await downloads.load()
     }
 
     /// Called when the root view first appears.
@@ -210,11 +218,35 @@ public final class AppModel {
 
     /// Plays what the picker thinks best of a page's streams, as its Play button does: the
     /// first that starts, of the three most suitable.
+    ///
+    /// A video that has been downloaded plays from its file: nothing to choose, nothing to wait for.
     public func playBestStream(of detail: DetailModel) {
         guard let video = detail.streamVideo else { return }
+        if let file = downloads.finishedFile(for: video) {
+            streamPlayer.playFile(file, for: video)
+            return
+        }
         streamPlayer.playAutomatically(detail.streams.picks.map(\.choice), for: video) { [weak detail] choice in
             detail?.streams.didChoose(choice)
         }
+    }
+
+    /// Plays a finished download. Returns whether its file was there to play.
+    @discardableResult
+    public func play(_ download: DownloadItem) -> Bool {
+        guard let file = downloads.finishedFile(for: download.video) else { return false }
+        streamPlayer.playFile(file, for: download.video)
+        return true
+    }
+
+    /// Starts downloading what Play would play on the detail page that was opened last.
+    /// Returns whether there was anything to download. For checking the app without the pointer.
+    @discardableResult
+    public func downloadBestStreamOfShownTitle() -> Bool {
+        guard let detail = latestDetail, let video = detail.streamVideo,
+              let choice = detail.streams.picks.map(\.choice).first(where: DownloadCenter.canDownload)
+        else { return false }
+        return downloads.add(choice, for: video) != nil
     }
 
     /// Presses Play on the detail page that was opened last. Returns whether there was
@@ -260,6 +292,7 @@ public final class AppModel {
             }
         }
         home.update(addons: addons)
+        anime.update(addons: addons)
         continueWatching.update(addons: addons)
         nextEpisode.update(addons: addons)
         calendar.update(addons: addons)

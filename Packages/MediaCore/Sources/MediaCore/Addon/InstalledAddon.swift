@@ -38,6 +38,14 @@ public struct CatalogSource: Sendable, Hashable, Identifiable {
     public var id: String {
         "\(addon.id)|\(catalog.type.rawValue)|\(catalog.id)"
     }
+
+    /// Whether this is a catalog of anime: one of the type anime catalogs use, or one that
+    /// says so in its name (some add-ons list anime among their series).
+    public var isAnime: Bool {
+        catalog.type == .anime
+            || catalog.id.localizedCaseInsensitiveContains("anime")
+            || catalog.displayName.localizedCaseInsensitiveContains("anime")
+    }
 }
 
 public extension [InstalledAddon] {

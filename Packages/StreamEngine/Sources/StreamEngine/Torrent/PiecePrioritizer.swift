@@ -147,6 +147,16 @@ public struct PiecePlan: Sendable, Equatable {
 /// Before the player has asked for anything, both ends of the file come first, because that is
 /// where containers keep the index the player reads before the first frame.
 public enum PiecePrioritizer {
+    /// The pieces fetched before the player has asked for anything: both ends of the file.
+    public static func edgePieces(map: PieceMap, window: StreamingWindow = StreamingWindow()) -> Set<Int> {
+        guard map.fileSize > 0 else { return [] }
+        var pieces = Set(map.piece(containing: 0) ... map.piece(containing: window.edgeBytes - 1))
+        if map.fileSize > window.edgeBytes {
+            pieces.formUnion(map.piece(containing: map.fileSize - window.edgeBytes) ... map.lastPiece)
+        }
+        return pieces
+    }
+
     /// - Parameters:
     ///   - readers: Offsets within the file that are being read, most recently active first.
     ///   - fetchesWholeFile: Whether the rest of the file is fetched as well. `false` keeps to
@@ -180,7 +190,7 @@ public enum PiecePrioritizer {
         raise(map.pieces, to: .skip)
 
         if positions.isEmpty {
-            // Nothing has been asked for yet: get both ends, the start first.
+            // Nothing has been asked for yet: get both ends, the start first (`edgePieces`).
             let head = map.piece(containing: 0) ... map.piece(containing: window.edgeBytes - 1)
             want(head, startingAt: 0)
             if map.fileSize > window.edgeBytes {

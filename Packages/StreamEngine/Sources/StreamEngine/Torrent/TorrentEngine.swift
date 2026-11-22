@@ -77,6 +77,9 @@ public actor TorrentEngine {
         var plan = PiecePlan()
         /// The piece each reader was last planned for; a new plan is only made when one moves on.
         var plannedPieces: [UUID: Int] = [:]
+        /// What the player is held up by: the pieces the file was opened with, and each one a
+        /// reader has waited for since (`arrival(of:)`).
+        var awaited: Set<Int> = []
     }
 
     struct Torrent {
@@ -141,6 +144,7 @@ public actor TorrentEngine {
         bridged.mapsPorts = settings.mapsPorts
         bridged.allowsSeveralConnectionsPerAddress = settings.allowsSeveralConnectionsPerAddress
         bridged.diagnosticLevel = settings.diagnosticLevel
+        bridged.limitsPeersOnThisMachine = settings.limitsPeersOnThisMachine
         return bridged
     }
 
@@ -163,10 +167,12 @@ public actor TorrentEngine {
 
     /// Starts looking for a torrent. Nothing is downloaded until a file is chosen with `open`.
     /// Adding a torrent that is already there does nothing.
-    public func add(_ source: TorrentSource) throws(TorrentError) {
+    /// - Parameter folder: Where the torrent keeps its data; the engine's own folder for it
+    ///   when `nil`. What is already there from an earlier session is verified and kept.
+    public func add(_ source: TorrentSource, directory folder: URL? = nil) throws(TorrentError) {
         guard !isShutDown else { throw .removed }
         guard torrents[source.infoHash] == nil else { return }
-        let folder = dataDirectory(for: source.infoHash)
+        let folder = folder ?? dataDirectory(for: source.infoHash)
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         } catch {
@@ -212,6 +218,7 @@ public actor TorrentEngine {
             wantedBytes: status.wantedBytes,
             wantedBytesDone: status.wantedBytesDone,
             isFinished: status.isFinished,
+            isChecking: status.isChecking,
             errorMessage: torrent.failure ?? status.errorMessage
         )
     }
@@ -272,7 +279,10 @@ public actor TorrentEngine {
         if torrents[infoHash]?.streams[index] == nil {
             session.wantOnlyFile(index, ofTorrent: infoHash)
             torrents[infoHash]?.completed = Set(session.completedPieces(ofTorrent: infoHash).map(\.self))
-            torrents[infoHash]?.streams[index] = FileStream(map: map, fetchesWholeFile: fetchesWholeFile)
+            var stream = FileStream(map: map, fetchesWholeFile: fetchesWholeFile)
+            let completed = torrents[infoHash]?.completed ?? []
+            stream.awaited = PiecePrioritizer.edgePieces(map: map, window: window).subtracting(completed)
+            torrents[infoHash]?.streams[index] = stream
             replan(file: index, of: infoHash)
         }
         return map
@@ -295,6 +305,9 @@ public actor TorrentEngine {
             replan(file: index, of: infoHash)
         }
 
+        if torrents[infoHash]?.completed.contains(piece) == false {
+            torrents[infoHash]?.streams[index]?.awaited.insert(piece)
+        }
         try await waitForPiece(piece, of: infoHash)
         let data = try await pieceData(piece, of: infoHash)
         let start = map.offsetInPiece(of: offset)

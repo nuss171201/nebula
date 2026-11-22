@@ -14,6 +14,7 @@
 #include <libtorrent/create_torrent.hpp>
 #include <libtorrent/error_code.hpp>
 #include <libtorrent/hex.hpp>
+#include <libtorrent/ip_filter.hpp>
 #include <libtorrent/session.hpp>
 #include <libtorrent/session_params.hpp>
 #include <libtorrent/settings_pack.hpp>
@@ -170,6 +171,8 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
         _wantedBytes = status.total_wanted;
         _wantedBytesDone = status.total_wanted_done;
         _isFinished = status.is_finished;
+        _isChecking = status.state == lt::torrent_status::checking_files
+            || status.state == lt::torrent_status::checking_resume_data;
         _errorMessage = status.errc ? toNSString(status.errc.message()) : nil;
     }
     return self;
@@ -195,6 +198,16 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
         _logs = settings.diagnosticLevel > 0;
         lt::session_params params(makeSettings(settings));
         _session = std::make_unique<lt::session>(std::move(params));
+        if (settings.limitsPeersOnThisMachine) {
+            // libtorrent puts peers on the local network and on this machine in a class of
+            // their own, which the rate limits do not touch. With this, every peer is in the
+            // class the limits apply to.
+            const std::uint32_t everyone = 1u << static_cast<std::uint32_t>(lt::session::global_peer_class_id);
+            lt::ip_filter filter;
+            filter.add_rule(lt::make_address("0.0.0.0"), lt::make_address("255.255.255.255"), everyone);
+            filter.add_rule(lt::make_address("::"), lt::make_address("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"), everyone);
+            _session->set_peer_class_filter(filter);
+        }
 
         // libtorrent calls this from its own thread when there is something to collect, and
         // must not be called back from inside it: hand over to the events queue.
@@ -352,6 +365,29 @@ lt::settings_pack makeSettings(TBSessionSettings *settings) {
         ++index;
     }
     return pieces;
+}
+
+- (NSDictionary<NSNumber *, NSNumber *> *)partialPieceBytesOfTorrent:(NSString *)infoHash {
+    NSMutableDictionary<NSNumber *, NSNumber *> *bytes = [NSMutableDictionary dictionary];
+    lt::torrent_handle handle = [self handleFor:infoHash];
+    if (!handle.is_valid()) {
+        return bytes;
+    }
+    std::vector<lt::partial_piece_info> queue;
+    handle.get_download_queue(queue);
+    for (const lt::partial_piece_info &piece : queue) {
+        int64_t arrived = 0;
+        for (int block = 0; block < piece.blocks_in_piece; ++block) {
+            const lt::block_info &info = piece.blocks[block];
+            // A block that is written or being written is all there; one on its way counts
+            // for what has come of it.
+            arrived += (info.state == lt::block_info::finished || info.state == lt::block_info::writing)
+                ? info.block_size
+                : info.bytes_progress;
+        }
+        bytes[@(static_cast<int>(piece.piece_index))] = @(arrived);
+    }
+    return bytes;
 }
 
 - (void)wantOnlyFile:(NSInteger)fileIndex ofTorrent:(NSString *)infoHash {

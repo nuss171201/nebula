@@ -28,7 +28,7 @@ enum MPVValue: Sendable, Equatable {
 enum ObservedProperty: UInt64, CaseIterable, Sendable {
     case pause = 1, timePosition, duration, volume, mute, pausedForCache, seeking, endOfFileReached
     case mediaTitle, displayWidth, displayHeight, hardwareDecoder, cacheDuration
-    case trackList, chapterList, chapter, playlist, videoTransfer
+    case trackList, chapterList, chapter, playlist, videoTransfer, cacheBufferingState
 
     var name: String {
         switch self {
@@ -50,6 +50,7 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         case .chapter: "chapter"
         case .playlist: "playlist"
         case .videoTransfer: "video-params/gamma"
+        case .cacheBufferingState: "cache-buffering-state"
         }
     }
 
@@ -57,7 +58,7 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         switch self {
         case .pause, .mute, .pausedForCache, .seeking, .endOfFileReached: MPV_FORMAT_FLAG
         case .timePosition, .duration, .volume, .cacheDuration: MPV_FORMAT_DOUBLE
-        case .displayWidth, .displayHeight, .chapter: MPV_FORMAT_INT64
+        case .displayWidth, .displayHeight, .chapter, .cacheBufferingState: MPV_FORMAT_INT64
         case .mediaTitle, .hardwareDecoder, .videoTransfer: MPV_FORMAT_STRING
         case .trackList, .chapterList, .playlist: MPV_FORMAT_NODE
         }
@@ -94,6 +95,8 @@ enum ObservedProperty: UInt64, CaseIterable, Sendable {
         case let (.volume, .double(level)): .volume(level)
         case let (.cacheDuration, .double(seconds)): .bufferedAhead(seconds)
         case (.cacheDuration, nil): .bufferedAhead(nil)
+        case let (.cacheBufferingState, .int(percent)): .bufferingProgress(Double(percent) / 100)
+        case (.cacheBufferingState, nil): .bufferingProgress(nil)
         case let (.displayWidth, .int(pixels)): .displayWidth(Int(pixels))
         case (.displayWidth, nil): .displayWidth(nil)
         case let (.displayHeight, .int(pixels)): .displayHeight(Int(pixels))

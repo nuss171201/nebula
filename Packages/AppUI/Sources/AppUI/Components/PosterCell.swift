@@ -27,7 +27,12 @@ final class PosterCell: NSCollectionViewItem {
 /// the first rows a scroll brings in, before there are cells to reuse (text fields and an
 /// image view per cell made those rows cost 12 to 15 ms each).
 final class PosterCellView: NSView {
+    /// The artwork's frame: rounded corners and the border. The picture is a layer inside it,
+    /// so that it can grow under the pointer without the card leaving its place.
     private let artwork = CALayer()
+    private let picture = CALayer()
+    /// A glow in the accent's colour behind the artwork, seen only under the pointer.
+    private let glow = CALayer()
     private let title = CATextLayer()
     private let subtitle = CATextLayer()
     /// Shown only when a title has no artwork at all; made when first needed.
@@ -49,9 +54,16 @@ final class PosterCellView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        artwork.cornerRadius = 8
+        glow.shadowOffset = .zero
+        glow.shadowRadius = 13
+        glow.shadowOpacity = 0
+        layer?.addSublayer(glow)
+        artwork.cornerRadius = Self.cornerRadius
+        artwork.cornerCurve = .continuous
         artwork.masksToBounds = true
-        artwork.contentsGravity = .resizeAspectFill
+        picture.contentsGravity = .resizeAspectFill
+        picture.masksToBounds = true
+        artwork.addSublayer(picture)
         layer?.addSublayer(artwork)
         for (text, style) in [(title, NSFont.TextStyle.callout), (subtitle, .caption1)] {
             let font = NSFont.preferredFont(forTextStyle: style)
@@ -72,6 +84,10 @@ final class PosterCellView: NSView {
     required init?(coder _: NSCoder) {
         fatalError("PosterCellView is created in code")
     }
+
+    static let cornerRadius: CGFloat = 10
+    /// How much the picture grows under the pointer.
+    static let hoverScale: CGFloat = 1.06
 
     override var isFlipped: Bool {
         true
@@ -95,7 +111,7 @@ final class PosterCellView: NSView {
     private func load(_ url: URL?, from pipeline: ImagePipeline?, maxPixelSize: Int) {
         loadTask?.cancel()
         loadTask = nil
-        guard url != shownURL || artwork.contents == nil else { return }
+        guard url != shownURL || picture.contents == nil else { return }
         show(nil, for: url)
         guard let url, let pipeline else { return }
         if let cached = pipeline.cachedImage(for: url, maxPixelSize: maxPixelSize) {
@@ -113,7 +129,7 @@ final class PosterCellView: NSView {
         // No fade: dozens of posters arrive together, and each animation is a display update.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        artwork.contents = image
+        picture.contents = image
         CATransaction.commit()
         showPlaceholder(image == nil && url == nil)
     }
@@ -137,6 +153,16 @@ final class PosterCellView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         artwork.frame = CGRect(x: 0, y: 0, width: bounds.width, height: artworkHeight)
+        // Bounds and position, not the frame: the picture may be scaled at this moment.
+        picture.bounds = artwork.bounds
+        picture.position = CGPoint(x: artwork.bounds.midX, y: artwork.bounds.midY)
+        glow.frame = artwork.frame
+        glow.shadowPath = CGPath(
+            roundedRect: glow.bounds.insetBy(dx: 3, dy: 3),
+            cornerWidth: Self.cornerRadius,
+            cornerHeight: Self.cornerRadius,
+            transform: nil
+        )
         title.frame = CGRect(x: 2, y: artworkHeight + 6, width: bounds.width - 2, height: 18)
         subtitle.frame = CGRect(x: 2, y: artworkHeight + 25, width: bounds.width - 2, height: 15)
         CATransaction.commit()
@@ -170,15 +196,32 @@ final class PosterCellView: NSView {
     private func updateBorder() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if isSelected {
-            effectiveAppearance.performAsCurrentDrawingAppearance {
-                artwork.borderColor = NSColor.controlAccentColor.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let accent = NSColor.controlAccentColor.cgColor
+            glow.shadowColor = accent
+            if isSelected {
+                artwork.borderColor = accent
+                artwork.borderWidth = 3
+            } else if isHovered {
+                artwork.borderColor = accent
+                artwork.borderWidth = 2
+            } else {
+                artwork.borderColor = CGColor(gray: 1, alpha: 0.08)
+                artwork.borderWidth = 1
             }
-            artwork.borderWidth = 3
-        } else {
-            artwork.borderColor = CGColor(gray: 1, alpha: isHovered ? 0.6 : 0.08)
-            artwork.borderWidth = isHovered ? 2 : 1
         }
+        CATransaction.commit()
+
+        // The picture swells and a glow comes up behind it: one card at a time, and only while
+        // the pointer is on it, so a scroll never animates anything.
+        let reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(isHovered ? 0.22 : 0.3)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        picture.transform = isHovered && !reducesMotion
+            ? CATransform3DMakeScale(Self.hoverScale, Self.hoverScale, 1)
+            : CATransform3DIdentity
+        glow.shadowOpacity = isHovered ? 0.6 : 0
         CATransaction.commit()
     }
 
@@ -233,7 +276,7 @@ final class PosterCellView: NSView {
     }
 
     override func drawFocusRingMask() {
-        NSBezierPath(roundedRect: artwork.frame, xRadius: 8, yRadius: 8).fill()
+        NSBezierPath(roundedRect: artwork.frame, xRadius: Self.cornerRadius, yRadius: Self.cornerRadius).fill()
     }
 
     private var enclosingCollectionView: NSCollectionView? {

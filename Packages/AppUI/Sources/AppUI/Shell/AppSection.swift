@@ -2,7 +2,9 @@
 public enum AppSection: String, CaseIterable, Identifiable, Sendable {
     case home
     case discover
+    case anime
     case library
+    case downloads
     case calendar
     case addons
 
@@ -12,7 +14,9 @@ public enum AppSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .home: "Home"
         case .discover: "Discover"
+        case .anime: "Anime"
         case .library: "Library"
+        case .downloads: "Downloads"
         case .calendar: "Calendar"
         case .addons: "Add-ons"
         }
@@ -23,7 +27,9 @@ public enum AppSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .home: "house"
         case .discover: "safari"
+        case .anime: "sparkles.tv"
         case .library: "books.vertical"
+        case .downloads: "arrow.down.circle"
         case .calendar: "calendar"
         case .addons: "puzzlepiece.extension"
         }

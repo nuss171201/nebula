@@ -193,26 +193,24 @@ private struct FeaturedSlide: View {
         HStack(spacing: 10) {
             Button(action: play) {
                 Label("Play", systemImage: "play.fill")
-                    .font(.title3.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 4)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(ProminentPillButtonStyle())
             .accessibilityHint(item.type == .series ? "Plays the next episode to watch" : "Plays this title")
 
             Button(action: toggleSaved) {
                 Label(isSaved ? "In Library" : "Add to Library", systemImage: isSaved ? "checkmark" : "plus")
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 3)
             }
+            .buttonStyle(BannerPillButtonStyle())
             .accessibilityHint(isSaved ? "Removes this title from your library" : "Saves this title to your library")
 
             Button(action: moreInfo) {
                 Label("More Info", systemImage: "info.circle")
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 3)
             }
+            .buttonStyle(BannerPillButtonStyle())
             .accessibilityHint("Opens this title's page")
         }
-        .controlSize(.large)
     }
 }
 

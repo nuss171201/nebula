@@ -7,7 +7,7 @@ import PlayerKit
 import StreamEngine
 
 /// The video a stream list is for.
-public struct StreamVideo: Sendable, Hashable {
+public struct StreamVideo: Sendable, Hashable, Codable {
     public var type: MediaType
     /// The title's id for a film; the episode's id for a series.
     public var videoID: String
@@ -104,6 +104,8 @@ public final class StreamPlayer {
     @ObservationIgnored var automaticTask: Task<Void, Never>?
     @ObservationIgnored private var speedTask: Task<Void, Never>?
     @ObservationIgnored private var speedSamples: [Double] = []
+    @ObservationIgnored private var arrivalTask: Task<Void, Never>?
+    @ObservationIgnored private var arrivalMeter = ArrivalMeter()
     /// Called when a torrent stream closes, with the best download rate it held for a few
     /// seconds (bytes a second): what the app learns the connection's speed from.
     @ObservationIgnored public var onSessionSpeed: (@MainActor (Double) -> Void)?
@@ -111,6 +113,8 @@ public final class StreamPlayer {
     @ObservationIgnored var startTimeout: (torrent: Duration, direct: Duration) = (.seconds(30), .seconds(20))
     /// How often a playing torrent's download rate is read.
     @ObservationIgnored var speedSampleInterval = Duration.seconds(2)
+    /// How often, while the player waits for a torrent, what it is waiting for is looked at.
+    @ObservationIgnored var arrivalInterval = Duration.milliseconds(500)
     /// At most this many streams are tried when Play chooses.
     static let automaticAttempts = 3
 
@@ -135,6 +139,24 @@ public final class StreamPlayer {
     public func play(_ choice: StreamChoice, for video: StreamVideo) {
         cancel()
         start(choice, for: video)
+    }
+
+    /// Plays a file that is on this Mac (a download), remembered as the video it is.
+    public func playFile(_ file: URL, for video: StreamVideo) {
+        cancel()
+        do {
+            let source = try PlayableSource(url: file)
+            closeActiveTorrent()
+            nowPlaying = video
+            nowPlayingChoice = nil
+            subtitleService?.setAttached([], forVideo: video.videoID)
+            if let library {
+                Task { await library.begin(video.watchVideo) }
+            }
+            coordinator.play(source, options: PlaybackOptions(memoryKeys: video.memoryKeys, title: video.title))
+        } catch {
+            phase = .failed(title: video.title, message: error.userMessage)
+        }
     }
 
     func start(_ choice: StreamChoice, for video: StreamVideo) {
@@ -323,35 +345,79 @@ public final class StreamPlayer {
                 if !status.isFinished {
                     speedSamples.append(Double(status.downloadRate))
                 }
-                showWaitingNote(for: status)
             }
         }
+        followArrival(of: infoHash)
     }
 
     /// What the player says if a torrent's file never opens.
     nonisolated static let didNotArriveMessage =
         "This stream did not arrive. Too few people may be sharing it at the moment, or the connection to them is too slow. Try another one."
 
-    /// While the player is waiting for the torrent, says under its busy indicator how the
-    /// torrent is doing. Only then: during ordinary playback nothing is written, so nothing redraws.
-    private func showWaitingNote(for status: TorrentStatus) {
-        guard let player = coordinator.player else { return }
-        let note = player.state.isBusy ? Self.waitingNote(for: status) : nil
-        if player.waitingNote != note {
-            player.waitingNote = note
+    /// While the player waits for the torrent, says in its busy indicator how much of what it
+    /// is waiting for has arrived and how the torrent is doing. Only then: during ordinary
+    /// playback the engine is not asked and nothing is written, so nothing redraws.
+    private func followArrival(of infoHash: String) {
+        arrivalTask?.cancel()
+        arrivalMeter.reset()
+        arrivalTask = Task { [weak self, manager] in
+            // A stream starts out waiting: what the engine counts from the moment the file is
+            // opened is this first wait.
+            var wasBusy = true
+            while !Task.isCancelled {
+                guard let interval = self?.arrivalInterval else { return }
+                try? await Task.sleep(for: interval)
+                guard !Task.isCancelled, let self, activeTorrent == infoHash else { return }
+                guard let player = coordinator.player else { continue }
+                let isBusy = player.state.isBusy
+                defer { wasBusy = isBusy }
+                guard isBusy else {
+                    if wasBusy {
+                        arrivalMeter.reset()
+                        show(note: nil, progress: nil, in: player)
+                    }
+                    continue
+                }
+                if !wasBusy {
+                    // Stalled again: what held it up the last time is not progress this time.
+                    await manager.restartArrival(of: infoHash)
+                }
+                let status = await manager.status(of: infoHash)
+                let arrival = await manager.arrival(of: infoHash)
+                guard !Task.isCancelled, activeTorrent == infoHash, player.state.isBusy else { continue }
+                let progress = arrivalMeter.read(arrival)
+                show(note: status.map { Self.waitingNote(for: $0, bytesLeft: arrival?.bytesLeft) }, progress: progress, in: player)
+            }
         }
     }
 
-    nonisolated static func waitingNote(for status: TorrentStatus) -> String {
+    private func show(note: String?, progress: Double?, in player: PlayerModel) {
+        if player.waitingNote != note {
+            player.waitingNote = note
+        }
+        if player.waitingProgress != progress {
+            player.waitingProgress = progress
+        }
+    }
+
+    /// - Parameter bytesLeft: What the player is still waiting for, if the engine can say.
+    nonisolated static func waitingNote(for status: TorrentStatus, bytesLeft: Int64? = nil) -> String {
         guard status.peers > 0 else { return "Looking for people sharing this…" }
         let speed = ByteCountFormatter.string(fromByteCount: Int64(status.downloadRate), countStyle: .file)
-        return "\(status.peers) \(status.peers == 1 ? "connection" : "connections") · \(speed)/s"
+        let parts = [
+            "\(status.peers) \(status.peers == 1 ? "connection" : "connections")",
+            "\(speed)/s",
+            bytesLeft.flatMap { ArrivalMeter.timeLeft(bytes: $0, rate: status.downloadRate) },
+        ]
+        return parts.compactMap(\.self).joined(separator: " · ")
     }
 
     func closeActiveTorrent() {
         guard let infoHash = activeTorrent else { return }
         speedTask?.cancel()
         speedTask = nil
+        arrivalTask?.cancel()
+        arrivalTask = nil
         let best = ConnectionSpeed.bestSustained(speedSamples)
         speedSamples = []
         if best > 0 {

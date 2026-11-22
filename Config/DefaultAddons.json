@@ -1,5 +1,5 @@
 {
-  "comment": "Add-ons installed on first launch. Only official metadata and subtitle add-ons belong here. Never add a streaming source.",
+  "comment": "Add-ons installed without being asked for. Only metadata and subtitle add-ons belong here. Never add a streaming source. 'since' is the round of defaults an add-on came in (1 when absent): a later round is installed once into profiles that already have the earlier ones.",
   "addons": [
     {
       "name": "Cinemeta",
@@ -10,6 +10,12 @@
       "name": "OpenSubtitles v3",
       "purpose": "subtitles",
       "manifestURL": "https://opensubtitles-v3.strem.io/manifest.json"
+    },
+    {
+      "name": "Anime Kitsu",
+      "purpose": "anime catalogs and metadata (community-run; added on the user's decision, 22 Nov 2026)",
+      "manifestURL": "https://anime-kitsu.strem.fun/manifest.json",
+      "since": 2
     }
   ]
 }

@@ -20,15 +20,17 @@ public struct RootView: View {
 
         NavigationSplitView {
             List(AppSection.allCases, selection: $model.selection) { section in
-                Label(section.title, systemImage: section.systemImage)
+                SidebarRow(section: section, downloads: model.downloads)
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 280)
         } detail: {
             NavigationStack(path: $model.path) {
                 content
+                    .background { AppBackground() }
                     .navigationTitle(model.search.isActive ? "Search" : model.currentSection.title)
                     .navigationDestination(for: MediaRoute.self) { route in
                         DetailScreen(route: route, appModel: model)
+                            .background { AppBackground() }
                     }
                     .safeAreaInset(edge: .top, spacing: 0) {
                         if let warning = model.dependencies.startupWarning {
@@ -117,6 +119,20 @@ public struct RootView: View {
                 )
             case .discover:
                 DiscoverView(model: model.discover, registry: model.registry) { model.path.append(MediaRoute(item: $0)) }
+            case .anime:
+                HomeView(
+                    model: model.anime,
+                    registry: model.registry,
+                    continueWatching: model.continueWatching,
+                    library: model.library,
+                    showsContinueWatching: false,
+                    showsFeatured: model.settings.settings.showsFeatured,
+                    emptyText: .anime,
+                    play: { model.play($0) },
+                    open: { model.open($0) }
+                )
+            case .downloads:
+                DownloadsView(center: model.downloads, play: { model.play($0) }, open: { model.open($0.video.watchVideo) })
             case .addons:
                 AddonsView(model: model.addons)
             case .library:
@@ -125,5 +141,17 @@ public struct RootView: View {
                 CalendarView(model: model.calendar, library: model.library, registry: model.registry) { model.open($0) }
             }
         }
+    }
+}
+
+/// One section in the sidebar. A view of its own so that the count of downloads under way,
+/// which changes as they come and go, redraws this row and not the window.
+private struct SidebarRow: View {
+    let section: AppSection
+    let downloads: DownloadCenter
+
+    var body: some View {
+        Label(section.title, systemImage: section.systemImage)
+            .badge(section == .downloads ? downloads.pendingCount : 0)
     }
 }

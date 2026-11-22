@@ -28,12 +28,29 @@ public enum AddonInstallError: Error, Equatable, Sendable {
     }
 }
 
+/// An add-on that is installed without being asked for.
+public struct DefaultAddon: Sendable, Equatable {
+    /// Its manifest's address.
+    public var address: String
+    /// The round of defaults it came with: 1 for the ones the app started out with. An add-on
+    /// of a later round is installed, once, into a profile that already has the earlier ones;
+    /// one the user has since removed is never put back.
+    public var round: Int
+
+    public init(address: String, round: Int = 1) {
+        self.address = address
+        self.round = max(round, 1)
+    }
+}
+
 /// The single source of truth for which add-ons are installed. Screens read
 /// `addons`; every change goes through here so memory and disk stay in step.
 @MainActor
 @Observable
 public final class AddonRegistry {
     static let didInstallDefaults = SettingKey<Bool>("addons.didInstallDefaults", default: false)
+    /// The latest round of default add-ons this profile has been given.
+    static let defaultsRound = SettingKey<Int>("addons.defaultsRound", default: 0)
 
     public private(set) var addons: [InstalledAddon] = []
     /// `false` until the stored list has been read and first-run setup has finished.
@@ -46,14 +63,19 @@ public final class AddonRegistry {
     @ObservationIgnored private let client: AddonClient
     @ObservationIgnored private let store: AddonStore
     @ObservationIgnored private let settings: SettingsStore
-    @ObservationIgnored private let defaultAddresses: [String]
+    @ObservationIgnored private let defaults: [DefaultAddon]
     @ObservationIgnored private var hasStarted = false
 
-    public init(client: AddonClient, store: AddonStore, settings: SettingsStore, defaultAddresses: [String]) {
+    public init(client: AddonClient, store: AddonStore, settings: SettingsStore, defaults: [DefaultAddon]) {
         self.client = client
         self.store = store
         self.settings = settings
-        self.defaultAddresses = defaultAddresses
+        self.defaults = defaults
+    }
+
+    /// With every default in the first round.
+    public convenience init(client: AddonClient, store: AddonStore, settings: SettingsStore, defaultAddresses: [String]) {
+        self.init(client: client, store: store, settings: settings, defaults: defaultAddresses.map { DefaultAddon(address: $0) })
     }
 
     /// Reads the installed add-ons, installs the defaults on first run, then quietly
@@ -140,9 +162,15 @@ public final class AddonRegistry {
     }
 
     private func installDefaultsIfNeeded() async {
-        guard await (try? settings.value(for: Self.didInstallDefaults)) != true else { return }
+        var done = await (try? settings.value(for: Self.defaultsRound)) ?? 0
+        // A profile from before rounds were counted has had the first one.
+        if done == 0, await (try? settings.value(for: Self.didInstallDefaults)) == true {
+            done = 1
+        }
+        let pending = defaults.filter { $0.round > done }
+        guard let latest = pending.map(\.round).max() else { return }
 
-        let addresses = defaultAddresses.compactMap { try? AddonTransportURL(userInput: $0) }
+        let addresses = pending.compactMap { try? AddonTransportURL(userInput: $0.address) }
         let missing = addresses.filter { address in !addons.contains { $0.address == address } }
         let fetched = await fetchManifests(for: missing)
 
@@ -152,11 +180,14 @@ public final class AddonRegistry {
         }
 
         if addresses.allSatisfy({ address in addons.contains { $0.address == address } }) {
+            try? await settings.set(latest, for: Self.defaultsRound)
             try? await settings.set(true, for: Self.didInstallDefaults)
             setupError = nil
-        } else {
+        } else if done == 0 {
             setupError = "The default add-ons could not be loaded. Check your internet connection."
         }
+        // A later round that could not be fetched is tried again at the next launch, without a
+        // word: the app works without it.
     }
 
     /// Picks up manifest changes (new catalogs, new version) published since install.

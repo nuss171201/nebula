@@ -36,9 +36,16 @@ public actor StreamManager {
     public private(set) var settings: TorrentEngineSettings
     private let logSubsystem: String
     public private(set) var cache: StreamCache
-    private var engine: TorrentEngine?
-    private var server: StreamServer?
-    private var opened: [String: OpenedStream] = [:]
+    var engine: TorrentEngine?
+    var server: StreamServer?
+    var opened: [String: OpenedStream] = [:]
+    /// Streams that are being found and have not opened yet.
+    var opening = 0
+    /// The file being kept for good, if there is one (`StreamManager+Downloads`).
+    var download: ActiveDownload?
+    var downloadGeneration = 0
+    /// Open streams that read from the download's own torrent instead of one in the cache.
+    var streamsOnDownload: Set<String> = []
 
     public init(settings: TorrentEngineSettings, cache: StreamCache, logSubsystem: String = "stream.engine") {
         self.settings = settings
@@ -61,6 +68,25 @@ public actor StreamManager {
         if let existing = opened[source.infoHash] {
             return existing
         }
+        if let stream = try await openOnDownload(source, fileIndex: fileIndex, fileName: fileName) {
+            return stream
+        }
+        opening += 1
+        // A download would take the stream's bandwidth, and may hold the very torrent in
+        // another folder: it waits until nothing is playing.
+        await holdDownload()
+        do {
+            let stream = try await openStream(source, fileIndex: fileIndex, fileName: fileName, metadataTimeout: metadataTimeout)
+            opening -= 1
+            return stream
+        } catch {
+            opening -= 1
+            resumeDownloadIfIdle()
+            throw error
+        }
+    }
+
+    private func openStream(_ source: TorrentSource, fileIndex: Int?, fileName: String?, metadataTimeout: Duration) async throws -> OpenedStream {
         let engine = try startEngine()
         let server = try await startServer()
         try await engine.add(source)
@@ -90,6 +116,15 @@ public actor StreamManager {
         await engine?.connect(infoHash, toPeerAt: address, port: port)
     }
 
+    /// Tells every torrent the engine has, at this moment, about a peer. For checks on this
+    /// machine, where there is no tracker and no hash table to find anyone through.
+    public func introduce(peerAt address: String, port: Int) async {
+        guard let engine else { return }
+        for infoHash in await engine.activeTorrents {
+            await engine.connect(infoHash, toPeerAt: address, port: port)
+        }
+    }
+
     /// Whether the engine has been told about a torrent, open or still being found.
     public func isFetching(_ infoHash: String) async -> Bool {
         await engine?.activeTorrents.contains(infoHash) ?? false
@@ -100,13 +135,31 @@ public actor StreamManager {
         await engine?.status(of: infoHash)
     }
 
+    /// How much of what the player is waiting for has arrived (`TorrentEngine.arrival`).
+    public func arrival(of infoHash: String) async -> ArrivalProgress? {
+        await engine?.arrival(of: infoHash)
+    }
+
+    /// The player has stalled again: count from what it is waiting for now.
+    public func restartArrival(of infoHash: String) async {
+        await engine?.restartArrival(of: infoHash)
+    }
+
     /// Stops a stream. Its data stays in the cache until the cache needs the room.
     public func close(_ infoHash: String) async {
         guard let stream = opened.removeValue(forKey: infoHash) else { return }
         await server?.withdraw(stream.url)
-        await engine?.remove(infoHash, deletingData: false)
-        cache.markUsed(infoHash)
-        trimCache()
+        if streamsOnDownload.remove(infoHash) != nil {
+            // The torrent is the download's and carries on; unless the download went away meanwhile.
+            if download?.request.source.infoHash != infoHash || download?.isInEngine != true {
+                await engine?.remove(infoHash, deletingData: false)
+            }
+        } else {
+            await engine?.remove(infoHash, deletingData: false)
+            cache.markUsed(infoHash)
+            trimCache()
+        }
+        resumeDownloadIfIdle()
     }
 
     /// Clears least recently watched data until the cache fits its budget. Returns what was removed.
@@ -151,6 +204,9 @@ public actor StreamManager {
 
     /// Stops everything. The manager starts again from scratch if used afterwards.
     public func shutdown() async {
+        download?.task?.cancel()
+        download = nil
+        streamsOnDownload = []
         await server?.stop()
         await engine?.shutdown()
         server = nil
@@ -163,7 +219,7 @@ public actor StreamManager {
         try startEngine()
     }
 
-    private func startEngine() throws -> TorrentEngine {
+    func startEngine() throws -> TorrentEngine {
         if let engine {
             return engine
         }
@@ -173,7 +229,7 @@ public actor StreamManager {
         return engine
     }
 
-    private func startServer() async throws -> StreamServer {
+    func startServer() async throws -> StreamServer {
         if let server {
             return server
         }

@@ -79,9 +79,12 @@ public final class HomeModel {
 
     @ObservationIgnored private let client: AddonClient
     @ObservationIgnored private var hasShownContent = false
+    @ObservationIgnored private let includes: @Sendable (CatalogSource) -> Bool
 
-    public init(client: AddonClient) {
+    /// - Parameter includes: Which catalogs belong on this board; all of them by default.
+    public init(client: AddonClient, includes: @escaping @Sendable (CatalogSource) -> Bool = { _ in true }) {
         self.client = client
+        self.includes = includes
     }
 
     /// Rebuilds the board for the given add-ons, keeping rows (and what they have
@@ -90,7 +93,7 @@ public final class HomeModel {
         let existing = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var seen = Set<String>()
         rows = addons.catalogSources
-            .filter { $0.catalog.isBoardEligible && seen.insert($0.id).inserted }
+            .filter { $0.catalog.isBoardEligible && includes($0) && seen.insert($0.id).inserted }
             .map { source in
                 if let row = existing[source.id], row.source == source {
                     return row

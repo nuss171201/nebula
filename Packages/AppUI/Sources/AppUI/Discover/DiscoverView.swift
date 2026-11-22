@@ -37,14 +37,14 @@ private struct DiscoverFilterBar: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Picker("Type", selection: typeBinding) {
-                ForEach(model.types, id: \.self) { type in
-                    Text(type.pluralTitle).tag(Optional(type))
-                }
-            }
-            .pickerStyle(.segmented)
+            PillPicker(
+                options: model.types,
+                selection: model.selectedType,
+                title: \.pluralTitle,
+                select: { model.select(type: $0) },
+                label: "Type"
+            )
             .fixedSize()
-            .labelsHidden()
 
             Picker("Catalog", selection: catalogBinding) {
                 ForEach(model.catalogs) { source in
@@ -68,6 +68,7 @@ private struct DiscoverFilterBar: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
     }
 
     /// Catalog names repeat across add-ons ("Popular"), so name the add-on when there are several.
@@ -76,16 +77,6 @@ private struct DiscoverFilterBar: View {
         return addonCount > 1
             ? "\(source.catalog.displayName) — \(source.addon.manifest.name)"
             : source.catalog.displayName
-    }
-
-    private var typeBinding: Binding<MediaType?> {
-        Binding {
-            model.selectedType
-        } set: { type in
-            if let type {
-                model.select(type: type)
-            }
-        }
     }
 
     private var catalogBinding: Binding<String?> {

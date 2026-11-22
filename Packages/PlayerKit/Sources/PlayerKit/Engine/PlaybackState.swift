@@ -31,6 +31,8 @@ public enum PlayerProperty: Sendable, Equatable {
     case hardwareDecoder(String?)
     /// Seconds of media buffered ahead of the playhead.
     case bufferedAhead(Double?)
+    /// While stalled on the network: how far the buffer is towards playing again, 0 to 1.
+    case bufferingProgress(Double?)
     case tracks([MediaTrack])
     case chapters([MediaChapter])
     /// The chapter the playhead is in; `nil` before the first one.
@@ -100,6 +102,9 @@ public struct PlaybackState: Sendable, Equatable {
     public var title: String?
     public var hardwareDecoder: String?
     public var bufferedAhead: Double?
+    /// While stalled on the network: how far the engine's buffer is towards playing again,
+    /// 0 to 1. Says nothing while a file is being opened.
+    public var bufferingProgress: Double?
     /// Whether a frame of the current file has been shown yet.
     public var hasShownFirstFrame = false
     public var tracks: [MediaTrack] = []
@@ -225,6 +230,7 @@ public struct PlaybackState: Sendable, Equatable {
         case let .displayHeight(value): displayHeight = value
         case let .hardwareDecoder(value): hardwareDecoder = value
         case let .bufferedAhead(value): bufferedAhead = value
+        case let .bufferingProgress(value): bufferingProgress = value.map { min(max($0, 0), 1) }
         case let .tracks(value): tracks = value
         case let .chapters(value): chapters = value
         case let .currentChapter(value): currentChapter = value

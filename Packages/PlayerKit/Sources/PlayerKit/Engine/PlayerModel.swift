@@ -74,6 +74,10 @@ public final class PlayerModel {
     /// A line under the busy indicator saying what is being waited for ("12 connections ·
     /// 1.4 MB/s"). Set by whoever is fetching the source, and only while the player is busy.
     public var waitingNote: String?
+    /// How much of what the player is waiting for has arrived, 0 to 1, when whoever is fetching
+    /// the source can say (a torrent can: it knows how far each piece has come). Shown as a
+    /// percentage in place of the plain busy indicator. Set only while the player is busy.
+    public var waitingProgress: Double?
 
     /// The view the video is drawn into; `nil` when the configuration has no video output.
     @ObservationIgnored public let surface: PlayerSurfaceView?
@@ -197,6 +201,7 @@ public final class PlayerModel {
         }
         arrivalFailureMessages[source.engineArgument] = options.arrivalFailureMessage
         waitingNote = nil
+        waitingProgress = nil
         // Before the state is reset for the new file.
         savePosition()
         resume = ResumeState()

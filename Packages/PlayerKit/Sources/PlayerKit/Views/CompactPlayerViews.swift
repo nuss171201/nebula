@@ -13,7 +13,7 @@ struct PictureInPictureView: View {
             if let surface = model.surface {
                 PlayerSurface(surface: surface)
             }
-            PlayerStatusOverlay(state: model.state, note: model.waitingNote)
+            PlayerStatusOverlay(state: model.state, note: model.waitingNote, progress: model.waitingProgress)
                 .scaleEffect(0.7)
             if chrome.isVisible {
                 overlay

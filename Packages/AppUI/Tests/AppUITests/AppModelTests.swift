@@ -227,10 +227,12 @@ struct PresentationTests {
 
     @Test("Types sort with the well-known ones first")
     func typeOrder() {
-        let sorted = [MediaType(rawValue: "anime"), .tv, .series, .movie, MediaType(rawValue: "Anime2")]
+        let sorted = [MediaType(rawValue: "other"), .tv, .anime, .series, .movie, MediaType(rawValue: "Events")]
             .sorted(by: MediaType.displayOrder)
-        #expect(sorted.map(\.rawValue) == ["movie", "series", "tv", "Anime2", "anime"])
+        // Anime is a kind the app knows, after films and series; what it does not know comes last.
+        #expect(sorted.map(\.rawValue) == ["movie", "series", "anime", "tv", "Events", "other"])
         #expect(MediaType(rawValue: "anime").pluralTitle == "Anime")
+        #expect(MediaType(rawValue: "events").pluralTitle == "Events")
         #expect(MediaType.channel.pluralTitle == "Channels")
     }
 }

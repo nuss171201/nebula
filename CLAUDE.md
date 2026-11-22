@@ -18,8 +18,10 @@ The full product spec is the original brief; this file is the working reference.
   licence and telling the user first. IINA is GPL-3.0; reusing its code would make the whole app GPL-3.0.
   Write our own code on top of libmpv.
 - **Add-ons are neutral:** the only pre-installed add-ons are in `Config/DefaultAddons.json`
-  (Cinemeta for metadata, OpenSubtitles for subtitles). Never pre-install, hard-code, suggest or link a
-  streaming source or piracy add-on. Users install add-ons by URL.
+  (Cinemeta for metadata, OpenSubtitles for subtitles, and since 22 Nov 2026, on the user's decision,
+  the community-run Anime Kitsu catalog: titles and artwork, no streams). Never pre-install, hard-code,
+  suggest or link a streaming source or piracy add-on. Users install add-ons by URL. Adding another
+  default is the user's call each time.
 - **Ask the user before:** adding a paid dependency, changing the minimum macOS version (14.0), or any
   architectural decision that is hard to reverse.
 - **Test media:** generate with ffmpeg only. Never download copyrighted content.
@@ -95,6 +97,9 @@ two seconds after launch: the only way to check a binding and its on-screen noti
 `-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
 `-window pictureInPicture|mini` puts the player window in that mode.
 `-settings general|playback|streaming|shortcuts|advanced` opens the Settings window on that tab.
+`-section` also takes `anime` and `downloads`. With `-profile`: `-download YES` presses a title page's
+Download button, and `-peer 127.0.0.1:<port>` tells every torrent the app has where a seeder on this
+machine is (a scratch profile's engine has no tracker to ask; see "Checking a torrent by hand").
 `-acknowledgements YES` opens the Acknowledgements window. `-pressPlay YES` presses a title page's Play
 button as soon as it has streams to choose from. `-featured <n>` shows the nth title of Home's banner
 and `-playFeatured YES` presses the banner's Play.
@@ -478,6 +483,72 @@ StreamPlayer ─┬─ web address ───────────────
 - **The title is its own logo when the catalog has one and it loads; words otherwise**, with nothing
   shown while that is being found out, so the words are not flashed first.
 - Settings → General → "Show Featured Titles" hides it.
+
+### How the loading percentage, downloads, Anime and the look fit together (after Stage 9)
+
+- **The percentage in the player's busy indicator is about what the player is waiting for**, not about
+  the film. For a torrent the engine keeps the pieces a file is opened with (both ends) and every piece
+  a reader has had to wait for since (`FileStream.awaited`), and `TorrentEngine.arrival` says how many
+  of their bytes are there, counting the part of a piece still on its way (the bridge's
+  `partialPieceBytes`, from libtorrent's download queue). A film's pieces are 4 to 16 MiB and nothing
+  can be read from one until it is whole, so on a slow connection this is the only thing that moves.
+  `StreamPlayer.followArrival` asks twice a second, only while the player is busy; `ArrivalMeter` keeps
+  the figure from going backward when the list of awaited pieces grows, and works out "about 25 s left".
+  When the player stalls again later, `restartArrival` starts the count from what is waited for then.
+  For a web stream there is no such knowledge: the ring only turns while opening, and shows the
+  engine's own `cache-buffering-state` when it stalls in mid-film.
+- **Rate limits do not apply between two engines on one Mac** (libtorrent puts loopback and LAN peers in
+  a class without limits). `TorrentEngineSettings.limitsPeersOnThisMachine` puts every peer in the
+  limited class; tests that need a slow transfer set it. Never in the app.
+- **Downloads** (`DownloadCenter`, `StreamManager+Downloads`, `DownloadStore`, migration `v5-downloads`):
+  one at a time, in the order asked for. A torrent is fetched whole by the stream engine into
+  `<downloads>/.incomplete/<hash>` and its file moved next to the others when finished; one file on a
+  web server is fetched with `URLSession` (`DirectDownload`); playlists, YouTube and web pages cannot be
+  downloaded. The folder is `~/Movies/<app name>` (macOS does not ask for it), or `Downloads` inside a
+  `-profile`. **A download and a stream never share the engine**, except a stream of the very file being
+  downloaded, which reads from the download's torrent: while anything else plays from a torrent the
+  download is taken out of the engine (data kept) and put back when the player closes, taking over what
+  the stream fetched. Pausing is the same thing; resuming re-checks what is on disk. Play on a title's
+  page plays the downloaded file when there is one. Removing a finished download moves its file to the
+  Trash.
+- **Anime** is a board like Home (`HomeModel` with a filter) over the catalogs `CatalogSource.isAnime`
+  recognises; Home leaves those out. Discover shows Anime as a type by itself, because it shows every
+  type the add-ons have. **Default add-ons come in rounds** (`DefaultAddon.round`, `since` in the JSON):
+  a later round is installed once into a profile that has the earlier ones, and a default the user
+  removed is never put back.
+- **The look lives in `Components/Theme.swift`**: the accent gradient, card fills that follow light and
+  dark, the button styles (`ProminentPillButtonStyle`, `PillButtonStyle`, `CardButtonStyle`,
+  `IconButtonStyle`), `PillPicker`, `Chip`, `GradientProgressBar`, and `AppBackground` behind every
+  screen. Poster cells stay layers: under the pointer the picture grows inside its frame and a glow
+  comes up behind it, so nothing moves in the layout and a scroll animates nothing.
+- **Checking a torrent by hand**, without the network: `SEED_FILE=<file> SEED_INFO=<out> SEED_RATE=900000
+  swift test --filter ManualSeed` (StreamEngine) shares a file slowly on loopback and writes its hash
+  and port; `Scripts/serve-test-addon.py 8123 --torrent <hash>` (or `--url`) is a stand-in stream
+  add-on; then `-profile … -installNow http://127.0.0.1:8123/manifest.json -open movie:tt0063350
+  -pressPlay YES -peer 127.0.0.1:<port>`. A stream whose text says "sample" is never picked by Play.
+
+Seen in the running app (background, scratch profiles): Home and Anime with the real catalogs, a title
+page with Play, Download and the badges, a web download running and listed in Downloads, and the ring
+at 93 % over a torrent seeded at 900 kB/s. Carried over or not verified:
+
+- **Nothing was clicked, hovered or scrolled**: every hover effect, the pill pickers, pause, resume,
+  remove and their confirmation, Show in Finder, and the Trash are code and model tests only. Scrolling
+  was not measured again after the poster cells got two more layers each. Light appearance was not
+  looked at.
+- **A download has never met the real network**, a real film's size, a full disk, or a quit in the
+  middle of a torrent (the web kind was seen to start again after a relaunch, from zero: its resume
+  data is kept for the session only). Plain `http` addresses on other machines are refused by App
+  Transport Security and fail with the system's message.
+- **Downloads carry on at launch**, which starts the torrent engine then, not at the first stream.
+- A second file from the same torrent (a season pack) waits its turn like any other download.
+- The Kitsu add-on is community-run; whether it stays up, and how its titles fare with the user's
+  stream add-ons, is the user's to report. Its `subtitles` resource is now also asked by the player.
+- The time-left figure uses the torrent's whole download rate, so it is rough by nature.
+- **`carriesOnFromAJump` (StreamEngine) failed once in three full CI runs** ("arrivals ran more than 4
+  pieces ahead after a jump") and passed six times out of six by itself. Nothing in this work touches
+  piece priorities; the suite now runs beside more engine tests. Not investigated further.
+- The first `ci.sh` in a fresh worktree fetched the pinned mpv and FFmpeg archives again (the frameworks
+  had been copied from the main checkout without their stamps): copy `Vendor/cache` too next time.
 
 ### Decisions still to be made (with the stage that decides them)
 

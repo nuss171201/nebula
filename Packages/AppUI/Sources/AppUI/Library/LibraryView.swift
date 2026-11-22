@@ -28,13 +28,12 @@ struct LibraryView: View {
 
     private var controls: some View {
         HStack(spacing: 14) {
-            Picker("Show", selection: $model.tab) {
-                ForEach(LibraryModel.Tab.allCases) { tab in
-                    Text(tab.title).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            PillPicker(
+                options: LibraryModel.Tab.allCases,
+                selection: model.tab,
+                title: \.title,
+                select: { model.tab = $0 }
+            )
             .fixedSize()
             Spacer()
             if model.tab == .saved {
@@ -67,6 +66,7 @@ struct LibraryView: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
     }
 
     @ViewBuilder private var saved: some View {
@@ -124,7 +124,7 @@ private struct HistoryRow: View {
             HStack(spacing: 14) {
                 RemoteImage(url: entry.video.poster, maxPointSize: 90, placeholderSystemImage: "film")
                     .frame(width: 46, height: 68)
-                    .clipShape(.rect(cornerRadius: 4))
+                    .clipShape(.rect(cornerRadius: 6, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.video.titleName)
@@ -144,10 +144,9 @@ private struct HistoryRow: View {
             }
             .padding(8)
             .frame(maxWidth: 760, alignment: .leading)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CardButtonStyle())
+        .frame(maxWidth: 760, alignment: .leading)
         .accessibilityHint("Opens its page")
     }
 
@@ -173,10 +172,17 @@ struct ContinueWatchingRow: View {
     var body: some View {
         if !model.items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Continue Watching")
-                    .font(.title3.weight(.semibold))
-                    .padding(.horizontal, 24)
-                    .accessibilityAddTraits(.isHeader)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Capsule()
+                        .fill(Theme.accentGradient)
+                        .frame(width: 4, height: 17)
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
+                        .accessibilityHidden(true)
+                    Text("Continue Watching")
+                        .font(.title2.weight(.bold))
+                        .accessibilityAddTraits(.isHeader)
+                }
+                .padding(.horizontal, 24)
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(model.items) { item in
@@ -211,7 +217,7 @@ private struct ContinueCard: View {
                             ProgressBar(fraction: progress)
                         }
                     }
-                    .clipShape(.rect(cornerRadius: 6))
+                    .clipShape(.rect(cornerRadius: 8, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.video.titleName)
@@ -231,10 +237,8 @@ private struct ContinueCard: View {
                 .frame(width: 170, height: ContinueWatchingRow.artworkHeight, alignment: .topLeading)
             }
             .padding(8)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
-            .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CardButtonStyle())
         .accessibilityLabel([item.video.titleName, item.episodeLine, item.statusLine].compactMap(\.self).joined(separator: ", "))
         .accessibilityHint("Opens its page with its streams")
     }

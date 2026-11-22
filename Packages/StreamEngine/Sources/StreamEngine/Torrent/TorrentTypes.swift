@@ -61,6 +61,8 @@ public struct TorrentStatus: Sendable, Equatable {
     public var wantedBytes: Int64
     public var wantedBytesDone: Int64
     public var isFinished: Bool
+    /// What is on disk from an earlier session is being verified; nothing is fetched meanwhile.
+    public var isChecking: Bool
     public var errorMessage: String?
 
     public init(
@@ -72,6 +74,7 @@ public struct TorrentStatus: Sendable, Equatable {
         wantedBytes: Int64,
         wantedBytesDone: Int64,
         isFinished: Bool,
+        isChecking: Bool = false,
         errorMessage: String?
     ) {
         self.hasMetadata = hasMetadata
@@ -82,12 +85,34 @@ public struct TorrentStatus: Sendable, Equatable {
         self.wantedBytes = wantedBytes
         self.wantedBytesDone = wantedBytesDone
         self.isFinished = isFinished
+        self.isChecking = isChecking
         self.errorMessage = errorMessage
     }
 
     /// How much of the wanted file is there, 0 to 1.
     public var progress: Double {
         wantedBytes > 0 ? min(max(Double(wantedBytesDone) / Double(wantedBytes), 0), 1) : 0
+    }
+}
+
+/// How much of what the player is waiting for has arrived: the pieces a file is opened with
+/// (both of its ends) and every piece a reader has had to wait for since.
+public struct ArrivalProgress: Sendable, Equatable {
+    public var bytesDone: Int64
+    public var bytesWanted: Int64
+
+    public init(bytesDone: Int64, bytesWanted: Int64) {
+        self.bytesDone = bytesDone
+        self.bytesWanted = bytesWanted
+    }
+
+    /// 0 to 1.
+    public var fraction: Double {
+        bytesWanted > 0 ? min(max(Double(bytesDone) / Double(bytesWanted), 0), 1) : 0
+    }
+
+    public var bytesLeft: Int64 {
+        max(bytesWanted - bytesDone, 0)
     }
 }
 
@@ -133,6 +158,10 @@ public struct TorrentEngineSettings: Sendable, Equatable {
     /// How much the engine logs about finding people: 0 nothing, 1 what explains a slow start,
     /// 2 libtorrent's own commentary as well.
     public var diagnosticLevel = 0
+    /// Whether the rate limits also hold back peers on this machine and the local network,
+    /// which the engine otherwise leaves alone. For tests that need a slow transfer between
+    /// two engines on one machine. Takes effect only when the engine is made.
+    public var limitsPeersOnThisMachine = false
     public var window: StreamingWindow
 
     public init(

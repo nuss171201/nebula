@@ -52,7 +52,7 @@ struct MediaCenterApp: App {
         let model = AppModel(
             dependencies: .live(
                 branding: Branding.current,
-                defaultAddonAddresses: DefaultAddons.addresses(in: .main),
+                defaultAddons: DefaultAddons.addons(in: .main),
                 playsAudio: playsAudio,
                 additionalEngineOptions: engineOptions,
                 profileDirectory: profile,

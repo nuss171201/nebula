@@ -2,7 +2,26 @@ import MediaCore
 import MediaLibrary
 import SwiftUI
 
-/// The Home board: what to carry on with, then one row per catalog.
+/// What a board says when it has no catalogs to show.
+struct BoardEmptyState: Equatable {
+    var title: String
+    var systemImage: String
+    var message: String
+
+    static let home = BoardEmptyState(
+        title: "No Catalogs",
+        systemImage: "house",
+        message: "Install or enable an add-on that provides catalogs, in Add-ons."
+    )
+    static let anime = BoardEmptyState(
+        title: "No Anime Catalogs",
+        systemImage: "sparkles.tv",
+        message: "Install or enable an add-on that provides anime catalogs, in Add-ons."
+    )
+}
+
+/// A board of catalogs: what to carry on with, then one row per catalog. Home is one; the
+/// Anime section is another, of the anime catalogs alone.
 struct HomeView: View {
     let model: HomeModel
     let registry: AddonRegistry
@@ -12,6 +31,7 @@ struct HomeView: View {
     var showsContinueWatching = true
     /// Off when the user has hidden the banner in Settings.
     var showsFeatured = true
+    var emptyText = BoardEmptyState.home
     /// Opens a title's page and plays it.
     var play: (MetaItem) -> Void = { _ in }
     /// Opens a video's page with its streams showing.
@@ -31,7 +51,7 @@ struct HomeView: View {
                 emptyState
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 26) {
+                    LazyVStack(alignment: .leading, spacing: 30) {
                         if showsBanner {
                             FeaturedBanner(model: model.featured, library: library, play: play)
                         }
@@ -73,9 +93,9 @@ struct HomeView: View {
             }
         } else {
             ContentUnavailableView(
-                "No Catalogs",
-                systemImage: "house",
-                description: Text("Install or enable an add-on that provides catalogs, in Add-ons.")
+                emptyText.title,
+                systemImage: emptyText.systemImage,
+                description: Text(emptyText.message)
             )
         }
     }
@@ -87,12 +107,18 @@ private struct CatalogRowView: View {
     var body: some View {
         if !row.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    // A mark in the accent's colours, so that the eye finds where each row starts.
+                    Capsule()
+                        .fill(Theme.accentGradient)
+                        .frame(width: 4, height: 17)
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
+                        .accessibilityHidden(true)
                     Text(row.title)
-                        .font(.title3.weight(.semibold))
+                        .font(.title2.weight(.bold))
                     Text(row.addonName)
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                 }
                 .padding(.horizontal, 24)
                 .accessibilityElement(children: .combine)
@@ -127,8 +153,8 @@ private struct PlaceholderStrip: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             ForEach(0 ..< 10, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.quaternary)
+                RoundedRectangle(cornerRadius: Theme.artworkRadius, style: .continuous)
+                    .fill(Theme.cardFill())
                     .frame(width: PosterCard.rowArtworkHeight * 2 / 3, height: PosterCard.rowArtworkHeight)
             }
         }

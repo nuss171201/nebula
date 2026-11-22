@@ -23,11 +23,15 @@ struct PosterCard: View {
         NavigationLink(value: MediaRoute(item: item)) {
             VStack(alignment: .leading, spacing: 6) {
                 artwork
-                    .clipShape(.rect(cornerRadius: 8))
+                    // The picture grows inside its frame, so the card keeps its place in the grid.
+                    .scaleEffect(isHovered ? 1.06 : 1)
+                    .clipShape(.rect(cornerRadius: Theme.artworkRadius, style: .continuous))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(.white.opacity(isHovered ? 0.6 : 0.08), lineWidth: isHovered ? 2 : 1)
+                        RoundedRectangle(cornerRadius: Theme.artworkRadius, style: .continuous)
+                            .strokeBorder(isHovered ? Color.accentColor.opacity(0.9) : .white.opacity(0.08), lineWidth: isHovered ? 2 : 1)
                     }
+                    .shadow(color: Color.accentColor.opacity(isHovered ? 0.45 : 0), radius: 14, y: 4)
+                    .animation(Theme.hover, value: isHovered)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.name)
                         .font(.callout)

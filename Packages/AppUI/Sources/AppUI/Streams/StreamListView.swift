@@ -1,61 +1,55 @@
+import AppKit
 import MediaCore
 import SwiftUI
 
 /// The streams for one video: a Play button that chooses for the user, with the whole list
 /// a click away; or the whole list, for those who would rather choose (Settings → Streaming).
+/// Beside Play, a button that keeps the same stream for watching without a connection.
 struct StreamListView: View {
     @Bindable var model: StreamListModel
+    /// The video the streams are of, for its download.
+    var video: StreamVideo?
+    var downloads: DownloadCenter?
     let play: (StreamChoice) -> Void
-    /// Plays what the picker thinks best.
+    /// Plays what the picker thinks best (the downloaded file, if there is one).
     var playBest: () -> Void = {}
 
+    /// The video's download, if it has one.
+    private var download: DownloadItem? {
+        video.flatMap { downloads?.item(for: $0) }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             if model.presentation == .playButton {
                 playButton
                 if model.showsAllStreams {
                     list
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             } else {
                 list
             }
         }
-        .frame(maxWidth: 760, alignment: .leading)
+        .frame(maxWidth: 780, alignment: .leading)
+        .animation(.snappy(duration: 0.3), value: model.showsAllStreams)
+        .animation(.snappy(duration: 0.3), value: model.picks.first?.id)
     }
 
     // MARK: Play, chosen for the user
 
     @ViewBuilder private var playButton: some View {
-        if !model.hasProviders {
+        if download?.stage == .finished {
+            // Plays from this Mac, whatever the add-ons say (or do not, without a connection).
+            playRow(caption: ["Downloaded", download?.summary].compactMap(\.self).joined(separator: " · "), caution: nil, best: model.picks.first)
+            if !model.choices.isEmpty {
+                otherStreamsToggle
+            }
+        } else if !model.hasProviders {
             // Neutral on purpose: where streams come from is the user's choice.
             emptyNote("None of your add-ons offers streams for this. Streams come from add-ons you install on the Add-ons page.")
         } else if let best = model.picks.first {
-            HStack(alignment: .center, spacing: 14) {
-                Button(action: playBest) {
-                    Label("Play", systemImage: "play.fill")
-                        .font(.title3.weight(.semibold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 4)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityHint("Plays \(best.summary) from \(best.choice.addonName)")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(best.summary) · \(best.choice.addonName)")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    if let caution = Self.caution(for: best.standing) {
-                        Label(caution, systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if model.phase == .loading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Looking for more streams")
-                }
-            }
+            playRow(caption: "\(best.summary) · \(best.choice.addonName)", caution: Self.caution(for: best.standing), best: best)
             otherStreamsToggle
         } else if model.phase == .finished {
             if model.choices.isEmpty {
@@ -77,17 +71,55 @@ struct StreamListView: View {
         }
     }
 
+    private func playRow(caption: String, caution: String?, best: StreamPick?) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Button(action: playBest) {
+                Label("Play", systemImage: "play.fill")
+            }
+            .buttonStyle(ProminentPillButtonStyle())
+            .accessibilityHint(best.map { "Plays \($0.summary) from \($0.choice.addonName)" } ?? "Plays the downloaded file")
+            if let video, let downloads {
+                DownloadButton(
+                    item: download,
+                    // What Play would play, or the nearest thing to it that can be kept.
+                    start: model.picks.map(\.choice).first(where: DownloadCenter.canDownload).map { choice in { _ = downloads.add(choice, for: video) } },
+                    center: downloads
+                )
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(caption)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if let caution {
+                    Label(caution, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.leading, 4)
+            if model.phase == .loading {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Looking for more streams")
+            }
+        }
+    }
+
     private var otherStreamsToggle: some View {
         Button {
             model.showsAllStreams.toggle()
         } label: {
-            Label(
-                model.showsAllStreams ? "Hide the List" : "All Streams (\(model.choices.count))",
-                systemImage: model.showsAllStreams ? "chevron.up" : "chevron.down"
-            )
-            .font(.callout)
+            HStack(spacing: 5) {
+                Text(model.showsAllStreams ? "Hide the List" : "All Streams (\(model.choices.count))")
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .rotationEffect(.degrees(model.showsAllStreams ? 180 : 0))
+            }
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.tint)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.link)
+        .buttonStyle(.plain)
         .accessibilityHint("Shows every stream, to choose one yourself")
     }
 
@@ -107,7 +139,7 @@ struct StreamListView: View {
     @ViewBuilder private var list: some View {
         HStack {
             Text("Streams")
-                .font(.title3.weight(.semibold))
+                .font(.title3.weight(.bold))
             if model.phase == .loading {
                 ProgressView()
                     .controlSize(.small)
@@ -137,20 +169,16 @@ struct StreamListView: View {
 
         if let suggested = model.suggested {
             VStack(alignment: .leading, spacing: 6) {
-                Text(model.suggestionTitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                StreamRow(choice: suggested, play: play)
+                groupTitle(model.suggestionTitle)
+                row(suggested, isHighlighted: true)
             }
         }
 
         ForEach(model.groups) { group in
             VStack(alignment: .leading, spacing: 6) {
-                Text(group.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                groupTitle(group.title)
                 ForEach(group.choices) { choice in
-                    StreamRow(choice: choice, play: play)
+                    row(choice, isHighlighted: false)
                 }
             }
         }
@@ -160,6 +188,26 @@ struct StreamListView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func groupTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .textCase(.uppercase)
+            .foregroundStyle(.secondary)
+            .padding(.top, 2)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func row(_ choice: StreamChoice, isHighlighted: Bool) -> some View {
+        StreamRow(
+            choice: choice,
+            isHighlighted: isHighlighted,
+            play: play,
+            download: video.flatMap { video in
+                downloads.flatMap { center in DownloadCenter.canDownload(choice) ? { _ = center.add(choice, for: video) } : nil }
+            }
+        )
     }
 
     private func emptyNote(_ text: String) -> some View {
@@ -172,7 +220,10 @@ struct StreamListView: View {
 
 private struct StreamRow: View {
     let choice: StreamChoice
+    var isHighlighted = false
     let play: (StreamChoice) -> Void
+    /// Keeps this stream's file; `nil` for the kinds that cannot be downloaded.
+    var download: (() -> Void)?
 
     var body: some View {
         Button {
@@ -186,7 +237,7 @@ private struct StreamRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(choice.title)
-                        .font(.callout.weight(.medium))
+                        .font(.callout.weight(.semibold))
                         .lineLimit(2)
                     if let detail = choice.detail {
                         Text(detail)
@@ -199,23 +250,32 @@ private struct StreamRow: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer(minLength: 8)
-                if let quality = choice.quality {
-                    Text(quality.label)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
+                HStack(spacing: 5) {
+                    ForEach(StreamBadge.badges(for: choice), id: \.self) { badge in
+                        StreamBadgeView(badge: badge)
+                    }
                 }
+                // Room for the download button, which sits on the row and not in it.
+                .padding(.trailing, download == nil ? 0 : 38)
             }
-            .padding(10)
+            .padding(11)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CardButtonStyle(isHighlighted: isHighlighted))
         .accessibilityLabel([choice.title, choice.quality?.label, choice.sizeText, choice.kindLabel, "from \(choice.addonName)"]
             .compactMap(\.self).joined(separator: ", "))
         .accessibilityHint("Plays this stream")
+        .overlay(alignment: .topTrailing) {
+            if let download {
+                Button(action: download) {
+                    Image(systemName: "arrow.down.to.line")
+                }
+                .buttonStyle(IconButtonStyle(diameter: 28))
+                .padding(8)
+                .accessibilityLabel("Download \(choice.title)")
+                .help("Download: keeps this for watching without a connection")
+            }
+        }
     }
 
     private var symbol: String {
@@ -275,12 +335,19 @@ struct StreamStatusBar: View {
         }
     }
 
+    /// A panel that floats above the bottom edge, so that it reads as news and not as chrome.
     private func bar(@ViewBuilder content: () -> some View) -> some View {
         HStack(spacing: 12, content: content)
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.bar)
-            .overlay(alignment: .top) { Divider() }
+            .padding(.vertical, 11)
+            .frame(maxWidth: 640)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.cardStroke(isHovered: true), lineWidth: 1))
+            .shadow(color: .black.opacity(0.3), radius: 16, y: 6)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
             .accessibilityElement(children: .contain)
     }
 }

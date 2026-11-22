@@ -23,6 +23,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) BOOL mapsPorts;
 /// Allows several peers at one address. Only wanted when the peers are on this machine, as in tests.
 @property (nonatomic) BOOL allowsSeveralConnectionsPerAddress;
+/// Applies the rate limits to peers on this machine and the local network as well. libtorrent
+/// leaves those alone by default; a test that wants a slow transfer between two sessions on
+/// one machine needs this. Read once, when the session is made.
+@property (nonatomic) BOOL limitsPeersOnThisMachine;
 /// How much the session says about what it is doing, through `-sessionDidLog:`: 0 nothing,
 /// 1 the events that explain a slow start (listening, trackers, the hash table, port mapping),
 /// 2 libtorrent's own running commentary as well. For finding out why nobody is found.
@@ -60,6 +64,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) int64_t wantedBytes;
 @property (nonatomic, readonly) int64_t wantedBytesDone;
 @property (nonatomic, readonly) BOOL isFinished;
+/// What is on disk from an earlier session is being read and verified; nothing is fetched meanwhile.
+@property (nonatomic, readonly) BOOL isChecking;
 /// Why the torrent stopped, if it did.
 @property (nonatomic, readonly, copy, nullable) NSString *errorMessage;
 @end
@@ -115,6 +121,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)torrent:(NSString *)infoHash hasPiece:(NSInteger)piece;
 /// Every piece that has been downloaded and verified so far, in one call.
 - (NSIndexSet *)completedPiecesOfTorrent:(NSString *)infoHash;
+
+/// Bytes that have arrived of each piece that is under way but not yet complete, by piece.
+/// A piece nobody has started on is not in the answer; neither is one that is complete.
+- (NSDictionary<NSNumber *, NSNumber *> *)partialPieceBytesOfTorrent:(NSString *)infoHash;
 
 /// Marks one file as wanted and all others as not.
 - (void)wantOnlyFile:(NSInteger)fileIndex ofTorrent:(NSString *)infoHash;

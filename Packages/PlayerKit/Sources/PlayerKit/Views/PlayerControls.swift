@@ -66,7 +66,9 @@ struct PlayerControls: View {
         .tint(.white)
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
         .frame(maxWidth: 780)
         .padding(.horizontal, 20)
         .padding(.bottom, 18)
@@ -84,8 +86,11 @@ struct PlayerControls: View {
         }
         Button(action: model.togglePause) {
             Image(systemName: playSymbol)
-                .font(.title2)
-                .frame(width: 28, height: 28)
+                .font(.title3)
+                .foregroundStyle(.black)
+                .frame(width: 34, height: 34)
+                .background(.white, in: Circle())
+                .contentTransition(.symbolEffect(.replace))
         }
         .accessibilityLabel(state.isAdvancing ? "Pause" : "Play")
         .disabled(!state.hasMedia)
