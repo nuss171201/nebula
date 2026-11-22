@@ -470,7 +470,8 @@ StreamPlayer ─┬─ web address ───────────────
 - **`StreamPicker` is pure.** For each stream it works out what it needs (size over the title's running
   time, `RuntimeText`; a usual figure per quality when the size is unknown) and gives it a standing:
   good, large, few peers, too heavy for the connection, over the user's limits, wrong language. Best
-  standing first, then what was played last time for this title, then quality, peers and size. Entries
+  standing first, then what was played last time for this title, then well shared (twenty people or
+  more) before better looking, then quality, then more sharers, then size. Entries
   that are not one playable video (a whole disc, a cinema recording, 3D, a sample, a web page) are
   never picked. **"Large" is anything over 10 Mbit/s** (`comfortableSpeed`, about 8 GB for two hours),
   however fast the connection: asked for by the user on 22 Nov 2026 after a 21 GB film took 129 s to

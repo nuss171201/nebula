@@ -145,11 +145,16 @@ public enum StreamPicker {
                 if isLarge(first) != isLarge(second) {
                     return isLarge(second)
                 }
+                // Well shared before better looking: a sharper picture that keeps stopping is
+                // no gain, and how many share a torrent is what decides how it arrives.
+                if peerRank(first) != peerRank(second) {
+                    return peerRank(first) > peerRank(second)
+                }
                 if first.choice.quality != second.choice.quality {
                     return (first.choice.quality?.rawValue ?? 0) > (second.choice.quality?.rawValue ?? 0)
                 }
-                if peerRank(first) != peerRank(second) {
-                    return peerRank(first) > peerRank(second)
+                if let ours = sharers(first), let theirs = sharers(second), ours != theirs {
+                    return ours > theirs
                 }
                 if first.choice.sizeBytes != second.choice.sizeBytes {
                     return (first.choice.sizeBytes ?? 0) > (second.choice.sizeBytes ?? 0)
@@ -217,10 +222,16 @@ public enum StreamPicker {
         (pick.requiredSpeed ?? 0) > comfortableSpeed
     }
 
-    /// Enough people is enough: ten and a thousand both start at once. Unknown counts as enough.
+    /// Enough people is enough: twenty and a thousand both keep a film coming, and thirty
+    /// against fifty is no reason to take the poorer picture. Unknown counts as enough.
     private static func peerRank(_ pick: StreamPick) -> Int {
-        guard pick.choice.kind == .torrent, let peers = pick.facts.peers else { return 2 }
+        guard let peers = sharers(pick) else { return 2 }
         return peers >= 20 ? 2 : (peers >= healthyPeers ? 1 : 0)
+    }
+
+    /// How many people share a torrent, when its text says.
+    private static func sharers(_ pick: StreamPick) -> Int? {
+        pick.choice.kind == .torrent ? pick.facts.peers : nil
     }
 }
 

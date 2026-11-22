@@ -172,6 +172,21 @@ struct StreamPickerTests {
         #expect(StreamPicker.picks(from: [fullHD], context: context(speed: 200))[0].standing == .good)
     }
 
+    @Test("Well shared comes before better looking, and of two alike the one more people share")
+    func sharing() {
+        let streams = [
+            torrent("Streams 4k", "Example.Film.2026.2160p.WEB.H265-GRP\n👤 8 💾 7.5 GB", position: 0),
+            torrent("Streams 1080p", "Example.Film.2026.1080p.WEB.H264-ONE\n👤 40 💾 6.1 GB", position: 1),
+            torrent("Streams 1080p", "Example.Film.2026.1080p.WEB.H264-TWO\n👤 400 💾 4.3 GB", position: 2),
+            torrent("Streams 720p", "Example.Film.2026.720p.WEB.H264-GRP\n👤 2000 💾 1.9 GB", position: 3),
+        ]
+        let picks = StreamPicker.picks(from: streams, context: context(speed: 100))
+        #expect(picks.allSatisfy { $0.standing == .good })
+        // The 4K one only eight people share waits behind everything twenty or more do; among
+        // those the better picture still wins, and of the two full-HD ones the better shared.
+        #expect(picks.map(\.choice.id) == ["test.streams#2", "test.streams#1", "test.streams#3", "test.streams#0"])
+    }
+
     @Test("When nothing fits, the least demanding stream in the right language is the pick")
     func nothingFits() {
         let picks = StreamPicker.picks(from: list, context: context(speed: 1))
