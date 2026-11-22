@@ -1,6 +1,7 @@
-# Orbit
+# Nebula
 
-Native macOS media center with a libmpv-based player. "Orbit" is a placeholder name.
+Native macOS media center with a libmpv-based player. "Nebula" is its name since 22 Nov 2026 (it was "Orbit" before; the bundle identifier and the
+repository folder still say so, and the identifier must stay: the user's library is filed under it).
 The full product spec is the original brief; this file is the working reference.
 
 ## Ground rules
@@ -81,7 +82,7 @@ PROFILE_BUILD=1 DETAIL=60 DETAIL_FROM_MS=3500 Scripts/profile-launch.sh 13 -sect
 swift Scripts/generate-icon.swift App/Assets.xcassets/AppIcon.appiconset   # redraw placeholder icon
 ```
 
-Built app: `build/DerivedData/Build/Products/{Debug,Release}/Orbit.app`. Logs: `build/logs/`.
+Built app: `build/DerivedData/Build/Products/{Debug,Release}/Nebula.app`. Logs: `build/logs/`.
 Traces: `build/traces/` (open in Instruments).
 
 ### Running the app for verification
@@ -116,7 +117,7 @@ A scratch profile is also the only way a silent check records watch history and 
 re-enters SwiftUI's update and aborts (this crashed the app twice in Stage 4, with a crash dialog on the
 user's screen each time). For the same reason the player window is resized through the animator, never
 with the blocking `setFrame(_:display:animate:)`. Before trying a new launch argument in the app, check
-`ls ~/Library/Logs/DiagnosticReports | grep Orbit` afterwards.
+`ls ~/Library/Logs/DiagnosticReports | grep Nebula` afterwards.
 
 **Never make macOS ask the user for permission during a check.** Do not point the app at files in
 `~/Documents`, `~/Desktop` or `~/Downloads` (this repository is in Documents): macOS shows a
@@ -516,6 +517,11 @@ StreamPlayer ─┬─ web address ───────────────
   type the add-ons have. **Default add-ons come in rounds** (`DefaultAddon.round`, `since` in the JSON):
   a later round is installed once into a profile that has the earlier ones, and a default the user
   removed is never put back.
+- **The nebula look** (with the name, 22 Nov 2026): `AppBackground` is deep space (`Theme.space`) with
+  four clouds of light and a `Starfield` drawn once into one layer, in the dark appearance; the light
+  one keeps the window's colour with fainter clouds. The accent is a violet, its companions magenta,
+  blue and teal. The icon is drawn by `Scripts/generate-icon.swift` (clouds, stars, one star with rays).
+  Seen in the app in the dark appearance only.
 - **A series whose catalog lists each season as a title of its own** (Kitsu does) shows them all as
   seasons: `Franchise` reads the "Prequel:" and "Sequel:" links in the category "Franchise"
   (`stremio:///detail/<type>/<id>`, the protocol's address for a title's page; nothing else is
@@ -672,7 +678,7 @@ Carried over or not verified:
   presses, dragging the seek bar, the Open panel, the Open Location sheet, and **audible sound**
   (the output device opens and decodes; nothing was ever played aloud).
 - **"Slow first frame after a rebuild" was a macOS permission dialog, not the app.** The repository
-  is in `~/Documents`; when the app opened a test file there, macOS asked the user "Orbit would like to
+  is in `~/Documents`; when the app opened a test file there, macOS asked the user "Nebula would like to
   access files in your Documents folder" and playback waited for the answer (2.7 to 10.9 s, or for
   ever). Ad-hoc signed builds get a new identity on every rebuild, so the question returned each time.
   Checks now play a copy from the temporary folder (`Scripts/stage-media.sh`); the first launch after
@@ -899,7 +905,7 @@ Carried over or not verified in Stage 8:
 | PlayerKit | the fallback converts once only; its engine test runs with the built helper and with an installed ffmpeg | 180 |
 | Repository | `README.md` | — |
 
-What was produced and checked: `build/dist/Orbit-0.1.0.dmg`, 52 MB, holding a 116 MB universal app
+What was produced and checked: `build/dist/Nebula-0.1.0.dmg`, 52 MB, holding a 116 MB universal app
 (44 MB and 101 MB before the audio conversion helper was added),
 ad-hoc signed with the hardened runtime. The script verified the signature (deep, strict), both
 architectures of the app and of the engine, that the binary starts, the image's checksum, and the app

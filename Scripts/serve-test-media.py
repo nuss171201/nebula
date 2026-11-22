@@ -4,7 +4,7 @@
 Usage: Scripts/serve-test-media.py [port] [--throttle-kbps N]
 
   Scripts/serve-test-media.py 8765 &
-  open -g Orbit.app --args -silent YES -play http://127.0.0.1:8765/sdr-h264-1080p.mp4
+  open -g Nebula.app --args -silent YES -play http://127.0.0.1:8765/sdr-h264-1080p.mp4
 
 --throttle-kbps limits the transfer rate, to see how the player behaves on a slow connection.
 Python's own http.server cannot be used for this: it ignores Range, so seeking would not work.

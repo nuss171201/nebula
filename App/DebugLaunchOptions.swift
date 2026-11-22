@@ -8,26 +8,26 @@
     /// Debug-only launch arguments that open the app in a given state, so a screen can
     /// be checked (or screenshotted) without clicking through the UI:
     ///
-    ///     open -g Orbit.app --args -section discover
-    ///     open -g Orbit.app --args -search "the office"
-    ///     open -g Orbit.app --args -open series:tt0386676
-    ///     open -g Orbit.app --args -section addons -install http://127.0.0.1:8123/manifest.json
-    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv      (or an http(s) address)
-    ///     open -g Orbit.app --args -silent YES -engine "profile=fast" -play /path/to/file.mkv
-    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -panel audio   (video, audio, subtitles)
-    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -seekPreview 0.6
-    ///     open -g Orbit.app --args -silent YES -play /path/a.mkv -enqueue /path/b.mkv -panel queue
-    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -keys "]]l"   (plain keys, after 2 s)
-    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -subtitleSearch "a film's name"
-    ///     open -g Orbit.app --args -silent YES -play /path/to/file.mkv -window pictureInPicture   (or mini)
-    ///     open -g Orbit.app --args -profile /tmp/scratch -installNow http://127.0.0.1:8123/manifest.json -open movie:tt0063350
-    ///     open -g Orbit.app --args -silent YES -profile /tmp/scratch -open movie:tt0063350 -stream 0   (plays the first listed stream)
-    ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -episode tt0386676:1:1
-    ///     open -g Orbit.app --args -profile /tmp/scratch -open series:tt0386676 -addToLibrary YES -markWatched tt0386676:1:1
-    ///     open -g Orbit.app --args -settings shortcuts   (general, playback, streaming, shortcuts, advanced)
-    ///     open -g Orbit.app --args -section discover -autoscroll 8   (scrolls by itself; see DebugAutoscroll)
-    ///     open -g Orbit.app --args -acknowledgements YES   (opens the Acknowledgements window)
-    ///     open -g Orbit.app --args -featured 2   (Home's banner on its third title; -playFeatured YES presses its Play)
+    ///     open -g Nebula.app --args -section discover
+    ///     open -g Nebula.app --args -search "the office"
+    ///     open -g Nebula.app --args -open series:tt0386676
+    ///     open -g Nebula.app --args -section addons -install http://127.0.0.1:8123/manifest.json
+    ///     open -g Nebula.app --args -silent YES -play /path/to/file.mkv      (or an http(s) address)
+    ///     open -g Nebula.app --args -silent YES -engine "profile=fast" -play /path/to/file.mkv
+    ///     open -g Nebula.app --args -silent YES -play /path/to/file.mkv -panel audio   (video, audio, subtitles)
+    ///     open -g Nebula.app --args -silent YES -play /path/to/file.mkv -seekPreview 0.6
+    ///     open -g Nebula.app --args -silent YES -play /path/a.mkv -enqueue /path/b.mkv -panel queue
+    ///     open -g Nebula.app --args -silent YES -play /path/to/file.mkv -keys "]]l"   (plain keys, after 2 s)
+    ///     open -g Nebula.app --args -silent YES -play /path/to/file.mkv -subtitleSearch "a film's name"
+    ///     open -g Nebula.app --args -silent YES -play /path/to/file.mkv -window pictureInPicture   (or mini)
+    ///     open -g Nebula.app --args -profile /tmp/scratch -installNow http://127.0.0.1:8123/manifest.json -open movie:tt0063350
+    ///     open -g Nebula.app --args -silent YES -profile /tmp/scratch -open movie:tt0063350 -stream 0   (plays the first listed stream)
+    ///     open -g Nebula.app --args -profile /tmp/scratch -open series:tt0386676 -episode tt0386676:1:1
+    ///     open -g Nebula.app --args -profile /tmp/scratch -open series:tt0386676 -addToLibrary YES -markWatched tt0386676:1:1
+    ///     open -g Nebula.app --args -settings shortcuts   (general, playback, streaming, shortcuts, advanced)
+    ///     open -g Nebula.app --args -section discover -autoscroll 8   (scrolls by itself; see DebugAutoscroll)
+    ///     open -g Nebula.app --args -acknowledgements YES   (opens the Acknowledgements window)
+    ///     open -g Nebula.app --args -featured 2   (Home's banner on its third title; -playFeatured YES presses its Play)
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {

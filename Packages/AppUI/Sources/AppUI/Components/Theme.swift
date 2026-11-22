@@ -11,10 +11,13 @@ enum Theme {
     /// Space between the window's edge and a screen's content.
     static let gutter: CGFloat = 28
 
-    /// The accent's warmer companion, for the far end of a gradient.
-    static let accentWarm = Color(red: 0.93, green: 0.36, blue: 0.78)
-    /// The accent's cooler companion.
-    static let accentCool = Color(red: 0.30, green: 0.62, blue: 1.0)
+    /// The colours of a nebula, which the app is named after: violet (the accent itself),
+    /// the magenta of glowing hydrogen, and the blue-green of oxygen.
+    static let accentWarm = Color(red: 0.98, green: 0.32, blue: 0.72)
+    static let accentCool = Color(red: 0.25, green: 0.72, blue: 1.0)
+    static let accentTeal = Color(red: 0.20, green: 0.85, blue: 0.82)
+    /// Deep space: what the dark appearance sits on instead of the system's grey.
+    static let space = Color(red: 0.035, green: 0.03, blue: 0.09)
 
     /// What marks the one thing on a screen that is meant to be pressed, and anything filling up.
     static let accentGradient = LinearGradient(
@@ -36,30 +39,58 @@ enum Theme {
     static let hover = Animation.spring(response: 0.28, dampingFraction: 0.78)
 }
 
-/// What every screen sits on: the window's own colour with a breath of the accent in the top
-/// corners, so that the dark is not flat. Drawn once; nothing in it moves.
+/// What every screen sits on. In the dark appearance, deep space with a nebula in it: clouds
+/// of violet, magenta and blue light and a scattering of stars. In the light one, the window's
+/// own colour with a breath of the same clouds. Drawn once; nothing in it moves.
 struct AppBackground: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let strength = colorScheme == .dark ? 1.0 : 0.55
+        let isDark = colorScheme == .dark
+        let strength = isDark ? 1.0 : 0.4
         ZStack {
-            Color(nsColor: .windowBackgroundColor)
-            RadialGradient(
-                colors: [Color.accentColor.opacity(0.20 * strength), .clear],
-                center: UnitPoint(x: 0.08, y: -0.05),
-                startRadius: 0,
-                endRadius: 620
-            )
-            RadialGradient(
-                colors: [Theme.accentWarm.opacity(0.11 * strength), .clear],
-                center: UnitPoint(x: 1.0, y: 0.0),
-                startRadius: 0,
-                endRadius: 560
-            )
+            if isDark {
+                Theme.space
+            } else {
+                Color(nsColor: .windowBackgroundColor)
+            }
+            cloud(Color.accentColor, 0.30 * strength, x: 0.10, y: -0.05, radius: 680)
+            cloud(Theme.accentWarm, 0.20 * strength, x: 1.0, y: 0.05, radius: 620)
+            cloud(Theme.accentCool, 0.13 * strength, x: 0.62, y: 1.05, radius: 640)
+            cloud(Theme.accentTeal, 0.08 * strength, x: -0.05, y: 0.85, radius: 480)
+            if isDark {
+                Starfield()
+            }
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
+    }
+
+    private func cloud(_ color: Color, _ opacity: Double, x: Double, y: Double, radius: CGFloat) -> some View {
+        RadialGradient(colors: [color.opacity(opacity), color.opacity(opacity * 0.4), .clear], center: UnitPoint(x: x, y: y), startRadius: 0, endRadius: radius)
+    }
+}
+
+/// Faint stars behind everything: the same ones every time, drawn once into one layer.
+private struct Starfield: View {
+    var body: some View {
+        Canvas { context, size in
+            var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
+            func next() -> Double {
+                seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+                return Double(seed >> 33) / Double(1 << 31)
+            }
+            // About one star to every 120 points square, whatever the window's size.
+            let count = min(Int(size.width * size.height / 14400), 400)
+            for _ in 0 ..< count {
+                let point = CGPoint(x: next() * size.width, y: next() * size.height)
+                let diameter = 0.6 + next() * 1.4
+                let star = Path(ellipseIn: CGRect(x: point.x, y: point.y, width: diameter, height: diameter))
+                context.fill(star, with: .color(.white.opacity(0.12 + next() * 0.38)))
+            }
+        }
+        .drawingGroup()
+        .allowsHitTesting(false)
     }
 }
 

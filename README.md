@@ -1,9 +1,9 @@
-# Orbit
+# Nebula
 
 A native macOS media centre: browse catalogs from add-ons you install, keep a library, and play
 anything in a player built on libmpv.
 
-"Orbit" is a placeholder name. It is set in one file (see [Renaming the app](#renaming-the-app)).
+"Nebula" is the app's name. It is set in one file (see [Renaming the app](#renaming-the-app)).
 
 - macOS 14 or later, Apple Silicon and Intel (universal binary).
 - Swift 6 and SwiftUI, with AppKit where it is faster. No web views except the trailer player.
@@ -54,7 +54,7 @@ The first run takes a while. It downloads and verifies the prebuilt playback lib
 libtorrent and a small audio-only ffmpeg from source, collects the licence texts, generates small test videos with ffmpeg, generates
 the Xcode project, checks formatting and lint, builds with warnings as errors, and runs every test.
 
-The app is then at `build/DerivedData/Build/Products/Debug/Orbit.app`. To work in Xcode:
+The app is then at `build/DerivedData/Build/Products/Debug/Nebula.app`. To work in Xcode:
 
 ```bash
 xcodegen generate
@@ -114,7 +114,7 @@ Scripts/package.sh
 ```
 
 This runs the full checks, then copies the Release app, strips local symbols, signs every piece of code
-from the inside out with the hardened runtime, checks the result, and builds `build/dist/Orbit-<version>.dmg`.
+from the inside out with the hardened runtime, checks the result, and builds `build/dist/Nebula-<version>.dmg`.
 
 **Signing.** Without anything set, the app is ad-hoc signed. That runs on the Mac that built it; on any
 other Mac, macOS refuses to open it until its owner allows it in System Settings → Privacy & Security.
@@ -180,14 +180,14 @@ What was measured, and what was never tried by hand, is listed stage by stage in
 **This app's own code has no licence yet.** Until one is chosen and added here, all rights are reserved
 by its author.
 
-**Third-party code** is listed, with its licence texts, in the app under Orbit → Acknowledgements and in
+**Third-party code** is listed, with its licence texts, in the app under Nebula → Acknowledgements and in
 `Config/ThirdParty.json`. The versions and hashes of everything prebuilt are pinned in
 `Config/mpv-libraries.lock`, `Config/torrent-libraries.lock`, `Config/ffmpeg-helper.lock` and
 `Config/licenses.lock`.
 
 The playback engine (mpv, FFmpeg, libplacebo and their dependencies) is under the LGPL. It is built as a
 separate dynamic library, `Libmpv.framework`, so that it can be replaced with a build of your own; after
-replacing it, sign the app again (`codesign --force --deep --sign - Orbit.app`). GPL-only parts of those
+replacing it, sign the app again (`codesign --force --deep --sign - Nebula.app`). GPL-only parts of those
 libraries are deliberately left out.
 
 The app also carries a small `ffmpeg` program for converting audio (`Contents/MacOS/ffmpeg`), built from

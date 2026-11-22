@@ -2,7 +2,9 @@
 // Rename the app by changing these values; nothing else in the repo hard-codes the name.
 // The icon lives in App/Assets.xcassets/AppIcon.appiconset (regenerate with Scripts/generate-icon.swift).
 
-BRAND_NAME = Orbit
+BRAND_NAME = Nebula
+// The identifier is what the user's library, settings and caches are filed under: changing it
+// starts every existing user from nothing. It still carries the app's first working name.
 BRAND_BUNDLE_ID = dev.orbit.placeholder.app
 
 // Updates (Sparkle). With both empty, as here, the app has no updater and no "Check for Updates…".

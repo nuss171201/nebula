@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-// Draws the placeholder app icon (an abstract orbit ring) and writes a complete
+// Draws the app icon (a nebula: clouds of coloured light and stars) and writes a complete
 // AppIcon.appiconset. Original artwork, generated from code; replace it freely.
 //
 // Usage: swift Scripts/generate-icon.swift App/Assets.xcassets/AppIcon.appiconset
@@ -36,7 +36,7 @@ func renderIcon(pixels: Int) -> Data {
     context.setShouldAntialias(true)
     context.interpolationQuality = .high
 
-    // Background: macOS-style rounded square with the standard 100-unit margin.
+    // Background: macOS-style rounded square with the standard 100-unit margin, deep space inside.
     let tile = CGRect(x: 100, y: 100, width: 824, height: 824)
     let tilePath = CGPath(roundedRect: tile, cornerWidth: 185, cornerHeight: 185, transform: nil)
     context.saveGState()
@@ -44,85 +44,61 @@ func renderIcon(pixels: Int) -> Data {
     context.clip()
     let background = CGGradient(
         colorsSpace: colorSpace,
-        colors: [color(0.16, 0.13, 0.36), color(0.04, 0.05, 0.13)] as CFArray,
+        colors: [color(0.10, 0.07, 0.26), color(0.02, 0.02, 0.08)] as CFArray,
         locations: [0, 1]
     )!
-    context.drawLinearGradient(
-        background,
-        start: CGPoint(x: 512, y: 924),
-        end: CGPoint(x: 512, y: 100),
-        options: []
-    )
-    let glow = CGGradient(
-        colorsSpace: colorSpace,
-        colors: [color(0.45, 0.40, 1.0, 0.35), color(0.45, 0.40, 1.0, 0)] as CFArray,
-        locations: [0, 1]
-    )!
-    context.drawRadialGradient(
-        glow,
-        startCenter: CGPoint(x: 512, y: 512),
-        startRadius: 0,
-        endCenter: CGPoint(x: 512, y: 512),
-        endRadius: 420,
-        options: []
-    )
-    context.restoreGState()
+    context.drawLinearGradient(background, start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 100), options: [])
 
-    let center = CGPoint(x: 512, y: 512)
-    let ringRect = CGRect(x: -300, y: -118, width: 600, height: 236)
-    let tilt: CGFloat = 24 * .pi / 180
+    // The nebula: clouds of light laid over one another, each fading to nothing at its edge.
+    func cloud(_ x: CGFloat, _ y: CGFloat, _ radius: CGFloat, _ red: CGFloat, _ green: CGFloat, _ blue: CGFloat, _ alpha: CGFloat) {
+        let gradient = CGGradient(
+            colorsSpace: colorSpace,
+            colors: [color(red, green, blue, alpha), color(red, green, blue, alpha * 0.45), color(red, green, blue, 0)] as CFArray,
+            locations: [0, 0.45, 1]
+        )!
+        context.drawRadialGradient(
+            gradient,
+            startCenter: CGPoint(x: x, y: y), startRadius: 0,
+            endCenter: CGPoint(x: x, y: y), endRadius: radius,
+            options: []
+        )
+    }
+    context.setBlendMode(.screen)
+    cloud(380, 600, 380, 0.55, 0.30, 1.00, 0.85) // violet
+    cloud(650, 470, 340, 0.98, 0.30, 0.72, 0.80) // magenta
+    cloud(560, 700, 260, 0.25, 0.70, 1.00, 0.60) // blue
+    cloud(430, 380, 240, 0.20, 0.85, 0.85, 0.40) // teal
+    cloud(520, 540, 150, 1.00, 0.85, 0.75, 0.85) // the bright heart
 
-    func strokeRing(clipToUpperHalf: Bool) {
-        context.saveGState()
-        context.translateBy(x: center.x, y: center.y)
-        context.rotate(by: tilt)
-        // The far half of the ring passes behind the planet, the near half in front.
-        let half = clipToUpperHalf
-            ? CGRect(x: -400, y: 0, width: 800, height: 400)
-            : CGRect(x: -400, y: -400, width: 800, height: 400)
-        context.clip(to: half)
-        context.setStrokeColor(color(0.78, 0.82, 1.0))
-        context.setLineWidth(34)
-        context.strokeEllipse(in: ringRect)
-        context.restoreGState()
+    // Stars: the same ones every time, a few of them large enough to read at small sizes.
+    var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
+    func next() -> CGFloat {
+        seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+        return CGFloat(seed >> 33) / CGFloat(1 << 31)
+    }
+    context.setBlendMode(.normal)
+    for index in 0 ..< 70 {
+        let x = 110 + next() * 804
+        let y = 110 + next() * 804
+        let size = index < 6 ? 9 + next() * 7 : 2 + next() * 4
+        context.setFillColor(color(1, 1, 1, index < 6 ? 0.95 : 0.35 + next() * 0.5))
+        context.fillEllipse(in: CGRect(x: x - size / 2, y: y - size / 2, width: size, height: size))
     }
 
-    strokeRing(clipToUpperHalf: true)
-
-    // Planet.
-    let planetRadius: CGFloat = 150
-    let planetRect = CGRect(
-        x: center.x - planetRadius,
-        y: center.y - planetRadius,
-        width: planetRadius * 2,
-        height: planetRadius * 2
-    )
-    context.saveGState()
-    context.addEllipse(in: planetRect)
-    context.clip()
-    let planet = CGGradient(
-        colorsSpace: colorSpace,
-        colors: [color(1.0, 0.78, 0.45), color(0.96, 0.36, 0.42), color(0.50, 0.20, 0.62)] as CFArray,
-        locations: [0, 0.55, 1]
-    )!
-    context.drawRadialGradient(
-        planet,
-        startCenter: CGPoint(x: center.x - 55, y: center.y + 65),
-        startRadius: 0,
-        endCenter: center,
-        endRadius: planetRadius * 1.25,
-        options: [.drawsAfterEndLocation]
-    )
-    context.restoreGState()
-
-    strokeRing(clipToUpperHalf: false)
-
-    // Small moon sitting on the ring.
-    context.saveGState()
-    context.translateBy(x: center.x, y: center.y)
-    context.rotate(by: tilt)
-    context.setFillColor(color(1, 1, 1))
-    context.fillEllipse(in: CGRect(x: 300 - 30, y: -30, width: 60, height: 60))
+    // One star with rays, where the clouds are brightest.
+    context.translateBy(x: 600, y: 610)
+    context.setFillColor(color(1, 1, 1, 0.95))
+    for turn in 0 ..< 2 {
+        context.saveGState()
+        context.rotate(by: CGFloat(turn) * .pi / 2)
+        let ray = CGMutablePath()
+        ray.move(to: CGPoint(x: 0, y: 92))
+        ray.addQuadCurve(to: CGPoint(x: 0, y: -92), control: CGPoint(x: 13, y: 0))
+        ray.addQuadCurve(to: CGPoint(x: 0, y: 92), control: CGPoint(x: -13, y: 0))
+        context.addPath(ray)
+        context.fillPath()
+        context.restoreGState()
+    }
     context.restoreGState()
 
     let image = context.makeImage()!
