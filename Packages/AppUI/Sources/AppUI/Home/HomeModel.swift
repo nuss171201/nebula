@@ -68,6 +68,11 @@ public final class CatalogRowModel: Identifiable {
 @Observable
 public final class HomeModel {
     public private(set) var rows: [CatalogRowModel] = []
+    /// The banner above the rows, filled from the first of them.
+    public let featured = FeaturedModel()
+
+    /// How many rows, from the top, the banner takes its titles from.
+    static let featuredRowCount = 2
 
     /// Called once, the first time any row has items to show.
     @ObservationIgnored public var onFirstContent: (@MainActor () -> Void)?
@@ -94,11 +99,37 @@ public final class HomeModel {
                     self?.rowDidLoadItems()
                 }
             }
+        refreshFeatured()
+    }
+
+    /// Whether the banner may still get titles: one of the rows it draws on has yet to answer.
+    /// The page keeps the banner's place meanwhile, so that it does not jump when they arrive.
+    public var isFeaturedPending: Bool {
+        rows.prefix(Self.featuredRowCount).contains { row in
+            switch row.state {
+            case .idle, .loading: true
+            case .loaded, .failed: false
+            }
+        }
+    }
+
+    /// Loads the rows the banner draws on, whether or not they have scrolled into view.
+    public func loadFeaturedRows() async {
+        await withTaskGroup(of: Void.self) { group in
+            for row in rows.prefix(Self.featuredRowCount) {
+                group.addTask { await row.loadIfNeeded() }
+            }
+        }
     }
 
     private func rowDidLoadItems() {
+        refreshFeatured()
         guard !hasShownContent else { return }
         hasShownContent = true
         onFirstContent?()
+    }
+
+    private func refreshFeatured() {
+        featured.update(FeaturedPicker.picks(from: rows.prefix(Self.featuredRowCount).compactMap(\.state.value)))
     }
 }

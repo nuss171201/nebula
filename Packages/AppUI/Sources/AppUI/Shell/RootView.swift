@@ -110,8 +110,11 @@ public struct RootView: View {
                     registry: model.registry,
                     continueWatching: model.continueWatching,
                     library: model.library,
-                    showsContinueWatching: model.settings.settings.showsContinueWatching
-                ) { model.open($0) }
+                    showsContinueWatching: model.settings.settings.showsContinueWatching,
+                    showsFeatured: model.settings.settings.showsFeatured,
+                    play: { model.play($0) },
+                    open: { model.open($0) }
+                )
             case .discover:
                 DiscoverView(model: model.discover, registry: model.registry) { model.path.append(MediaRoute(item: $0)) }
             case .addons:

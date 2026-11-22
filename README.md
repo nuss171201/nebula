@@ -12,7 +12,9 @@ anything in a player built on libmpv.
 ## What it does
 
 **Browsing.** Home, Discover, Search, title pages with seasons and episodes, a Library with history and
-Continue Watching, and a Calendar of upcoming episodes for the series you saved.
+Continue Watching, and a Calendar of upcoming episodes for the series you saved. Home opens with a
+banner of featured titles, taken from the top of your first two catalogs, with Play, Add to Library
+and More Info on each (Settings → General hides it).
 
 **Add-ons.** Catalogs, metadata, streams and subtitles come from add-ons that speak the Stremio add-on
 protocol. The app ships with two: Cinemeta (metadata) and OpenSubtitles (subtitles). It ships with no

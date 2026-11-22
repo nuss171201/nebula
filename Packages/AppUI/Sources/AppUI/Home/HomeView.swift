@@ -1,3 +1,4 @@
+import MediaCore
 import MediaLibrary
 import SwiftUI
 
@@ -9,8 +10,17 @@ struct HomeView: View {
     let library: LibraryCenter
     /// Off when the user has hidden the row in Settings.
     var showsContinueWatching = true
+    /// Off when the user has hidden the banner in Settings.
+    var showsFeatured = true
+    /// Opens a title's page and plays it.
+    var play: (MetaItem) -> Void = { _ in }
     /// Opens a video's page with its streams showing.
     let open: (WatchVideo) -> Void
+
+    /// The banner has titles, or may yet get some: its place is kept so the page does not jump.
+    private var showsBanner: Bool {
+        showsFeatured && (!model.featured.items.isEmpty || model.isFeaturedPending)
+    }
 
     var body: some View {
         Group {
@@ -22,6 +32,9 @@ struct HomeView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 26) {
+                        if showsBanner {
+                            FeaturedBanner(model: model.featured, library: library, play: play)
+                        }
                         if showsContinueWatching {
                             ContinueWatchingRow(model: continueWatching, open: open)
                         }
@@ -29,8 +42,15 @@ struct HomeView: View {
                             CatalogRowView(row: row)
                         }
                     }
-                    .padding(.vertical, 20)
+                    .padding(.top, showsBanner ? 0 : 20)
+                    .padding(.bottom, 20)
                 }
+            }
+        }
+        // The banner draws on the first rows, which may not have scrolled into view.
+        .task(id: showsFeatured ? model.rows.prefix(HomeModel.featuredRowCount).map(\.id) : []) {
+            if showsFeatured {
+                await model.loadFeaturedRows()
             }
         }
         // What was watched changes while the app is open; so do the add-ons that can say what comes next.

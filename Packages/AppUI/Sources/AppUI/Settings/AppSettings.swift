@@ -26,6 +26,8 @@ public struct AppSettings: Sendable, Equatable, Codable {
     /// The section the app opens on.
     public var startSection = AppSection.home
     public var showsContinueWatching = true
+    /// The banner of featured titles at the top of Home.
+    public var showsFeatured = true
 
     // MARK: Playback
 
@@ -77,6 +79,7 @@ public struct AppSettings: Sendable, Equatable, Codable {
         appearance = read(.appearance, defaults.appearance)
         startSection = read(.startSection, defaults.startSection)
         showsContinueWatching = read(.showsContinueWatching, defaults.showsContinueWatching)
+        showsFeatured = read(.showsFeatured, defaults.showsFeatured)
         audioLanguages = try? container.decodeIfPresent([String].self, forKey: .audioLanguages)
         subtitleLanguages = try? container.decodeIfPresent([String].self, forKey: .subtitleLanguages)
         subtitleMode = read(.subtitleMode, defaults.subtitleMode)

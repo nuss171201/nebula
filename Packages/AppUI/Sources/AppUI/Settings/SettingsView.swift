@@ -67,6 +67,7 @@ struct GeneralSettingsPane: View {
                         Text(section.title).tag(section)
                     }
                 }
+                Toggle("Show Featured Titles", isOn: $model.settings.showsFeatured)
                 Toggle("Show Continue Watching", isOn: $model.settings.showsContinueWatching)
             }
         }

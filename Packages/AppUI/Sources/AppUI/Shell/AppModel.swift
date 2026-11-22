@@ -56,6 +56,8 @@ public final class AppModel {
     @ObservationIgnored private weak var latestDetail: DetailModel?
     /// Episodes to show the streams of when their series' page opens, by series id.
     @ObservationIgnored private var pendingEpisodes: [String: String] = [:]
+    /// Titles whose page is to start playing by itself, by id: opened by a Play button elsewhere.
+    @ObservationIgnored private var pendingPlays: Set<String> = []
 
     public init(
         dependencies: AppDependencies,
@@ -167,6 +169,7 @@ public final class AppModel {
         model.streams.configure(settings.pickerContext)
         // Arriving from Continue Watching: go straight to the episode in question.
         model.initialVideoID = pendingEpisodes.removeValue(forKey: route.id)
+        model.startsPlaying = pendingPlays.remove(route.id) != nil
         // Not noted as the page on screen here: SwiftUI calls this more often than it shows a
         // page (see `detailDidAppear`).
         return model
@@ -178,6 +181,13 @@ public final class AppModel {
             pendingEpisodes[video.titleID] = video.videoID
         }
         path.append(MediaRoute(type: video.type, id: video.titleID))
+    }
+
+    /// Opens a title's page and has it play: a film at once, a series from where it was left.
+    /// With no add-on that offers streams, the page opens and says so.
+    public func play(_ item: MetaItem) {
+        pendingPlays.insert(item.id)
+        path.append(MediaRoute(item: item))
     }
 
     /// Plays one of the streams listed on the detail page that was opened last, as a click on

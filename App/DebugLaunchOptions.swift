@@ -27,6 +27,7 @@
     ///     open -g Orbit.app --args -settings shortcuts   (general, playback, streaming, shortcuts, advanced)
     ///     open -g Orbit.app --args -section discover -autoscroll 8   (scrolls by itself; see DebugAutoscroll)
     ///     open -g Orbit.app --args -acknowledgements YES   (opens the Acknowledgements window)
+    ///     open -g Orbit.app --args -featured 2   (Home's banner on its third title; -playFeatured YES presses its Play)
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -69,6 +70,7 @@
                     duration: max(defaults.double(forKey: "autoscroll"), 1)
                 )
             }
+            applyFeaturedOptions(to: model, defaults: defaults)
             if let query = defaults.string(forKey: "search") {
                 model.search.query = query
             }
@@ -88,6 +90,24 @@
                 let parts = target.split(separator: ":", maxSplits: 1).map(String.init)
                 if parts.count == 2 {
                     model.path = [MediaRoute(type: MediaType(rawValue: parts[0]), id: parts[1])]
+                }
+            }
+        }
+
+        /// `-featured <n>` shows the nth title of Home's banner, which turns by itself only in
+        /// the window in use (a check's never is); `-playFeatured YES` presses its Play button.
+        @MainActor
+        private static func applyFeaturedOptions(to model: AppModel, defaults: UserDefaults) {
+            guard defaults.object(forKey: "featured") != nil || defaults.bool(forKey: "playFeatured") else { return }
+            let position = defaults.integer(forKey: "featured")
+            let plays = defaults.bool(forKey: "playFeatured")
+            Task {
+                for _ in 0 ..< 200 where model.home.featured.items.count <= position {
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                model.home.featured.show(position)
+                if plays, let item = model.home.featured.current {
+                    model.play(item)
                 }
             }
         }

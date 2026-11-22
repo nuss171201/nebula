@@ -96,7 +96,8 @@ two seconds after launch: the only way to check a binding and its on-screen noti
 `-window pictureInPicture|mini` puts the player window in that mode.
 `-settings general|playback|streaming|shortcuts|advanced` opens the Settings window on that tab.
 `-acknowledgements YES` opens the Acknowledgements window. `-pressPlay YES` presses a title page's Play
-button as soon as it has streams to choose from.
+button as soon as it has streams to choose from. `-featured <n>` shows the nth title of Home's banner
+and `-playFeatured YES` presses the banner's Play.
 `-autoscroll <seconds>` scrolls the screen's list by itself (`App/DebugAutoscroll.swift`), `-scrollSpeed <pt/s>`;
 `-stats <seconds>` logs dropped and late frames and the buffered duration that long after launch.
 `-profile <folder>` keeps the database and caches in a scratch folder and keeps the stream engine to
@@ -232,7 +233,18 @@ App/ (target MediaCenter)   entry point + composition root + Branding. No featur
   `RenderQuality.high` keeps the engine defaults for a future Settings choice.
 - This FFmpeg build has no image encoders, so mpv's own screenshot-to-file fails; screenshots use
   `screenshot-raw` and are encoded with ImageIO (`FrameImage`, `ScreenshotFile`).
-- The system audio output this build picks is `avfoundation`, not `coreaudio`.
+- **The engine's audio output is fixed to `avfoundation`, and its Core Audio output must never
+  start** (`PlayerConfiguration.audioOutput`; `ao` is appended after every other option and is refused
+  in `mpv.conf`). Left to choose, the engine tries Core Audio first. That output adds a listener for
+  changes to the system's audio devices before it knows it can start (`register_hotplug_cb` at the top
+  of its `init`) and only its `uninit` removes it, which a failed `init` never reaches. On this Mac its
+  `init` always fails (the audio unit refuses the channel layout, error -50), so every film left a
+  listener pointing at freed memory, and the next device change (headphones, a display sleeping)
+  crashed the app in `hotplug_cb`, usually hours later with no player open. Found by disassembling
+  the framework (`otool -tV`, who calls `_register_hotplug_cb` and `_unregister_hotplug_cb`) and
+  reproduced in a test process. `AUDIO_DEVICE_TESTS=1 MallocScribble=1 swift test --filter
+  AudioDeviceChangeTests` (PlayerKit) is the check: it changes the system's device list for a second,
+  so it is opt-in. **A silent check (`-silent YES`, `ao=null`) can never show an audio-output fault.**
 
 ### How streaming fits together (Stage 5)
 
@@ -442,6 +454,30 @@ StreamPlayer ─┬─ web address ───────────────
 - **The page tells the app which model it shows** (`AppModel.detailDidAppear`): SwiftUI builds a
   `DetailModel` on every evaluation of the page's parent and keeps only the first, so "the last one
   made" is usually one that was never shown. The debug helpers held the wrong one until this was found.
+
+### How the Home banner fits together (after Stage 9)
+
+- **The banner shows what the user's own first two catalog rows show.** `FeaturedPicker` (pure) takes
+  the first titles of each in turn, so films and series alternate; only titles with a backdrop, six at
+  most. Nothing is ranked or chosen by the app, and it draws on no source of its own. `HomeModel`
+  refills it whenever one of those rows loads, and loads those two rows itself (`loadFeaturedRows`):
+  rows otherwise load when they scroll into view, and the second may be below the fold.
+- **The banner's place is kept while those rows are loading** (`isFeaturedPending`), so the page does
+  not jump when the titles arrive; with nothing to show it gives the place up.
+- **It turns by itself only where someone can see it and nobody is reaching for it**
+  (`FeaturedModel.turnsByItself`): in the key window, not under the pointer, not with Reduce Motion or
+  VoiceOver on. Behind the player's window it stays still: no pictures are fetched or faded while a
+  film plays. The next title's backdrop is fetched before the turn, at the size the title's page uses.
+- **Play on the banner opens the title's page and has the page play** (`AppModel.play`, then
+  `playWhenReady` from the page's own task): a film at once; a series on the episode to carry on with
+  (`DetailModel.episodeToStart`: the unfinished one, else the one after the last watched, else the
+  first aired). Play is pressed when every add-on has answered, or a second and a half after the first
+  playable stream, whichever is first. With nothing to play the page just opens and says what it
+  always says. The debug `-featured <n>` and `-playFeatured YES` exist because a check's window is
+  never the key window, so the banner never turns in one.
+- **The title is its own logo when the catalog has one and it loads; words otherwise**, with nothing
+  shown while that is being found out, so the words are not flashed first.
+- Settings → General → "Show Featured Titles" hides it.
 
 ### Decisions still to be made (with the stage that decides them)
 
@@ -824,11 +860,14 @@ Carried over or not verified in Stage 9:
 
 Found when the user first ran the app for real:
 
-- **A crash during a film** (`hotplug_cb` in the engine, on CoreAudio's device-change queue). The engine
-  loads its built-in scripts by one switch each, and newer engines have more than the app switched off:
-  `select`, `positioning`, `commands` and `context_menu` were running in every player. `select` watches
-  the list of audio devices, and the engine crashed in that watcher when a device came or went. All are
-  off now; `nothingLoadsByItself` fails if a new engine brings a new one.
+- **A crash during a film** (`hotplug_cb` in the engine, on CoreAudio's device-change queue), twice on
+  the first day and once more the day after, **with the first "fix" in place**. That fix was wrong
+  about the cause: the engine's built-in scripts (`select`, `positioning`, `commands`, `context_menu`)
+  were indeed running in every player and are off now (`nothingLoadsByItself` fails if a new engine
+  brings a new one), but the listener that crashed belonged to the engine's Core Audio output, not to a
+  script. The real cause and fix are under "How the player fits together" (the audio output). The
+  first fix was "verified" with a silent player, which never starts an audio output at all, and with
+  the freed memory still intact: the lesson is in the same place.
 - **A bare word in the add-on field** ("torentio") is taken for a server name and reported as
   "the server could not be reached". Accurate, unhelpful; a clearer message was offered and not asked for.
 - **The size an add-on writes and the size the app shows differ** ("91.02 GB" beside "97,73 GB"): add-ons
@@ -888,6 +927,35 @@ Carried over or not verified:
   slowest run to "ready"); its state is not saved between launches.
 - Nothing was clicked; the waiting note under the busy indicator was not seen in the running app.
 - **The packaged app in `build/dist` does not have these fixes until it is rebuilt** with the app closed.
+
+### After Stage 9: the Home banner, and the crash found on the way
+
+| Where | Added | Tests |
+|---|---|---|
+| AppUI | `FeaturedPicker`, `FeaturedModel`, `FeaturedBanner` (+ `LogoLegibility`), `HomeModel.featured`, `AppModel.play` and `playWhenReady`, `DetailModel.episodeToStart`, the "Show Featured Titles" setting | 174 |
+| PlayerKit | the audio output fixed to `avfoundation`; `ao` refused in `mpv.conf`; `AudioDeviceChangeTests` (opt-in) | 185 (1 opt-in) |
+| App | `-featured <n>`, `-playFeatured YES` | — |
+
+Seen in the running app (background, scratch profile, real default catalogs): the banner on a film
+whose logo is too dark to read (shown in words) and on a series with a light logo (shown as artwork),
+the pager, and Play pressed through `-playFeatured` opening the title's page and playing a stand-in
+stream. The crash was reproduced in a test process the old way and not with the fix, under
+`MallocScribble`.
+
+Carried over or not verified:
+
+- **Nothing on the banner was clicked, hovered or tabbed to**, and it was never seen to turn by
+  itself: a check's window is not the key window. The turn, its cross-fade, pausing under the pointer
+  and the pager's buttons are code and model tests only. Light appearance was not looked at.
+- **The audio fix is verified on this Mac only**, where Core Audio's start always fails. On a Mac where
+  it would have started, the app now uses AVFoundation's output instead; that output has played every
+  film here, but whether it does everything Core Audio did elsewhere (unusual devices, sample rates)
+  is not known. If AVFoundation's output cannot start there is no other to fall back to: no sound.
+- **Sound was still never heard**: the tests play at zero volume.
+- Play on the banner for a series was tested through the model; in the app only a film was tried.
+- The banner's first two rows are fetched at launch even when the second is below the fold: one more
+  catalog request than before on a small window. Launch times were not measured again (the Release
+  build was not run: the packaged app is the user's to rebuild).
 
 ## Performance log
 

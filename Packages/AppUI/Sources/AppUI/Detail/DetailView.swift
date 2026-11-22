@@ -10,11 +10,13 @@ struct DetailScreen: View {
     private let appIdentifier: String
     private let playBest: @MainActor (DetailModel) -> Void
     private let didAppear: @MainActor (DetailModel) -> Void
+    private let playWhenReady: @MainActor (DetailModel) async -> Void
 
     init(route: MediaRoute, appModel: AppModel) {
         _model = State(initialValue: appModel.detailModel(for: route))
         playBest = { [appModel] in appModel.playBestStream(of: $0) }
         didAppear = { [appModel] in appModel.detailDidAppear($0) }
+        playWhenReady = { [appModel] in await appModel.playWhenReady($0) }
         registry = appModel.registry
         streamPlayer = appModel.streamPlayer
         library = appModel.library
@@ -34,6 +36,8 @@ struct DetailScreen: View {
         .task(id: registry.addons.map(\.id)) {
             didAppear(model)
             await model.load(addons: registry.addons)
+            // Opened by a Play button elsewhere: play as soon as there is something to play.
+            await playWhenReady(model)
         }
         // Watched marks and progress change while the page is up: the player saves as it goes.
         .task(id: library.revision) {

@@ -31,6 +31,10 @@ public final class DetailModel {
 
     /// An episode to show the streams of as soon as the page has loaded.
     @ObservationIgnored public var initialVideoID: String?
+    /// Set when the page was opened by a Play button elsewhere (the Home banner): a series
+    /// opens on the episode to carry on with, and the page plays once it has streams
+    /// (`AppModel.playWhenReady`).
+    @ObservationIgnored public var startsPlaying = false
     @ObservationIgnored private let client: AddonClient
     @ObservationIgnored private let library: LibraryCenter?
     @ObservationIgnored private var addons: [InstalledAddon] = []
@@ -182,6 +186,24 @@ public final class DetailModel {
         meta?.trailers.first
     }
 
+    /// The episode Play starts a series on: the one watched last if it was not finished, else
+    /// the one after it; for a series never started (or watched to its end), the first episode
+    /// of the first season that has aired. `nil` for a title with no numbered episodes.
+    public nonisolated static func episodeToStart(in videos: [MetaVideo], entries: [String: WatchEntry], now: Date = Date()) -> MetaVideo? {
+        if let latest = entries.values.max(by: { $0.lastWatchedAt < $1.lastWatchedAt }),
+           let video = videos.first(where: { $0.id == latest.video.videoID }) {
+            if !latest.isWatched {
+                return video
+            }
+            if let next = ContinueWatching.nextEpisode(after: latest.video, in: videos, now: now) {
+                return next
+            }
+        }
+        return videos
+            .filter { ($0.season ?? 0) > 0 && $0.episode != nil && ($0.released ?? .distantPast) <= now }
+            .min { ($0.season ?? 0, $0.episode ?? 0) < ($1.season ?? 0, $1.episode ?? 0) }
+    }
+
     public nonisolated static func seasonTitle(_ season: Int) -> String {
         season == 0 ? "Specials" : "Season \(season)"
     }
@@ -232,6 +254,10 @@ public final class DetailModel {
             initialVideoID = nil
             selectedSeason = video.season ?? selectedSeason
             selectedVideoID = wanted
+        }
+        if startsPlaying, selectedVideoID == nil, let episode = Self.episodeToStart(in: full.videos, entries: watchEntries) {
+            selectedSeason = episode.season ?? selectedSeason
+            selectedVideoID = episode.id
         }
         phase = .loaded
         if full.videos.isEmpty {
