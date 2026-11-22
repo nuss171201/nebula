@@ -112,7 +112,9 @@ public final class StreamPlayer {
     /// seconds (bytes a second): what the app learns the connection's speed from.
     @ObservationIgnored public var onSessionSpeed: (@MainActor (Double) -> Void)?
     /// How long an automatically chosen stream gets to show its first picture before the next is tried.
-    @ObservationIgnored var startTimeout: (torrent: Duration, direct: Duration) = (.seconds(30), .seconds(20))
+    @ObservationIgnored var patience: (torrent: StartPatience, direct: StartPatience) = (.torrent, .direct)
+    /// What has arrived of the stream Play is waiting on.
+    @ObservationIgnored var arrivalSigns = ArrivalSigns()
     /// How often a playing torrent's download rate is read.
     @ObservationIgnored var speedSampleInterval = Duration.seconds(2)
     /// How often, while the player waits for a torrent, what it is waiting for is looked at.
@@ -280,6 +282,7 @@ public final class StreamPlayer {
             }
             activeTorrent = infoHash
             activeURL = stream.url
+            arrivalSigns.noteDescription(at: .now)
             sampleSpeed(of: infoHash)
             phase = .idle
             noteStarted(video, choice: choice)
@@ -375,7 +378,7 @@ public final class StreamPlayer {
                 try? await Task.sleep(for: interval)
                 guard !Task.isCancelled, let self, activeTorrent == infoHash else { return }
                 guard let player = coordinator.player else { continue }
-                let isBusy = player.state.isBusy
+                let isBusy = Self.isWaiting(player.state)
                 defer { wasBusy = isBusy }
                 guard isBusy else {
                     if wasBusy {
@@ -390,7 +393,8 @@ public final class StreamPlayer {
                 }
                 let status = await manager.status(of: infoHash)
                 let arrival = await manager.arrival(of: infoHash)
-                guard !Task.isCancelled, activeTorrent == infoHash, player.state.isBusy else { continue }
+                guard !Task.isCancelled, activeTorrent == infoHash, Self.isWaiting(player.state) else { continue }
+                arrivalSigns.note(arrival, rate: status?.downloadRate ?? 0, at: .now)
                 let progress = arrivalMeter.read(arrival)
                 show(note: status.map { Self.waitingNote(for: $0, bytesLeft: arrival?.bytesLeft) }, progress: progress, in: player)
             }

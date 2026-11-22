@@ -8,6 +8,9 @@ public struct StreamPick: Sendable, Equatable, Identifiable {
         /// Should play without waiting: the connection can keep up, the language is right,
         /// and (for a torrent) enough people share it.
         case good
+        /// The connection could keep up, but it is more than a film needs to look good, and
+        /// what it costs is the wait: large files come in large pieces and start slowly.
+        case large
         /// As good, except that few people share it, so it may be slow to start.
         case fewPeers
         /// Needs more than the connection is known to give: it would stop to load.
@@ -52,7 +55,8 @@ public struct StreamPick: Sendable, Equatable, Identifiable {
 /// the wrong answer (an 80 GB disc copy on a home connection) only shows up as a film that
 /// keeps stopping. The picker answers it from what the list itself says: what each stream
 /// would need (its size over the running time), how fast this connection has been seen to
-/// be, which languages it speaks, and how many people share it. Pure: same inputs, same answer.
+/// be, which languages it speaks, and how many people share it. Of what would play, it takes
+/// the best picture of a modest size, not the largest file. Pure: same inputs, same answer.
 public enum StreamPicker {
     public struct Context: Sendable, Equatable {
         /// How long the title runs, in seconds, when the catalog says.
@@ -91,6 +95,13 @@ public enum StreamPicker {
     /// The share of the connection a stream may need. The rest is headroom: speed varies,
     /// and a film's busy scenes need more than its average.
     public static let usableShare = 0.7
+    /// What Play picks by itself needs no more than this, however fast the connection:
+    /// 10 Mbit/s, about 8 GB for a two-hour film. Above it the picture gains little and the
+    /// start loses a lot. The user's own session showed it: a 21 GB film, well within what the
+    /// connection had managed the day before, took over two minutes to show a picture, because
+    /// its pieces are 16 MiB each, the player needs three of them first, and a swarm gives a
+    /// few hundred kilobytes a second for its first minute. Larger streams stay in the list.
+    public static let comfortableSpeed: Double = 1_250_000
     /// Fewer people than this sharing a torrent and it is likely to start slowly or not at all.
     public static let healthyPeers = 5
     /// A title's length when the catalog does not give one: a film's.
@@ -109,8 +120,12 @@ public enum StreamPicker {
             let facts = StreamFacts(text: text)
             guard facts.trap == nil else { return nil }
             let required = requiredSpeed(of: choice, runtime: context.runtime)
-            let isTooHeavy = required.map { $0 > budget } ?? false
-            let standing = standing(of: choice, facts: facts, isTooHeavy: isTooHeavy, wanted: wanted, context: context)
+            let weight: Weight = switch required {
+            case let required? where required > budget: .tooHeavy
+            case let required? where required > comfortableSpeed: .large
+            default: .fine
+            }
+            let standing = standing(of: choice, facts: facts, weight: weight, wanted: wanted, context: context)
             return StreamPick(choice: choice, facts: facts, standing: standing, requiredSpeed: required)
         }
         // Stable: among equals, the order the add-ons gave them in stands.
@@ -126,6 +141,10 @@ public enum StreamPicker {
                 if (first.id == liked) != (second.id == liked) {
                     return first.id == liked
                 }
+                // Among those few people share, one of a modest size has the better chance.
+                if isLarge(first) != isLarge(second) {
+                    return isLarge(second)
+                }
                 if first.choice.quality != second.choice.quality {
                     return (first.choice.quality?.rawValue ?? 0) > (second.choice.quality?.rawValue ?? 0)
                 }
@@ -135,7 +154,7 @@ public enum StreamPicker {
                 if first.choice.sizeBytes != second.choice.sizeBytes {
                     return (first.choice.sizeBytes ?? 0) > (second.choice.sizeBytes ?? 0)
                 }
-            case .tooHeavy, .overLimit, .wrongLanguage:
+            case .large, .tooHeavy, .overLimit, .wrongLanguage:
                 // None of these is right; the least demanding is the least wrong.
                 if first.requiredSpeed != second.requiredSpeed {
                     return (first.requiredSpeed ?? .greatestFiniteMagnitude) < (second.requiredSpeed ?? .greatestFiniteMagnitude)
@@ -162,10 +181,15 @@ public enum StreamPicker {
         }
     }
 
+    /// What a stream needs, set against the connection and against what a film needs.
+    private enum Weight {
+        case fine, large, tooHeavy
+    }
+
     private static func standing(
         of choice: StreamChoice,
         facts: StreamFacts,
-        isTooHeavy: Bool,
+        weight: Weight,
         wanted: Set<String>,
         context: Context
     ) -> StreamPick.Standing {
@@ -180,13 +204,17 @@ public enum StreamPicker {
         if let limit = context.maximumSize, let size = choice.sizeBytes, size > limit {
             return .overLimit
         }
-        if isTooHeavy {
+        if weight == .tooHeavy {
             return .tooHeavy
         }
         if choice.kind == .torrent, let peers = facts.peers, peers < healthyPeers {
             return .fewPeers
         }
-        return .good
+        return weight == .large ? .large : .good
+    }
+
+    private static func isLarge(_ pick: StreamPick) -> Bool {
+        (pick.requiredSpeed ?? 0) > comfortableSpeed
     }
 
     /// Enough people is enough: ten and a thousand both start at once. Unknown counts as enough.

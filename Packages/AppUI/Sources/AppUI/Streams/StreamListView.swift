@@ -127,6 +127,7 @@ struct StreamListView: View {
     nonisolated static func caution(for standing: StreamPick.Standing) -> String? {
         switch standing {
         case .good: nil
+        case .large: "Nothing smaller is well shared. A file this large may take a while to start."
         case .fewPeers: "Few people are sharing this, so it may be slow to start."
         case .tooHeavy: "The smallest there is, and still more than this connection has been seen to manage: it may stop to load."
         case .overLimit: "Everything here is above the limits in Settings; this is the nearest."

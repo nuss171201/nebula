@@ -156,8 +156,9 @@ struct StreamListModelTests {
 
         // The disc copy and the web page cannot be played by pressing Play; the list still shows all four.
         #expect(model.choices.count == 4)
-        #expect(model.picks.map(\.choice.quality) == [.uhd4K, .hd1080])
-        #expect(model.picks[0].standing == .good)
+        // The connection could play the 12 GB one; Play takes the one of a modest size.
+        #expect(model.picks.map(\.choice.quality) == [.hd1080, .uhd4K])
+        #expect(model.picks.map(\.standing) == [.good, .large])
         #expect(model.suggested == model.picks[0].choice)
 
         // The user allows nothing above full HD.

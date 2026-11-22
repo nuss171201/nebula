@@ -128,7 +128,7 @@ struct SettingsHelperTests {
         #expect(StreamingSettingsPane.speedText(4_750_000) == "38 Mbit/s")
         #expect(StreamingSettingsPane.speedText(500_000).hasSuffix(" Mbit/s"))
         #expect(StreamListView.caution(for: .good) == nil)
-        for standing in [StreamPick.Standing.fewPeers, .tooHeavy, .overLimit, .wrongLanguage] {
+        for standing in [StreamPick.Standing.large, .fewPeers, .tooHeavy, .overLimit, .wrongLanguage] {
             #expect(StreamListView.caution(for: standing)?.isEmpty == false)
         }
     }

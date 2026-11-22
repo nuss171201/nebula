@@ -121,38 +121,55 @@ struct StreamPickerTests {
         #expect(StreamPicker.requiredSpeed(of: unknown, runtime: runtime) == nil)
     }
 
-    @Test("On an ordinary connection: the best quality that will not stop, in the right language, that people are sharing")
+    @Test("On an ordinary connection: the best quality of a modest size, in the right language, that people are sharing")
     func ordinaryConnection() {
         let picks = StreamPicker.picks(from: list, context: context(speed: 50))
         // The disc copy and the cinema recording are not offered at all.
         #expect(picks.count == 7)
         #expect(!picks.contains { $0.choice.id == "test.streams#0" || $0.choice.id == "test.streams#8" })
-        // 4K at 14.2 GB needs 13 Mbit/s of the 35 that are usable: it is the pick.
-        #expect(picks[0].choice.id == "test.streams#2")
+        // The well-shared full-HD release needs 8 Mbit/s: it is the pick. Then 720p.
+        #expect(picks[0].choice.id == "test.streams#5")
         #expect(picks[0].standing == .good)
-        #expect(picks[0].summary.hasPrefix("4K · ") && picks[0].summary.hasSuffix(" GB · 120 sharing"))
-        // Then the well-shared full-HD release, then 720p.
-        #expect(picks[1].choice.id == "test.streams#5")
-        #expect(picks[2].choice.id == "test.streams#7")
-        #expect(picks.map(\.standing) == [.good, .good, .good, .fewPeers, .fewPeers, .tooHeavy, .wrongLanguage])
-        // After everything that should just play: the ones only two or three people share.
-        #expect(picks[3].choice.id == "test.streams#3")
-        #expect(picks[4].choice.id == "test.streams#6")
+        #expect(picks[0].summary.hasPrefix("1080p · ") && picks[0].summary.hasSuffix(" GB · 30 sharing"))
+        #expect(picks[1].choice.id == "test.streams#7")
+        // 4K at 14.2 GB needs 13 Mbit/s. The connection has that to spare, but it is more than
+        // Play takes by itself: it comes after everything of a modest size that should just play.
+        #expect(picks[2].choice.id == "test.streams#2")
+        #expect(picks.map(\.standing) == [.good, .good, .large, .fewPeers, .fewPeers, .tooHeavy, .wrongLanguage])
+        // Then the ones only two or three people share, the small one before the 35 GB one.
+        #expect(picks[3].choice.id == "test.streams#6")
+        #expect(picks[4].choice.id == "test.streams#3")
         // The 80 GB disc copy needs 74 Mbit/s: more than this connection has to spare.
         #expect(picks[5].choice.id == "test.streams#1")
         // The Russian dub is last however many share it.
         #expect(picks[6].choice.id == "test.streams#4")
     }
 
-    @Test("On a slow connection the pick is smaller; on a fast one it is the full disc quality")
+    @Test("On a slow connection the pick is smaller; on a fast one it is still of a modest size")
     func speedDecides() {
         #expect(StreamPicker.picks(from: list, context: context(speed: 6))[0].choice.id == "test.streams#7")
         #expect(StreamPicker.picks(from: list, context: context(speed: 12))[0].choice.id == "test.streams#5")
-        #expect(StreamPicker.picks(from: list, context: context(speed: 200))[0].choice.id == "test.streams#1")
-        // Nothing measured yet: 20 Mbit/s is assumed, which the 14 GB release fits and the disc copy does not.
+        // However fast: the 80 GB disc copy would play, and would take minutes to start.
+        let fast = StreamPicker.picks(from: list, context: context(speed: 200))
+        #expect(fast[0].choice.id == "test.streams#5")
+        #expect(fast.first { $0.choice.id == "test.streams#1" }?.standing == .large)
+        // Nothing measured yet: 20 Mbit/s is assumed, which the disc copy does not fit.
         let unmeasured = StreamPicker.picks(from: list, context: context(speed: nil))
-        #expect(unmeasured[0].choice.id == "test.streams#2")
+        #expect(unmeasured[0].choice.id == "test.streams#5")
         #expect(unmeasured.first { $0.choice.id == "test.streams#1" }?.standing == .tooHeavy)
+    }
+
+    @Test("When nothing of a modest size is well shared, the smallest of the large ones is the pick")
+    func onlyLargeOnes() {
+        let large = [list[1], list[2], list[6]]
+        let picks = StreamPicker.picks(from: large, context: context(speed: 200))
+        #expect(picks.map(\.choice.id) == ["test.streams#2", "test.streams#1", "test.streams#6"])
+        #expect(picks.map(\.standing) == [.large, .large, .fewPeers])
+        // A stream whose size is not given is judged by what its quality usually takes.
+        let unsized = torrent("Streams 4k", "Example.Film.2026.2160p.WEB\n👤 80", position: 9)
+        #expect(StreamPicker.picks(from: [unsized], context: context(speed: 200))[0].standing == .large)
+        let fullHD = torrent("Streams 1080p", "Example.Film.2026.1080p.WEB\n👤 80", position: 9)
+        #expect(StreamPicker.picks(from: [fullHD], context: context(speed: 200))[0].standing == .good)
     }
 
     @Test("When nothing fits, the least demanding stream in the right language is the pick")
@@ -172,7 +189,7 @@ struct StreamPickerTests {
         #expect(russian.first { $0.choice.id == "test.streams#3" }?.standing == .wrongLanguage)
         // A stream that says it carries several languages is never ruled out for language.
         let japanese = StreamPicker.picks(from: list, context: context(speed: 500, languages: ["ko"]))
-        #expect(japanese.first { $0.choice.id == "test.streams#1" }?.standing == .good)
+        #expect(japanese.first { $0.choice.id == "test.streams#1" }?.standing == .large)
         // With no language asked for, none is wrong.
         #expect(!StreamPicker.picks(from: list, context: context(speed: 50, languages: [])).contains { $0.standing == .wrongLanguage })
     }

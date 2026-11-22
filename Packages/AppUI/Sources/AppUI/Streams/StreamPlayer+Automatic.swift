@@ -10,7 +10,7 @@ extension StreamPlayer {
     }
 
     /// Plays the first of `candidates` that starts: each gets a while to show its first
-    /// picture, and if it fails or takes too long the next is tried, up to three in all.
+    /// picture, and if it fails, or nothing of it arrives, the next is tried, up to three in all.
     /// - Parameters:
     ///   - candidates: Most suitable first, as the picker ordered them.
     ///   - onStarted: Called with the stream that ended up playing.
@@ -28,8 +28,9 @@ extension StreamPlayer {
         automaticTask = Task { [weak self] in
             for (index, choice) in attempts.enumerated() {
                 guard let self, !Task.isCancelled else { return }
+                arrivalSigns = ArrivalSigns()
                 start(choice, for: video)
-                let outcome = await waitForStart(of: choice)
+                let outcome = await waitForStart(of: choice, othersToTry: index + 1 < attempts.count)
                 guard !Task.isCancelled else { return }
                 switch outcome {
                 case .started:
@@ -53,12 +54,22 @@ extension StreamPlayer {
         }
     }
 
-    /// Watches one attempt until its first picture, its failure, or its time is up.
-    private func waitForStart(of choice: StreamChoice) async -> StartOutcome {
-        let timeout = choice.kind == .torrent ? startTimeout.torrent : startTimeout.direct
-        let deadline = ContinuousClock.now + timeout
+    /// Watches one attempt until its first picture, its failure, or the end of Play's patience with it.
+    private func waitForStart(of choice: StreamChoice, othersToTry: Bool) async -> StartOutcome {
+        let patience = choice.kind == .torrent ? patience.torrent : patience.direct
+        let started = ContinuousClock.now
         var playerWasOpen = false
-        while ContinuousClock.now < deadline {
+        while true {
+            let now = ContinuousClock.now
+            let isUp = patience.isUp(
+                waited: now - started,
+                sinceArrival: arrivalSigns.lastArrival.map { now - $0 },
+                secondsLeft: arrivalSigns.secondsLeft,
+                othersToTry: othersToTry
+            )
+            if isUp {
+                return .timedOut
+            }
             if Task.isCancelled {
                 return .abandoned
             }
@@ -88,7 +99,6 @@ extension StreamPlayer {
             }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return .timedOut
     }
 
     private func isPlaying(_ choice: StreamChoice, in player: PlayerModel) -> Bool {

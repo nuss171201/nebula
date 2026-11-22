@@ -469,9 +469,13 @@ StreamPlayer ─┬─ web address ───────────────
   saying what it will play and an "All Streams" link; Settings → Streaming can show the full list instead.
 - **`StreamPicker` is pure.** For each stream it works out what it needs (size over the title's running
   time, `RuntimeText`; a usual figure per quality when the size is unknown) and gives it a standing:
-  good, few peers, too heavy for the connection, over the user's limits, wrong language. Best standing
-  first, then what was played last time for this title, then quality, peers and size. Entries that are
-  not one playable video (a whole disc, a cinema recording, 3D, a sample, a web page) are never picked.
+  good, large, few peers, too heavy for the connection, over the user's limits, wrong language. Best
+  standing first, then what was played last time for this title, then quality, peers and size. Entries
+  that are not one playable video (a whole disc, a cinema recording, 3D, a sample, a web page) are
+  never picked. **"Large" is anything over 10 Mbit/s** (`comfortableSpeed`, about 8 GB for two hours),
+  however fast the connection: asked for by the user on 22 Nov 2026 after a 21 GB film took 129 s to
+  show a picture (16 MiB pieces, three needed first, 450 kB/s for the swarm's first minute). Such
+  streams are picked only when nothing of a modest size is well shared, smallest first.
 - **`StreamFacts` reads the add-on's free text**: people sharing (a person sign or "seeders" before a
   number), languages (flags, scene words, Cyrillic), MULTi/DUAL, and the traps above. It is a
   heuristic over text add-ons write as they please: unknown means neutral, and the list is always one
@@ -479,9 +483,16 @@ StreamPlayer ─┬─ web address ───────────────
 - **The connection's speed is learned, not tested** (`ConnectionSpeed`): the best rate a torrent held
   for a few readings, up at once and down a tenth at a time, stored as `stream.measuredSpeed`. Before
   anything is known, 20 Mbit/s is assumed, and a stream may need at most 70 % of the figure.
-- **Play tries up to three** (`StreamPlayer.playAutomatically`): each gets 30 seconds (torrent) or 20
-  (web) to show a picture; on failure or timeout the next is tried, and closing the player or
-  pressing Cancel stops the sequence.
+- **Play tries up to three** (`StreamPlayer.playAutomatically`), and **stays with one for as long as it
+  is arriving** (`StartPatience`, `ArrivalSigns`): a torrent is given up on after 30 seconds in which
+  nothing of what the player waits for arrived, or, while another is still to be tried, after three
+  minutes or as soon as its pace cannot make three minutes; a web address gets 20 seconds. It used to
+  be a flat 30 seconds, and the user's log of 22 Nov 2026 shows what that did on a day the swarms
+  were slow to gather: three streams in a row dropped while arriving, each next one starting from
+  nothing, "None of the 3 streams tried would start", and the same film playing when chosen by hand.
+  Closing the player or pressing Cancel stops the sequence. Waiting means until the first picture
+  (`StreamPlayer.isWaiting`): the engine stops calling itself busy once it has a file's headers, and
+  the percentage used to go blank from there to the picture.
 - **The page tells the app which model it shows** (`AppModel.detailDidAppear`): SwiftUI builds a
   `DetailModel` on every evaluation of the page's parent and keeps only the first, so "the last one
   made" is usually one that was never shown. The debug helpers held the wrong one until this was found.
