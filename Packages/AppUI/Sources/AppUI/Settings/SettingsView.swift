@@ -50,7 +50,13 @@ struct SettingsScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.horizontal) {
+            // Laid out as the Library's row of capsules is, not inside a sideways scroll view.
+            // That is what this row used to be, and on the user's second Mac (an older macOS
+            // than the one this is built on) its capsules took no clicks while the Library's,
+            // the same view without the scroll view, did. Seven short titles fit the
+            // window at its usual widths; where they do not (a wide sidebar in a narrow window),
+            // an ordinary menu takes their place.
+            ViewThatFits(in: .horizontal) {
                 PillPicker(
                     options: SettingsTab.allCases,
                     selection: model.selectedTab,
@@ -58,18 +64,28 @@ struct SettingsScreen: View {
                     select: { model.selectedTab = $0 },
                     label: "Settings"
                 )
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
+                .fixedSize()
+                Picker("Settings", selection: $model.selectedTab) {
+                    ForEach(SettingsTab.allCases) { tab in
+                        Text(tab.title).tag(tab)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize()
             }
-            .scrollIndicators(.hidden)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
             .background(.ultraThinMaterial)
             SettingsPane(tab: model.selectedTab, model: model)
                 .scrollContentBackground(.hidden)
                 .frame(maxWidth: 760)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // Until the stored settings have been read there is nothing true to edit. The
+                // tabs above are only a way around, and stay usable whatever happens here.
+                .disabled(!model.hasLoaded)
         }
-        .disabled(!model.hasLoaded)
     }
 }
 

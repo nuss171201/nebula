@@ -568,6 +568,11 @@ StreamPlayer ─┬─ web address ───────────────
   not verified still is not.
 - **Settings is also a section of the main window** (`SettingsScreen`): the Settings window's tabs
   (`SettingsPane`) under a row of capsules. Two tabs are new: Account and Watch Party.
+  **On the user's second Mac (macOS 15) that row took no clicks** while the Library's row of capsules
+  did. The difference was a sideways scroll view around the Settings row, so it is gone (a menu
+  stands in where the capsules do not fit), and the tabs are no longer disabled while settings load.
+  This is a fix by comparison, not by reproduction: macOS 15 cannot be run here. Runtime behaviour
+  on anything but this machine's macOS is only ever known from the user.
 - **A party server can be run from the app** (Settings > Watch Party; `PartyHost`, `PartyHostServer`).
   It is the signalling server the tests always had, moved into the WatchParty package and able to
   listen on the local network (port 8787); `LoopbackSignalServer` is now a name for it. While it runs,
