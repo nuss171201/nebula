@@ -182,3 +182,90 @@ struct StreamBadgeTests {
         #expect(StreamBadge.uhd.isQuality && !StreamBadge.hdr.isQuality)
     }
 }
+
+@MainActor
+@Suite("Seasons that a catalog lists as titles of their own")
+struct FranchiseTests {
+    private func link(_ name: String, _ address: String, category: String = "Franchise") -> MetaLink {
+        MetaLink(name: name, category: category, url: URL(string: address))
+    }
+
+    @Test("A title's prequel and sequel are read from its links; other relations and other addresses are not")
+    func neighbours() {
+        let item = MetaItem(id: "kitsu:2", type: .series, name: "Show 2", links: [
+            link("8.3", "https://example.com/show", category: "imdb"),
+            link("Side Story: Show OVA", "stremio:///detail/series/kitsu:9"),
+            link("Prequel: Show", "stremio:///detail/series/kitsu:1"),
+            link("sequel : Show 3", "stremio:///detail/series/kitsu%3A3"),
+        ])
+        #expect(Franchise.neighbour(.prequel, of: item) == MediaRoute(type: .series, id: "kitsu:1"))
+        #expect(Franchise.neighbour(.sequel, of: item) == MediaRoute(type: .series, id: "kitsu:3"))
+        #expect(Franchise.neighbour(.sequel, of: MetaItem(id: "x", type: .movie, name: "Alone")) == nil)
+
+        // A link is followed only to a title's page, never to a web address or anything else.
+        for address in ["https://example.com/detail/series/kitsu:3", "stremio:///discover/x/anime/y", "stremio:///detail/series", "file:///detail/series/x"] {
+            let other = MetaItem(id: "kitsu:2", type: .series, name: "Show 2", links: [link("Sequel: X", address)])
+            #expect(Franchise.neighbour(.sequel, of: other) == nil, "\(address) is not a title")
+        }
+    }
+
+    @Test("Series are numbered as seasons in the order they come; a film among them keeps its name")
+    func labels() {
+        let items = [
+            MetaItem(id: "a", type: .series, name: "Show"),
+            MetaItem(id: "b", type: .movie, name: "Show: The Film"),
+            MetaItem(id: "c", type: .series, name: "Show 2"),
+        ]
+        #expect(Franchise.entries(for: items).map(\.label) == ["Season 1", "Show: The Film", "Season 2"])
+    }
+
+    private func meta(_ number: Int, prequel: Int?, sequel: Int?) -> String {
+        let links = [prequel.map { #"{"name": "Prequel: Show \#($0)", "category": "Franchise", "url": "stremio:///detail/series/kitsu:\#($0)"}"# },
+                     sequel.map { #"{"name": "Sequel: Show \#($0)", "category": "Franchise", "url": "stremio:///detail/series/kitsu:\#($0)"}"# }]
+            .compactMap(\.self).joined(separator: ",")
+        return """
+        {"meta": {"id": "kitsu:\(number)", "type": "series", "name": "Show \(number)", "links": [\(links)],
+                  "videos": [{"id": "kitsu:\(number):1", "title": "One", "season": 1, "episode": 1}]}}
+        """
+    }
+
+    @Test("A page in the middle of a run finds every season before and after it, and stops where the links go round")
+    func findsTheRun() async throws {
+        let harness = try await AddonHarness.make()
+        defer { harness.server.stop() }
+        harness.server.respond(to: "/anime/manifest.json", with: .json(animeManifest))
+        let address = try harness.address("anime")
+        let addon = try await InstalledAddon(address: address, manifest: harness.client.manifest(at: address))
+        harness.server.respond(to: "/anime/meta/series/kitsu%3A1.json", with: .json(meta(1, prequel: nil, sequel: 2)))
+        harness.server.respond(to: "/anime/meta/series/kitsu%3A2.json", with: .json(meta(2, prequel: 1, sequel: 3)))
+        // The last one's "sequel" points back at the first: a catalog's mistake must not keep the page asking.
+        harness.server.respond(to: "/anime/meta/series/kitsu%3A3.json", with: .json(meta(3, prequel: 2, sequel: 1)))
+
+        let model = DetailModel(route: MediaRoute(type: .series, id: "kitsu:2"), client: harness.client)
+        await model.load(addons: [addon])
+        // The page is up with its own season before the others are known.
+        #expect(model.phase == .loaded && model.seasons == [1])
+        await model.waitForFranchise()
+        #expect(model.franchise.map(\.id) == ["kitsu:1", "kitsu:2", "kitsu:3"])
+        #expect(model.franchise.map(\.label) == ["Season 1", "Season 2", "Season 3"])
+        #expect(harness.server.requestCount(for: "/anime/meta/series/kitsu%3A1.json") == 1)
+
+        // A title with no such links has no run, and asks for nothing more.
+        harness.server.respond(to: "/anime/meta/series/kitsu%3A7.json", with: .json(meta(7, prequel: nil, sequel: nil)))
+        let alone = DetailModel(route: MediaRoute(type: .series, id: "kitsu:7"), client: harness.client)
+        await alone.load(addons: [addon])
+        await alone.waitForFranchise()
+        #expect(alone.franchise.isEmpty)
+    }
+
+    @Test("Choosing another season shows its page in place of this one")
+    func showsInstead() {
+        let model = AppModel(dependencies: .ephemeral(http: StubHTTPClient(data: Data())))
+        model.path = [MediaRoute(type: .movie, id: "tt1"), MediaRoute(type: .series, id: "kitsu:1")]
+        model.showInstead(MetaItem(id: "kitsu:2", type: .series, name: "Show 2"))
+        #expect(model.path.map(\.id) == ["tt1", "kitsu:2"])
+        model.path = []
+        model.showInstead(MetaItem(id: "kitsu:2", type: .series, name: "Show 2"))
+        #expect(model.path.map(\.id) == ["kitsu:2"])
+    }
+}

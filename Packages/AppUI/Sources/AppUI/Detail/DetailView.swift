@@ -12,12 +12,14 @@ struct DetailScreen: View {
     private let playBest: @MainActor (DetailModel) -> Void
     private let didAppear: @MainActor (DetailModel) -> Void
     private let playWhenReady: @MainActor (DetailModel) async -> Void
+    private let showInstead: @MainActor (MetaItem) -> Void
 
     init(route: MediaRoute, appModel: AppModel) {
         _model = State(initialValue: appModel.detailModel(for: route))
         playBest = { [appModel] in appModel.playBestStream(of: $0) }
         didAppear = { [appModel] in appModel.detailDidAppear($0) }
         playWhenReady = { [appModel] in await appModel.playWhenReady($0) }
+        showInstead = { [appModel] in appModel.showInstead($0) }
         registry = appModel.registry
         streamPlayer = appModel.streamPlayer
         library = appModel.library
@@ -32,7 +34,7 @@ struct DetailScreen: View {
             streamPlayer.play(choice, for: video)
         }, playBest: {
             playBest(model)
-        }, retry: {
+        }, showTitle: showInstead, retry: {
             Task { await model.load(addons: registry.addons) }
         })
         .task(id: registry.addons.map(\.id)) {
@@ -55,6 +57,8 @@ struct DetailView: View {
     var playStream: (StreamChoice) -> Void = { _ in }
     /// Plays the stream the app thinks best.
     var playBest: () -> Void = {}
+    /// Shows another title's page in place of this one: another season of the same series.
+    var showTitle: (MetaItem) -> Void = { _ in }
     let retry: () -> Void
 
     @State private var trailer: YouTubeVideoID?
@@ -88,6 +92,7 @@ struct DetailView: View {
                     if model.isSingleVideo, !showsPlayFirst {
                         streams
                     }
+                    franchise
                     videos
                 }
                 .padding(.horizontal, Theme.gutter)
@@ -260,12 +265,39 @@ struct DetailView: View {
         }
     }
 
+    /// The other seasons, where the catalog lists each season as a title of its own: choosing
+    /// one shows that title's page in place of this one.
+    @ViewBuilder private var franchise: some View {
+        if model.franchise.count > 1 {
+            ScrollView(.horizontal) {
+                PillPicker(
+                    options: model.franchise,
+                    selection: model.franchise.first { $0.id == model.route.id },
+                    title: \.label,
+                    select: { entry in
+                        if entry.id != model.route.id {
+                            showTitle(entry.item)
+                        }
+                    },
+                    label: "Season"
+                )
+                .padding(1)
+            }
+            .scrollIndicators(.hidden)
+            .frame(maxWidth: 900, alignment: .leading)
+            .transition(.opacity)
+        }
+    }
+
     @ViewBuilder private var videos: some View {
         if !model.seasons.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     // A handful of seasons fit in a row of capsules; more than that take a menu.
-                    if model.seasons.count <= 8 {
+                    if model.seasons.count == 1, model.franchise.count > 1 {
+                        // The row above already says which season this is.
+                        EmptyView()
+                    } else if model.seasons.count <= 8 {
                         PillPicker(
                             options: model.seasons,
                             selection: model.selectedSeason,

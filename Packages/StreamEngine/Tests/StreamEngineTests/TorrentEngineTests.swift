@@ -202,7 +202,13 @@ struct TorrentEngineTests {
         let lastAhead = try #require(arrivals.lastIndex { $0 >= jumpPiece })
         let firstSkipped = try #require(arrivals.firstIndex { skipped.contains($0) })
         #expect(firstSkipped > lastAhead)
-        #expect(worstLead(of: arrivals, from: jumpPiece, ignoring: 0 ..< 0) <= 4)
+        // The file's last two megabytes are asked for at the same moment, and one of those
+        // pieces can be on its way before the reader has said where it starts: it says nothing
+        // about the order of what follows the jump. (Not allowing for it made this fail on a
+        // busy machine, three times in some twenty full runs.)
+        let pieceCount = size / pieceLength
+        let tail = pieceCount - (2 << 20) / pieceLength ..< pieceCount
+        #expect(worstLead(of: arrivals, from: jumpPiece, ignoring: tail) <= 4)
     }
 
     @Test("With nobody to ask, waiting for the description gives up after the timeout")

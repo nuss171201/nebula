@@ -191,6 +191,17 @@ public final class AppModel {
         path.append(MediaRoute(type: video.type, id: video.titleID))
     }
 
+    /// Shows a title's page in place of the one that is showing (another season of the same
+    /// series), so that Back leads to where the user came from and not through every season.
+    public func showInstead(_ item: MetaItem) {
+        let route = MediaRoute(item: item)
+        if path.isEmpty {
+            path.append(route)
+        } else {
+            path[path.count - 1] = route
+        }
+    }
+
     /// Opens a title's page and has it play: a film at once, a series from where it was left.
     /// With no add-on that offers streams, the page opens and says so.
     public func play(_ item: MetaItem) {

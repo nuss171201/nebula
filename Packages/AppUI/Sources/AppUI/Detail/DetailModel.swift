@@ -20,6 +20,9 @@ public final class DetailModel {
     /// Season numbers in display order: regular seasons ascending, specials (season 0) last.
     public private(set) var seasons: [Int] = []
     public var selectedSeason: Int?
+    /// The titles this one belongs with, in order, itself among them: the other seasons of a
+    /// series whose catalog lists each season as a title of its own. Empty when there are none.
+    public private(set) var franchise: [FranchiseEntry] = []
     /// The streams of the film, or of the episode whose streams are showing.
     public let streams: StreamListModel
     /// The episode whose streams are showing, if any.
@@ -38,6 +41,10 @@ public final class DetailModel {
     @ObservationIgnored private let client: AddonClient
     @ObservationIgnored private let library: LibraryCenter?
     @ObservationIgnored private var addons: [InstalledAddon] = []
+    @ObservationIgnored private var franchiseTask: Task<Void, Never>?
+    /// At most this many titles are followed in each direction: a catalog whose links went
+    /// round in a circle, or on for ever, must not keep the page asking.
+    nonisolated static let franchiseReach = 20
 
     public init(
         route: MediaRoute,
@@ -230,6 +237,7 @@ public final class DetailModel {
             do {
                 let full = try await client.meta(type: route.type, id: route.id, from: provider.address)
                 apply(full)
+                loadFranchise(around: full, from: provider.address)
                 return
             } catch {
                 if error.isCancellation {
@@ -239,6 +247,39 @@ public final class DetailModel {
             }
         }
         phase = .failed(lastError.userMessage)
+    }
+
+    /// Follows the title's "prequel" and "sequel" links both ways, in the background, and
+    /// lists what it finds. The page is up meanwhile; the list appears when it is whole.
+    private func loadFranchise(around full: MetaItem, from address: AddonTransportURL) {
+        franchiseTask?.cancel()
+        guard Franchise.neighbour(.prequel, of: full) != nil || Franchise.neighbour(.sequel, of: full) != nil else {
+            franchise = []
+            return
+        }
+        franchiseTask = Task { [client] in
+            var seen: Set<String> = [full.id]
+            func follow(_ relation: Franchise.Relation) async -> [MetaItem] {
+                var found: [MetaItem] = []
+                var current = full
+                while found.count < Self.franchiseReach, !Task.isCancelled,
+                      let next = Franchise.neighbour(relation, of: current), seen.insert(next.id).inserted,
+                      let item = try? await client.meta(type: next.type, id: next.id, from: address) {
+                    found.append(item)
+                    current = item
+                }
+                return found
+            }
+            let before = await follow(.prequel)
+            let after = await follow(.sequel)
+            guard !Task.isCancelled, !before.isEmpty || !after.isEmpty else { return }
+            franchise = Franchise.entries(for: before.reversed() + [full] + after)
+        }
+    }
+
+    /// Waits for the other seasons to be found. For tests.
+    func waitForFranchise() async {
+        await franchiseTask?.value
     }
 
     private func apply(_ full: MetaItem) {

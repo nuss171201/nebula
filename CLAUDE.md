@@ -516,6 +516,14 @@ StreamPlayer ─┬─ web address ───────────────
   type the add-ons have. **Default add-ons come in rounds** (`DefaultAddon.round`, `since` in the JSON):
   a later round is installed once into a profile that has the earlier ones, and a default the user
   removed is never put back.
+- **A series whose catalog lists each season as a title of its own** (Kitsu does) shows them all as
+  seasons: `Franchise` reads the "Prequel:" and "Sequel:" links in the category "Franchise"
+  (`stremio:///detail/<type>/<id>`, the protocol's address for a title's page; nothing else is
+  followed), `DetailModel.loadFranchise` walks them both ways in the background (twenty at most each
+  way, never the same title twice), and choosing one shows that title's page in place of this one
+  (`AppModel.showInstead`). Series in the run are numbered in order, so a special or an OVA the
+  catalog files as a series gets a season number too; a film keeps its name. Each season is still its
+  own title for the library and the watch history. Seen in the app on one title; not clicked.
 - **The look lives in `Components/Theme.swift`**: the accent gradient, card fills that follow light and
   dark, the button styles (`ProminentPillButtonStyle`, `PillButtonStyle`, `CardButtonStyle`,
   `IconButtonStyle`), `PillPicker`, `Chip`, `GradientProgressBar`, and `AppBackground` behind every
@@ -548,8 +556,9 @@ at 93 % over a torrent seeded at 900 kB/s. Carried over or not verified:
   when its only peer is on this machine (seen in a test: stuck part-way through a piece for a minute,
   one run in four). The test now holds the sender back instead and passed ten runs of ten. Whether a
   user's download limit (Settings → Streaming) can do the same in a real swarm is not known; with many
-  peers it has not been seen. `carriesOnFromAJump` failed twice in a dozen full runs while that test
-  was stalling beside it, and not once in the ten runs since.
+  peers it has not been seen. `carriesOnFromAJump` also failed three times in some twenty full runs, for a
+  reason of its own: it counted a piece from the file's end (asked for when the file is opened) as
+  running ahead of the reader. It now leaves those out, as its sibling test always did.
 - The first `ci.sh` in a fresh worktree fetched the pinned mpv and FFmpeg archives again (the frameworks
   had been copied from the main checkout without their stamps): copy `Vendor/cache` too next time.
 

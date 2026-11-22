@@ -86,10 +86,8 @@ struct PlayerControls: View {
         }
         Button(action: model.togglePause) {
             Image(systemName: playSymbol)
-                .font(.title3)
-                .foregroundStyle(.black)
-                .frame(width: 34, height: 34)
-                .background(.white, in: Circle())
+                .font(.title2)
+                .frame(width: 28, height: 28)
                 .contentTransition(.symbolEffect(.replace))
         }
         .accessibilityLabel(state.isAdvancing ? "Pause" : "Play")
