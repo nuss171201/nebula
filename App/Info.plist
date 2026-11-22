@@ -127,8 +127,12 @@
 	<string>$(UPDATE_FEED_URL)</string>
 	<key>SUPublicEDKey</key>
 	<string>$(UPDATE_PUBLIC_KEY)</string>
+	<key>PartyServerURL</key>
+	<string>$(PARTY_SERVER_URL)</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>$(BRAND_NAME) looks for people sharing a stream on your network, and asks your router to let others reach it.</string>
+	<string>$(BRAND_NAME) looks for people sharing a stream on your network, asks your router to let others reach it, and connects directly to friends in a watch party who are on the same network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>$(BRAND_NAME) uses the microphone only while you are in a watch party's voice chat, so that your friends can hear you.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

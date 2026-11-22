@@ -6,6 +6,12 @@
 # libdovi, LuaJIT), the text is taken at a fixed commit: these licences do not change between versions.
 # libtorrent's and Boost's texts come out of their source archives (Scripts/build-torrent-framework.sh).
 #
+# What WebRTC itself contains comes from Google's own repositories, at the revisions that WebRTC's
+# dependency file pins for the commit the framework was built from (branch-heads/8127, commit
+# fb1c41a93d92d4188f068f437d80ef2c4b50c3a9, as the stasel/WebRTC release notes for 158.0.0 give it).
+# Those servers hand a file out in base64 (the address ends in ?format=TEXT); the script decodes it,
+# and the hash here is of the text.
+#
 # Format: <file name> <sha256> <url>. The script refuses a download whose hash differs.
 mpv-LICENSE.LGPL.txt         72b672113d642cbb8ef5dcc76938db801983c56e50b1400ab930f1a64d6dc8d9 https://raw.githubusercontent.com/mpv-player/mpv/v0.41.0/LICENSE.LGPL
 mpv-Copyright.txt            bfe9ee4cceabcb8ecbfadf208d04156f73d801e6a57369a5606bb8341e204a23 https://raw.githubusercontent.com/mpv-player/mpv/v0.41.0/Copyright
@@ -38,3 +44,30 @@ Nettle-COPYING.LESSERv3.txt  e3a994d82e644b03a792a930f574002658412f62407f5fee083
 GMP-COPYING.LESSERv3.txt     a853c2ffec17057872340eee242ae4d96cbf2b520ae27d903e1b2fef1a5f9d1c https://raw.githubusercontent.com/alisw/GMP/2bbd52703e5af82509773264bfbd20ff8464804f/COPYING.LESSERv3
 GRDB-LICENSE.txt             9853f9dce81365fcc1d9b46004633354450164b8d17904e92e80c444545f7e87 https://raw.githubusercontent.com/groue/GRDB.swift/v7.12.0/LICENSE
 Sparkle-LICENSE.txt          389a4e4e9a32f059775b13a06e25a591445ba229d2838d26dd3e7c0c45127cfe https://raw.githubusercontent.com/sparkle-project/Sparkle/2.10.1/LICENSE
+WebRTC-LICENSE.txt           843529896bae499c92af3ecade86855128f930334ba97530695ccecef56e966d https://raw.githubusercontent.com/stasel/WebRTC/158.0.0/LICENSE.md
+WebRTC-PATENTS.txt                01462e2068d1a04c2274f3389773014c14ed9bc3446b28303543bd3e3c064145 https://webrtc.googlesource.com/src/+/fb1c41a93d92d4188f068f437d80ef2c4b50c3a9/PATENTS?format=TEXT
+WebRTC-fft-LICENSE.txt            6fdbabd2c95c5efc6f1e46175278239afb9343120a3022ed0e0cb04267a6aeb3 https://webrtc.googlesource.com/src/+/fb1c41a93d92d4188f068f437d80ef2c4b50c3a9/modules/third_party/fft/LICENSE?format=TEXT
+WebRTC-g711-LICENSE.txt           b29c8f13f91feb2dab7d6655444369fa9f29c0d7121a52dab90ff97e40343a85 https://webrtc.googlesource.com/src/+/fb1c41a93d92d4188f068f437d80ef2c4b50c3a9/modules/third_party/g711/LICENSE?format=TEXT
+WebRTC-g722-LICENSE.txt           61862327fd00d6a4deb2c1276577782c2500f4fe103e072018fc369d8e37e876 https://webrtc.googlesource.com/src/+/fb1c41a93d92d4188f068f437d80ef2c4b50c3a9/modules/third_party/g722/LICENSE?format=TEXT
+WebRTC-ooura-LICENSE.txt          25b7731b70c77ecd5f3bb19303fbaa99be18860f81d44f71da670fdcd04829db https://webrtc.googlesource.com/src/+/fb1c41a93d92d4188f068f437d80ef2c4b50c3a9/common_audio/third_party/ooura/LICENSE?format=TEXT
+WebRTC-spl_sqrt_floor-LICENSE.txt 41d791701e3e1c1073470403de7e342442d1e6a2af72681023b13a2f45f2125c https://webrtc.googlesource.com/src/+/fb1c41a93d92d4188f068f437d80ef2c4b50c3a9/common_audio/third_party/spl_sqrt_floor/LICENSE?format=TEXT
+Abseil-LICENSE.txt                c79a7fea0e3cac04cd43f20e7b648e5a0ff8fa5344e644b0ee09ca1162b62747 https://chromium.googlesource.com/chromium/src/third_party/+/c6f3635342a0d1adc2b7f2f3cb36bb742ad420d8/abseil-cpp/LICENSE?format=TEXT
+BoringSSL-LICENSE.txt             827c8d8fc207c2392794eef9e00fe246f9f61fdcc132556c275be3dd8c3cd97f https://boringssl.googlesource.com/boringssl/+/af41e135bc1714981fb8a791e9dda4fc6ff140c3/LICENSE?format=TEXT
+fiat-crypto-LICENSE.txt           9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f https://boringssl.googlesource.com/boringssl/+/af41e135bc1714981fb8a791e9dda4fc6ff140c3/third_party/fiat/LICENSE?format=TEXT
+crc32c-LICENSE.txt                a1f30b77c01e0995fa32a00119e00749e8731ee8a3c4c3549bce74083c72b0b6 https://chromium.googlesource.com/external/github.com/google/crc32c/+/2bbb3be42e20a0e6c0f7b39dc07dc863d9ffbc07/LICENSE?format=TEXT
+dav1d-WebRTC-LICENSE.txt          2da4494d2a8b5c742afbb905b10621e40129284c977ac138e3081ed0d9d83aed https://chromium.googlesource.com/chromium/src/third_party/+/c6f3635342a0d1adc2b7f2f3cb36bb742ad420d8/dav1d/LICENSE?format=TEXT
+libaom-LICENSE.txt                4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2 https://aomedia.googlesource.com/aom/+/5d7dc4b2b95c2b2fa7879699b782971c491348ef/LICENSE?format=TEXT
+libaom-PATENTS.txt                661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61 https://aomedia.googlesource.com/aom/+/5d7dc4b2b95c2b2fa7879699b782971c491348ef/PATENTS?format=TEXT
+libcxx-LICENSE.txt                539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx/+/97b436da4c33663581d394f4ee0a5977fc38c2f4/LICENSE.TXT?format=TEXT
+libcxxabi-LICENSE.txt             e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi/+/440f88852530ac197479edb1463dda1916692cce/LICENSE.TXT?format=TEXT
+libsrtp-LICENSE.txt               8e19d42a1eec9561f3f347253ddf2e385c55f392f025bb0fd41b88dbf38db5ae https://chromium.googlesource.com/chromium/deps/libsrtp/+/cd5d177bf1fde755ddb4c7f0d9ff7693f8b49e5e/LICENSE?format=TEXT
+libvpx-LICENSE.txt                8267348d5af1262c11d1a08de2f5afc77457755f1ac658627dd9acf71011d615 https://chromium.googlesource.com/webm/libvpx/+/37f48364a79f1c887682d78dd6098b914778b6b6/LICENSE?format=TEXT
+libvpx-PATENTS.txt                cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c https://chromium.googlesource.com/webm/libvpx/+/37f48364a79f1c887682d78dd6098b914778b6b6/PATENTS?format=TEXT
+libyuv-LICENSE.txt                2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f https://chromium.googlesource.com/libyuv/libyuv/+/1e2e3a35993609da1d89ac170b907719d555f4b3/LICENSE?format=TEXT
+Opus-COPYING.txt                  01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551 https://chromium.googlesource.com/chromium/src/third_party/+/c6f3635342a0d1adc2b7f2f3cb36bb742ad420d8/opus/src/COPYING?format=TEXT
+pffft-LICENSE.txt                 a46200592eb193853527250da098e6bb0c75424e7a2c7db8da526c4f301c3d88 https://chromium.googlesource.com/chromium/src/third_party/+/c6f3635342a0d1adc2b7f2f3cb36bb742ad420d8/pffft/LICENSE?format=TEXT
+protobuf-LICENSE.txt              6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d https://chromium.googlesource.com/chromium/src/third_party/+/c6f3635342a0d1adc2b7f2f3cb36bb742ad420d8/protobuf/LICENSE?format=TEXT
+RNNoise-COPYING.txt               e2f59ff41d9d03adc3dcf3deff170f8c8cf4a6eb4a9b174762a7656d23200ffa https://chromium.googlesource.com/chromium/src/third_party/+/c6f3635342a0d1adc2b7f2f3cb36bb742ad420d8/rnnoise/COPYING?format=TEXT
+Rust-LICENSE-APACHE.txt           62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a https://chromium.googlesource.com/external/github.com/rust-lang/rust/+/8a9dd7abdf013ec10cfeaaa3685feba18ef1c90c/LICENSE-APACHE?format=TEXT
+Rust-LICENSE-MIT.txt              b71bd43a069ca0641a9ecfe585ca7b3c53b5cc1608f8b68321168698e28b5ea1 https://chromium.googlesource.com/external/github.com/rust-lang/rust/+/8a9dd7abdf013ec10cfeaaa3685feba18ef1c90c/LICENSE-MIT?format=TEXT
+cxx-LICENSE-MIT.txt               23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3 https://chromium.googlesource.com/chromium/src/third_party/+/c6f3635342a0d1adc2b7f2f3cb36bb742ad420d8/rust/chromium_crates_io/vendor/cxx-v1/LICENSE-MIT?format=TEXT

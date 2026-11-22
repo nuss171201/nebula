@@ -117,6 +117,10 @@ public struct PlayerView: View {
                 PlayerQueuePanel(model: model, chrome: chrome)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .transition(panelTransition)
+            } else if chrome.isAccessoryVisible, let accessory = chrome.accessory {
+                PlayerAccessoryPanel(accessory: accessory, chrome: chrome)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .transition(panelTransition)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: chrome.isSidePanelVisible)

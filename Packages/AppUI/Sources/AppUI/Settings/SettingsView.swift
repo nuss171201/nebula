@@ -1,6 +1,7 @@
 import AppKit
 import PlayerKit
 import SwiftUI
+import WatchParty
 
 /// Content of the Settings window (⌘,).
 public struct SettingsView: View {
@@ -70,8 +71,31 @@ struct GeneralSettingsPane: View {
                 Toggle("Show Featured Titles", isOn: $model.settings.showsFeatured)
                 Toggle("Show Continue Watching", isOn: $model.settings.showsContinueWatching)
             }
+            Section {
+                TextField("Your name", text: $model.settings.partyName, prompt: Text(PartyCenter.defaultName))
+                TextField("Party server", text: $model.settings.partyServer, prompt: Text("https://…"))
+                    .autocorrectionDisabled()
+            } header: {
+                Text("Watch Party")
+            } footer: {
+                Text(partyFootnote)
+            }
         }
         .formStyle(.grouped)
+    }
+}
+
+extension GeneralSettingsPane {
+    /// What the party server is, and whether what was typed can be used as one.
+    var partyFootnote: String {
+        let typed = model.settings.partyServer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !typed.isEmpty, PartyServer(typed) == nil {
+            return "That is not an address that can be used: it has to start with https://."
+        }
+        return """
+        The party server lets the apps in a party find each other; what they say then goes directly between them. \
+        Leave it empty to use the one this app came with, if it came with one. An invitation link always names its own.
+        """
     }
 }
 

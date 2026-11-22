@@ -64,6 +64,13 @@ public struct AppSettings: Sendable, Equatable, Codable {
     public var usesLocalDiscovery = true
     public var mapsPorts = true
 
+    // MARK: Watch party
+
+    /// The name others in a party see; empty uses the person's first name as the Mac knows it.
+    public var partyName = ""
+    /// The signalling server new parties are started at; empty uses the one the app came with.
+    public var partyServer = ""
+
     public static let cacheLimitRange = 1.0 ... 500.0
     public static let connectionsRange = 20 ... 1000
     public static let countdownRange = 3 ... 60
@@ -99,6 +106,8 @@ public struct AppSettings: Sendable, Equatable, Codable {
         usesDHT = read(.usesDHT, defaults.usesDHT)
         usesLocalDiscovery = read(.usesLocalDiscovery, defaults.usesLocalDiscovery)
         mapsPorts = read(.mapsPorts, defaults.mapsPorts)
+        partyName = read(.partyName, defaults.partyName)
+        partyServer = read(.partyServer, defaults.partyServer)
         self = clamped
     }
 

@@ -17,11 +17,12 @@ let package = Package(
         .package(path: "../MediaLibrary"),
         .package(path: "../StreamEngine"),
         .package(path: "../PlayerKit"),
+        .package(path: "../WatchParty"),
     ],
     targets: [
         .target(
             name: "AppUI",
-            dependencies: ["MediaCore", "MediaLibrary", "StreamEngine", "PlayerKit"],
+            dependencies: ["MediaCore", "MediaLibrary", "StreamEngine", "PlayerKit", "WatchParty"],
             swiftSettings: strictSettings
         ),
         .testTarget(
@@ -31,6 +32,8 @@ let package = Package(
                 "MediaCore",
                 "MediaLibrary",
                 .product(name: "AddonTestSupport", package: "MediaCore"),
+                "WatchParty",
+                .product(name: "WatchPartyTestSupport", package: "WatchParty"),
             ],
             swiftSettings: strictSettings
         ),

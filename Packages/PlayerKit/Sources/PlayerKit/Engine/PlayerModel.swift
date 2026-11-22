@@ -53,10 +53,26 @@ public final class PlayerModel {
     public var speed = PlaybackSpeed.normal {
         didSet {
             if speed != oldValue {
-                client.set("speed", to: .double(speed.value))
+                applySpeed()
+                report(.speed(speed.value))
             }
         }
     }
+
+    /// Called when the person at the player pauses, resumes, jumps or changes speed themselves.
+    @ObservationIgnored public var onPlaybackIntent: (@MainActor (PlaybackIntent) -> Void)?
+    /// A factor close to 1 on top of `speed`; see `PlayerModel+Following.swift`.
+    @ObservationIgnored public var speedAdjustment = 1.0 {
+        didSet {
+            if speedAdjustment != oldValue {
+                applySpeed()
+            }
+        }
+    }
+
+    @ObservationIgnored var isFollowingExternal = false
+    /// When the person's own jump was asked for, until it has landed and been reported.
+    @ObservationIgnored var userSeekRequestedAt: ContinuousClock.Instant?
 
     public internal(set) var abLoop = ABLoop.off
 
@@ -232,6 +248,7 @@ public final class PlayerModel {
             seek(to: 0)
         }
         client.set("pause", to: .flag(isPaused))
+        report(.setPaused(isPaused))
     }
 
     public func togglePause() {
@@ -247,6 +264,7 @@ public final class PlayerModel {
         let target = min(max(seconds, 0), state.duration ?? .greatestFiniteMagnitude)
         unconfirmedSeek = (target, 1)
         client.command(["seek", String(target), "absolute+exact"])
+        noteSeek()
     }
 
     /// Moves the playhead by a number of seconds (negative to go back), frame-accurately.
@@ -254,6 +272,7 @@ public final class PlayerModel {
         guard state.hasMedia else { return }
         unconfirmedSeek = nil
         client.command(["seek", String(seconds), "relative+exact"])
+        noteSeek()
     }
 
     /// Finishes a drag on the seek bar: jump to where the user let go.
@@ -262,32 +281,6 @@ public final class PlayerModel {
         scrubPosition = nil
         state.position = target
         seek(to: target)
-    }
-
-    /// Sets the volume, 0–100.
-    public func setVolume(_ volume: Double) {
-        let clamped = min(max(volume, 0), 100)
-        state.volume = clamped
-        client.set("volume", to: .double(clamped))
-        if clamped > 0, state.isMuted {
-            setMuted(false)
-        }
-        rememberVolumeSoon()
-    }
-
-    public func setMuted(_ isMuted: Bool) {
-        state.isMuted = isMuted
-        client.set("mute", to: .flag(isMuted))
-        rememberVolumeSoon()
-    }
-
-    public func toggleMute() {
-        setMuted(!state.isMuted)
-    }
-
-    /// Closes the current file but keeps the player ready for another.
-    public func stop() {
-        client.command(["stop"])
     }
 
     /// Checks that an absolute seek landed where it was aimed, and repeats it once if not.
@@ -393,6 +386,7 @@ public final class PlayerModel {
             savePosition()
         case .playbackRestarted:
             confirmSeek()
+            reportLandedSeek()
             checkAudioDecoding()
             if let openedAt, timeToFirstFrame == nil {
                 let elapsed = ContinuousClock.now - openedAt

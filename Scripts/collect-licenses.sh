@@ -2,7 +2,8 @@
 # Collects the licence texts of the third-party code the app ships into Vendor/Licenses/,
 # which the app bundles as Resources/Licenses and shows in its Acknowledgements window.
 #
-# Inputs:  Config/licenses.lock (file name, sha256, url); downloads are verified.
+# Inputs:  Config/licenses.lock (file name, sha256, url); downloads are verified. An address ending
+#          in ?format=TEXT is one of Google's source servers, which answer in base64: it is decoded first.
 #          Packages/StreamEngine/Vendor/Libtorrent.xcframework/Licenses (libtorrent, Boost),
 #          written by Scripts/build-torrent-framework.sh from the source archives.
 # Cache:   Vendor/cache/licenses/ (git-ignored).
@@ -35,6 +36,11 @@ while read -r name sha url; do
     if [[ ! -f "$cached" ]] || [[ "$(shasum -a 256 "$cached" | cut -d' ' -f1)" != "$sha" ]]; then
         echo "downloading $name"
         curl --fail --silent --show-error --location --max-time 120 -o "$cached.part" "$url"
+        if [[ "$url" == *"?format=TEXT" ]]; then
+            # Google's source servers hand a file out in base64; the hash in the lock is of the text.
+            base64 -d <"$cached.part" >"$cached.text" || { rm -f "$cached.part" "$cached.text"; fail "$name did not decode"; }
+            mv "$cached.text" "$cached.part"
+        fi
         [[ "$(shasum -a 256 "$cached.part" | cut -d' ' -f1)" == "$sha" ]] \
             || { rm -f "$cached.part"; fail "$name does not match the hash in $LOCK"; }
         mv "$cached.part" "$cached"

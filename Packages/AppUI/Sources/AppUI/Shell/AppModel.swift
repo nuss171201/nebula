@@ -3,6 +3,7 @@ import MediaCore
 import MediaLibrary
 import Observation
 import PlayerKit
+import WatchParty
 
 /// Root view model: owns navigation state and the per-screen view models, and
 /// keeps them in step with the installed add-ons.
@@ -26,6 +27,7 @@ public final class AppModel {
     public let downloads: DownloadCenter
     /// The Anime section's board: the catalogs of anime, with a banner of their own.
     public let anime: HomeModel
+    public let party: PartyCenter
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -69,12 +71,7 @@ public final class AppModel {
     ) {
         self.dependencies = dependencies
         let client = dependencies.addonClient
-        registry = AddonRegistry(
-            client: client,
-            store: dependencies.addonStore,
-            settings: dependencies.settings,
-            defaults: dependencies.defaultAddons
-        )
+        registry = AddonRegistry(client: client, store: dependencies.addonStore, settings: dependencies.settings, defaults: dependencies.defaultAddons)
         // Anime has a section of its own, so Home leaves it out.
         home = HomeModel(client: client) { !$0.isAnime }
         anime = HomeModel(client: client) { $0.isAnime }
@@ -119,14 +116,14 @@ public final class AppModel {
         streamPlayer.onSessionSpeed = { [settings] rate in
             settings.noteStreamSession(bestRate: rate)
         }
+        party = PartyCenter(environment: dependencies.party, settings: settings, coordinator: player, streamPlayer: streamPlayer)
         selection = initialSection
         currentSection = initialSection
         usesStartSection = initialSection == .home
         let subsystem = dependencies.branding.bundleIdentifier
         self.reportMilestone = reportMilestone ?? { LaunchMetrics.report($0, subsystem: subsystem) }
-        home.onFirstContent = { [weak self] in
-            self?.reached(.homeContent)
-        }
+        home.onFirstContent = { [weak self] in self?.reached(.homeContent) }
+        party.onOpenContent = { [weak self] reference in self?.open(reference) }
     }
 
     public var branding: AppBranding {
@@ -207,6 +204,18 @@ public final class AppModel {
     public func play(_ item: MetaItem) {
         pendingPlays.insert(item.id)
         path.append(MediaRoute(item: item))
+    }
+
+    /// Opens the page of what a watch party is watching, on the episode in question, so that the
+    /// person can choose their own stream for it.
+    public func open(_ reference: PartyContent.CatalogReference) {
+        if reference.videoID != reference.titleID {
+            pendingEpisodes[reference.titleID] = reference.videoID
+        }
+        let route = MediaRoute(type: MediaType(rawValue: reference.type), id: reference.titleID)
+        if path.last != route {
+            path.append(route)
+        }
     }
 
     /// Plays one of the streams listed on the detail page that was opened last, as a click on

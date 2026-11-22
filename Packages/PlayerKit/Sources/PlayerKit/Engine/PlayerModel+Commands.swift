@@ -59,7 +59,7 @@ extension PlayerModel {
     }
 
     /// Shows a message over the picture. A newer message replaces an older one.
-    func announce(_ text: String) {
+    public func announce(_ text: String) {
         noticeCount += 1
         notice = PlayerNotice(id: noticeCount, text: text)
     }

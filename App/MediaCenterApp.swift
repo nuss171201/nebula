@@ -3,6 +3,7 @@ import MediaCore
 import os
 import PlayerKit
 import SwiftUI
+import WatchParty
 
 /// App entry point and composition root: builds the dependency graph and hands
 /// it to the UI package. No feature logic lives in this target.
@@ -25,6 +26,7 @@ struct MediaCenterApp: App {
         .defaultSize(width: 1280, height: 800)
         .commands {
             PlaybackCommands(model: model)
+            PartyCommands(center: model.party)
             AcknowledgementsCommands()
             UpdaterCommands(updater: updater)
         }
@@ -57,7 +59,8 @@ struct MediaCenterApp: App {
                 additionalEngineOptions: engineOptions,
                 profileDirectory: profile,
                 // A check with a scratch profile streams only between programs on this machine.
-                streamsStayLocal: profile != nil
+                streamsStayLocal: profile != nil,
+                partyServer: PartyEnvironment.builtInServer(infoDictionary: Bundle.main.infoDictionary)
             )
         )
         #if DEBUG

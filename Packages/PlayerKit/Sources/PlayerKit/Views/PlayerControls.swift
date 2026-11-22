@@ -34,6 +34,9 @@ struct PlayerControls: View {
                 if !state.chapters.isEmpty {
                     chapterMenu
                 }
+                if let accessory = chrome.accessory {
+                    AccessoryButton(accessory: accessory, chrome: chrome)
+                }
                 Button {
                     chrome.isQueueVisible.toggle()
                 } label: {

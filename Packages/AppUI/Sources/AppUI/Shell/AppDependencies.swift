@@ -3,6 +3,7 @@ import MediaCore
 import MediaLibrary
 import PlayerKit
 import StreamEngine
+import WatchParty
 
 /// The long-lived services the UI is built from. Created once by the app target.
 public struct AppDependencies: Sendable {
@@ -28,6 +29,8 @@ public struct AppDependencies: Sendable {
     public let streamManager: StreamManager
     /// Finds and downloads subtitles through installed add-ons.
     public let subtitleService: AddonSubtitleService
+    /// What watch parties were started with: the built-in server, and whether they stay on this machine.
+    public let party: PartyEnvironment
     /// Where the user can keep an `mpv.conf` and an `input.conf`; `nil` reads none.
     public let engineConfigFolder: EngineConfigFolder?
     /// Set when something went wrong during startup that the user should know about.
@@ -45,6 +48,7 @@ public struct AppDependencies: Sendable {
         streamManager: StreamManager? = nil,
         subtitleHTTP: (any HTTPClient)? = nil,
         subtitleDirectory: URL? = nil,
+        party: PartyEnvironment? = nil,
         engineConfigFolder: EngineConfigFolder? = nil,
         downloadsDirectory: URL? = nil,
         startupWarning: String? = nil
@@ -82,6 +86,8 @@ public struct AppDependencies: Sendable {
             directory: subtitleDirectory ?? FileManager.default.temporaryDirectory
                 .appendingPathComponent("subtitles-\(UUID().uuidString)", isDirectory: true)
         )
+        // Without word from the app (tests, previews): on this machine only, and no voice.
+        self.party = party ?? Self.partyEnvironment(branding)
         self.engineConfigFolder = engineConfigFolder
         self.startupWarning = startupWarning
     }
@@ -95,14 +101,16 @@ public struct AppDependencies: Sendable {
     ///   - profileDirectory: Keeps the database and caches in this folder instead of the user's
     ///     own, so that a check can install add-ons and stream without touching their data.
     ///   - streamsStayLocal: Keeps the stream engine to this machine (no trackers' peers, no
-    ///     hash table, no router). For checks.
+    ///     hash table, no router), and watch parties too. For checks.
+    ///   - partyServer: The signalling server the build came with, for watch parties.
     public static func live(
         branding: AppBranding,
         defaultAddons: [DefaultAddon],
         playsAudio: Bool = true,
         additionalEngineOptions: [PlayerConfiguration.EngineOption] = [],
         profileDirectory: URL? = nil,
-        streamsStayLocal: Bool = false
+        streamsStayLocal: Bool = false,
+        partyServer: PartyServer? = nil
     ) -> AppDependencies {
         let files = FileManager.default
         let support = profileDirectory?.appendingPathComponent("Support", isDirectory: true)
@@ -167,14 +175,28 @@ public struct AppDependencies: Sendable {
             ),
             subtitleHTTP: apiClient,
             subtitleDirectory: (caches ?? files.temporaryDirectory).appendingPathComponent("Subtitles", isDirectory: true),
+            // A silent run must neither open the microphone nor play anyone's voice.
+            party: partyEnvironment(branding, server: partyServer, staysOnThisMachine: streamsStayLocal, allowsVoice: playsAudio),
             engineConfigFolder: support.map(EngineConfigFolder.init(directory:)),
             // Movies/<app name>: where a person would look for films, and a folder macOS lets an
             // app write to without asking. A check's profile keeps its downloads to itself.
-            downloadsDirectory: profileDirectory?.appendingPathComponent("Downloads", isDirectory: true)
-                ?? files.urls(for: .moviesDirectory, in: .userDomainMask).first?
-                .appendingPathComponent(branding.name, isDirectory: true),
+            downloadsDirectory: downloadsDirectory(named: branding.name, profile: profileDirectory),
             startupWarning: warning
         )
+    }
+
+    private static func partyEnvironment(
+        _ branding: AppBranding, server: PartyServer? = nil, staysOnThisMachine: Bool = true, allowsVoice: Bool = false
+    ) -> PartyEnvironment {
+        PartyEnvironment(
+            builtInServer: server, staysOnThisMachine: staysOnThisMachine, allowsVoice: allowsVoice,
+            appName: branding.name, userAgent: branding.userAgent, logSubsystem: branding.bundleIdentifier
+        )
+    }
+
+    private static func downloadsDirectory(named name: String, profile: URL?) -> URL? {
+        profile?.appendingPathComponent("Downloads", isDirectory: true)
+            ?? FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first?.appendingPathComponent(name, isDirectory: true)
     }
 
     /// Nothing touches the disk; network calls go through `http`. For previews and tests.

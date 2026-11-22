@@ -31,6 +31,8 @@ packages:
     path: Packages/PlayerKit
   AppUI:
     path: Packages/AppUI
+  WatchParty:
+    path: Packages/WatchParty
   # Pinned exactly, like the packages' own dependencies: the generated project is not committed.
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
@@ -62,6 +64,7 @@ targets:
       - package: MediaCore
       - package: PlayerKit
       - package: AppUI
+      - package: WatchParty
       - package: Sparkle
 
 schemes:
@@ -79,6 +82,7 @@ schemes:
         - package: StreamEngine/StreamEngineTests
         - package: PlayerKit/PlayerKitTests
         - package: AppUI/AppUITests
+        - package: WatchParty/WatchPartyTests
     profile:
       config: Release
     archive:

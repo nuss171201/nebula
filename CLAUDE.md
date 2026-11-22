@@ -60,6 +60,11 @@ Scripts/screenshot.sh /path/shot.png 6 -silent YES -play "$PWD/TestMedia/sdr-h26
 Scripts/screenshot.sh /path/shot.png 5 -settings shortcuts      # Settings is saved as shot-2.png
 Scripts/stage-media.sh TestMedia/multi-track.mkv   # prints a copy's path outside ~/Documents, for -play
 
+# A watch party between two copies of the Debug app, on this machine only (needs deno):
+Scripts/party-check.sh /path/folder 14       # host.png, guest.png (+ -2 for the main windows), and where each player was at the same moment
+cd Packages/WatchParty && swift test          # sync logic, real WebRTC connections on loopback, and Server/signal.ts itself if deno is installed
+HOST=127.0.0.1 PORT=8787 ICE_SERVERS='[]' deno run --allow-net --allow-env Server/signal.ts   # the signalling server, by hand
+
 # Playback over HTTP (Range-capable; python's http.server is not):
 Scripts/serve-test-media.py 8765 &          # then -play http://127.0.0.1:8765/<file>; add --throttle-kbps N
 
@@ -94,7 +99,8 @@ during Stage 1. Debug builds accept launch arguments that open a given state
 `-play <path or URL>`, `-silent YES`, `-engine "name=value,…"`, `-panel video|audio|subtitles|queue` (a
 player side panel), `-seekPreview <0…1>` (the seek bar's hover preview at that fraction), `-enqueue <path>`
 (a second file for the queue), `-keys "]]l"` (plain key presses sent through the player's key bindings
-two seconds after launch: the only way to check a binding and its on-screen notice without the keyboard).
+two seconds after launch, or `-keysAfter <seconds>` after it: the only way to check a binding and its
+on-screen notice without the keyboard).
 `-subtitleSearch "<name>"` looks a title up in the player's subtitle panel (real catalog add-ons; metadata only).
 `-window pictureInPicture|mini` puts the player window in that mode.
 `-settings general|playback|streaming|shortcuts|advanced` opens the Settings window on that tab.
@@ -111,6 +117,11 @@ this machine; with it, `-installNow <address>` installs an add-on without the co
 `-episode <video id>` shows an episode's streams, `-stream <n>` plays the nth listed stream,
 `-addToLibrary YES` saves the shown title and `-markWatched <video id>` marks a video watched.
 A scratch profile is also the only way a silent check records watch history and resumes.
+`-partyHost <link>` / `-partyJoin <link>` put the app in a watch party as its host or a guest (only with
+`-profile`, and only with an invitation to a server on this machine, such as `http://127.0.0.1:8787/#<code>`
+where the code is 16 random bytes in URL-safe base64); `-partyName <name>`, `-partySay "<text>"` (a chat
+message six seconds in), `-panel party` (the party panel in the player), `-partyReportAt <unix time>` (logs
+the player's position at that moment). `Scripts/party-check.sh` uses them all; two copies need `open -g -n`.
 
 **Debug arguments that touch the player are applied one main-queue turn after launch**, not in
 `makeModel()`: that runs while SwiftUI is creating the app's `@State`, and resizing a window from there
@@ -152,6 +163,15 @@ the app as open when it was not.
 **Never make a sound the user did not ask for:** every `-play` used for a check must come with
 `-silent YES` (the scripts do this), and tests create players with `playsAudio: false` or volume 0.
 
+**Never open the microphone, and never let a party check reach the network.** A silent run
+(`-silent YES`) has no voice chat at all: `PartyEnvironment.allowsVoice` is false, so nothing asks for
+the microphone and nobody's voice is played. Tests use `allowsVoice: false` or a transport without a
+network. A party's connections stay on the loopback interface when the app has a scratch profile, and
+also whenever the invitation names a server on this machine (`WebRTCTransport.Configuration
+.staysOnThisMachine`): WebRTC is then told to ignore every network interface but the loopback one and
+is given no helper servers. Without that, WebRTC looks at the local network and macOS asks the user
+about it. Never join a party in the app for a check without `-profile` and a `127.0.0.1` invitation.
+
 A crash at launch puts a system dialog on the user's screen. `ci.sh --release` therefore runs the
 Release binary directly first (a loader failure shows up in the log, not as a dialog).
 
@@ -163,15 +183,18 @@ attached cannot be captured. Anything that needs interaction is covered by view-
 ```
 App/ (target MediaCenter)   entry point + composition root + Branding. No feature logic.
   └─ AppUI                  SwiftUI screens, @Observable view models, image pipeline
+       ├─ WatchParty        watch parties: sync logic, invitations, signalling client, WebRTC mesh (stands alone)
        ├─ PlayerKit         libmpv wrapper, render view, track selection, controls, config parsing
        ├─ StreamEngine      torrent bridge (Obj-C++), piece prioritiser, local HTTP Range server, cache
        ├─ MediaLibrary      GRDB/SQLite: settings, library, history, resume, installed add-ons
        └─ MediaCore         models, add-on protocol client, HTTP client (timeout/retry/cancel), branding
 ```
 
-- Five local Swift packages under `Packages/`. Dependencies point one way, down to `MediaCore`.
+- Six local Swift packages under `Packages/`. Dependencies point one way, down to `MediaCore`.
   `PlayerKit` and `StreamEngine` do not know about each other or about `MediaLibrary`; they are joined
-  through protocols defined in `MediaCore` and wired in the app target.
+  through protocols defined in `MediaCore` and wired in the app target. `WatchParty` depends on none of
+  the others (only on WebRTC) and knows the player through a protocol of its own, `PartyPlayback`,
+  which AppUI implements; PlayerKit in turn knows nothing of parties.
 - **MVVM with `@Observable`.** View models are `@MainActor final class`es; views hold no business logic
   and are not unit-tested, view models are.
 - **Persistence: GRDB** (MIT). Chosen over SwiftData for explicit append-only migrations, Sendable
@@ -435,6 +458,8 @@ StreamPlayer ─┬─ web address ───────────────
   longer depends on what the user has installed. `nasm` is not installed, so the Intel half has no
   hand-written assembly. **Downloading that archive needed the user's explicit go-ahead** (the
   permission system refused it until then): ask before fetching anything new from a new place.
+  Go-aheads given so far: FFmpeg's release archive; github.com/stasel/WebRTC; Google's source servers
+  (`*.googlesource.com`), for licence texts.
 - **Disk image by `hdiutil`**, not `create-dmg`: nothing to install, and no Finder scripting (which
   would open windows on the user's screen). The image has no background picture or icon layout.
 
@@ -522,6 +547,13 @@ StreamPlayer ─┬─ web address ───────────────
   one keeps the window's colour with fainter clouds. The accent is a violet, its companions magenta,
   blue and teal. The icon is drawn by `Scripts/generate-icon.swift` (clouds, stars, one star with rays).
   Seen in the app in the dark appearance only.
+- **The watch party (Stage 10) was merged into this work on 22 Nov 2026.** It had been built on a branch
+  of its own from an older `main`; four files needed both sides kept (`AppModel`, `StreamPlayer`,
+  `DebugLaunchOptions`, this file). After the merge `ci.sh` passed, and `party-check.sh` between two
+  copies of the Debug app showed both people "Watching", the chat line arriving, and the two players
+  0.083 s apart. A downloaded file played with `StreamPlayer.playFile` sets `nowPlayingURL`, so a party
+  knows it as the catalog title it is; that was not tried in a party. Everything Stage 10 lists as
+  not verified still is not.
 - **A series whose catalog lists each season as a title of its own** (Kitsu does) shows them all as
   seasons: `Franchise` reads the "Prequel:" and "Sequel:" links in the category "Franchise"
   (`stremio:///detail/<type>/<id>`, the protocol's address for a title's page; nothing else is
@@ -567,6 +599,64 @@ at 93 % over a torrent seeded at 900 kB/s. Carried over or not verified:
   running ahead of the reader. It now leaves those out, as its sibling test always did.
 - The first `ci.sh` in a fresh worktree fetched the pinned mpv and FFmpeg archives again (the frameworks
   had been copied from the main checkout without their stamps): copy `Vendor/cache` too next time.
+### How watch parties fit together (Stage 10)
+
+```
+PartyCenter (AppUI) ─ PartySession ─┬─ PartyCore            pure: what to send, when to pause, seek or nudge
+     │ start / join / leave         ├─ PartyTransport ─ WebRTCTransport ─┬─ SignalingConnection ─ wss ─ Server/signal.ts
+     │ panel, status bar, menu      │                                    └─ PeerLink × everyone else: data channel (+ audio)
+     └─ PlayerPartyBridge ──────────┴─ PartyPlayback        the player, as the party sees and steers it
+```
+
+- **Nobody sends video.** Everyone plays their own copy or stream. What is shared is which title
+  (`PartyContent`: a catalog id or a file name, never an address), the position, paused or not, and
+  the speed. An add-on's stream address never leaves the Mac it was chosen on.
+- **`PartyCore` is a value with no clock and no network.** It is told what happens with the time it
+  happens at (a message, an intent, a tick four times a second) and answers with effects: send this,
+  pause, seek, play 3 % faster. All of the behaviour below is decided there and tested with
+  `SimulatedParty` (made-up clocks, network delay and players).
+- **Shared values are last-writer-wins registers** with a version of (counter, author): where the
+  party is (`SharedPlayback`), what it watches (`SharedContent`), who may control (`RoomSettings`, the
+  host's alone). No app is in charge; the highest version wins everywhere.
+- **Clocks are compared pairwise**, NTP-fashion, over the data channel (`ClockSync`: the quickest of the
+  last eight exchanges). A position travels as "position P at my time T"; the receiver places it on its
+  own clock. A position that arrives before the first exchange has completed waits for it.
+- **Following** (`PartyCore+Sync`): within 0.12 s nothing is done; up to 1.5 s the engine plays up to 8 %
+  faster or slower (`PlayerModel.speedAdjustment`, on top of the speed the person sees); beyond that it
+  jumps, aiming ahead by how long jumps were seen to take here, with one better-aimed retry. Paused
+  players are put within 0.1 s of each other: people pause to look at the same frame.
+- **Waiting**: a player that was in step and stalls for 1.5 s pauses the party (`holder`); whoever paused
+  it lets it go on once nobody reports a stall. If they leave, the member with the lowest id takes over.
+- **What the person did, as opposed to what was done to their player.** `PlayerModel` reports
+  `PlaybackIntent`s (pause, a jump once it has landed, speed) and takes outside changes inside
+  `followingExternal { }`, which are not reported. A jump is only known when its picture is back, so
+  between asking and landing `hasPendingUserSeek` is true and the party leaves the player alone;
+  without that, a tick in between pulled the player back to where the party still was.
+- **Who decides what is watched**: someone who controls the party, knows how it stands (`isInformed`:
+  the host, or anyone who has received `caughtUp` from a member) and either finds the party with nothing
+  on, or was watching with it and moves on to another video. A newcomer's own resume point, pauses and
+  jumps mean nothing until their player has been in step once (`hasSynced`).
+- **Connections** (`WebRTCTransport`, on one serial queue): a full mesh, so a party holds eight. The one
+  who arrives proposes to everyone there. One negotiated data channel (id 0) carries JSON messages.
+  Changes are negotiated by hand (`needsNegotiation`), not by WebRTC's callback, with the usual
+  polite/impolite rule for when both sides propose at once (the polite side is the one with the higher id).
+- **The invitation is a secret** (16 random bytes in the link's fragment). The room's name at the server
+  and the key that seals signalling (ChaCha20-Poly1305, bound to sender and recipient) are derived from
+  it, so the server can neither read what it relays nor put itself between two people. The data channel
+  and the audio are encrypted by WebRTC between the two apps.
+- **The signalling server** (`Server/signal.ts`, Deno, no dependencies) keeps rooms in memory, relays
+  sealed frames, hands out the STUN/TURN list, and limits room size, frame size and rate. A connection
+  that is up does not need it: if it restarts, people stay connected and rejoin the room when it is back.
+  Tests use an in-process stand-in (`LoopbackSignalServer`) and, where deno is installed, the real file.
+- **Voice** is an audio transceiver on the same connections: send and receive for someone in the voice
+  chat, inactive for someone who is not, so sound flows only between two people who both joined. WebRTC
+  opens the microphone only while something is being sent. Echo cancellation, noise suppression and gain
+  are WebRTC's own.
+- **In the player**, the party is an "accessory": a side panel and a button that PlayerKit shows without
+  knowing what they are (`PlayerAccessory`, set through `PlayerCoordinator.accessory`).
+- **The server's address**: `PARTY_SERVER_URL` in `Config/Branding.xcconfig` (Info.plist `PartyServerURL`),
+  or the user's in Settings → General; an invitation link always carries its own. With neither, starting
+  a party is off and joining from a link still works.
 
 ### Decisions still to be made (with the stage that decides them)
 
@@ -579,6 +669,11 @@ at 93 % over a torrent seeded at 900 kB/s. Carried over or not verified:
 | user | Developer ID and notarisation | `package.sh` is ready for both but neither has run: the keychain holds an Apple Development identity only. A Developer ID needs the paid Apple Developer Program; the user decides. Until then a disk image from here opens on another Mac only after its owner allows it by hand. |
 | user | Update feed | Where the appcast is hosted, and making the Sparkle key pair (it lives in the user's keychain), are the user's to do; see the README. |
 | user | The app's own licence | None chosen; the README says all rights are reserved until one is. |
+| user | Party server | Someone has to run `Server/signal.ts` where it can be reached over https, and put its address in `PARTY_SERVER_URL` or Settings. Not deployed anywhere: creating an account at a host is the user's to do. One instance only (rooms are in memory); a host that runs several copies of a program would split rooms. |
+| user | Relay for people who cannot connect directly | With STUN alone, some pairs of networks (carrier-grade NAT on mobile and many home connections in India, company networks) will not connect. A TURN relay fixes that and costs money or a server: coturn on a small machine (`TURN_URLS`, `TURN_SECRET`), or a hosted one. Not set up; nothing has been tried between two real networks. |
+| user | Public STUN servers | The server's default list names Cloudflare's and Google's public STUN servers, which learn the address of everyone who joins a party. Change `ICE_SERVERS` to use others or your own. |
+| done | Notices for what WebRTC contains | Collected, on the user's go-ahead to fetch from Google's repositories (`*.googlesource.com`): see "Stage 10 contents". |
+| later | WebRTC from source | The framework is stasel/WebRTC's build of Google's source (one maintainer, like MPVKit), pinned by checksum. Building it here means Google's tools, about 20 GB of source and hours; the user chose the prebuilt one. |
 | user | Source for the LGPL libraries | Whoever distributes the app must make the source of the LGPL libraries available (or offer it in writing). The binaries are MPVKit's; pointing at MPVKit is not the same as providing the source. Not arranged. |
 
 Decided (Stage 4): **HDR output is on only while an HDR video is on an HDR-capable display**
@@ -615,7 +710,8 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - Built with Xcode 27.2 / Swift 6.4.2 on macOS 27.2, Apple Silicon. Deployment target macOS 14.0.
 - Runtime testing is only possible on this machine's OS and architecture. The x86_64 slice is built and
   checked with `lipo` but not executed; macOS 14–26 behaviour is not runtime-tested.
-- Tools (Homebrew): xcodegen 2.46, swiftformat 0.64, swiftlint 0.65, ffmpeg 9.0, cmake 4.5, ninja 1.13.
+- Tools (Homebrew): xcodegen 2.46, swiftformat 0.64, swiftlint 0.65, ffmpeg 9.0, cmake 4.5, ninja 1.13,
+  deno 2.9 (runs the watch party's signalling server; its tests and `party-check.sh` are skipped or fail without it).
   The disk image is made with the system's `hdiutil` (create-dmg was not needed).
 - Signing identities in the keychain: one Apple Development identity; no Developer ID.
 
@@ -630,6 +726,7 @@ true Dolby Vision signal; libmpv decodes AC3/E-AC3/DTS itself, so the AAC transc
 - [x] **7. Settings + polish** — settings window, shortcut editor, mpv.conf/input.conf, saved player choices
 - [x] **8. Performance pass** — every target in spec section 4 measured; playback, memory and scrolling fixes
 - [x] **9. Packaging** — `package.sh` (signed .app in a .dmg), Sparkle (off until configured), licences and Acknowledgements, README
+- [x] **10. Watch party** — synchronised playback between people's own players over WebRTC, text chat, voice chat, signalling server
 
 ### Stage 1 contents
 
@@ -1045,6 +1142,109 @@ Carried over or not verified:
 - The banner's first two rows are fetched at launch even when the second is below the fold: one more
   catalog request than before on a small window. Launch times were not measured again (the Release
   build was not run: the packaged app is the user's to rebuild).
+### Stage 10 contents
+
+| Where | Added | Tests |
+|---|---|---|
+| WatchParty (new package) | `PartyCore` (+Messages, +Sync), `ClockSync`, `SyncTuning`, `PartyMessage`, `PartyInvite` / `PartyServer` / `SignalSeal`, signalling frames and `SignalingConnection`, `WebRTCTransport` (+Links, +Voice) and `PeerLink`, `PartySession`; target `WatchPartyTestSupport` (`LoopbackSignalServer`, `InMemoryPartyNetwork`) | 47 (1 skipped here: see below) |
+| Server | `signal.ts`: the signalling server | 2 of the above run it |
+| PlayerKit | `PlaybackIntent` and `followingExternal` (`PlayerModel+Following`), `speedAdjustment`, `hasPendingUserSeek`, `PlayerAccessory` + its panel and button, `announce` made public; volume and stop moved to `PlayerModel+Volume` | 180 |
+| AppUI | `PartyCenter`, `PlayerPartyBridge`, `PartyEnvironment`, `PartyPanel`, `PartySetupView`, `PartyStatusBar`, `PartyCommands`, name and server in Settings → General, `StreamPlayer.nowPlayingURL` | 143 |
+| App, Config, Scripts | `-partyHost` / `-partyJoin` and friends, `PARTY_SERVER_URL`, microphone usage text and entitlement (`Config/App.entitlements` for signed builds), WebRTC in `package.sh`, `licenses.lock` and `ThirdParty.json`, `party-check.sh` | — |
+
+Decided by the user: option B of the four that were laid out (peer to peer over WebRTC, with a
+signalling server), and Google's WebRTC as the prebuilt stasel/WebRTC framework rather than
+libdatachannel or a from-source build. Decided here, and easy to change: Deno for the server (it is
+installed, needs no dependencies, and the protocol is a dozen JSON frames, so porting it is an hour);
+everyone controls playback unless the host says otherwise; a party holds eight.
+
+What was checked, and how:
+
+- **The sync logic** in `SimulatedParty`: joining with clocks a day apart, pause, jump, speed, a stalled
+  player, the holder leaving, a slow or sluggish player's jumps, a player running 1 % slow for two
+  minutes (never more than 0.2 s out, no jumps), three people, host-only control, changes of video.
+- **Real connections**: WebRTC peers in one process over the loopback interface, through the in-process
+  server and through `Server/signal.ts` itself: two and three peers, leaving, the server going away and
+  coming back, a wrong invitation, a full room, everyone renegotiating at once five times over.
+- **Real players**: two engines in one process kept within 0.25 s while playing and 0.15 s paused,
+  through a pause, a jump while paused, a resume and a change of speed; once over an in-memory network
+  and once over real WebRTC connections.
+- **Two copies of the app** (`party-check.sh`, background, silent, loopback): both windows show the
+  panel with both people "Watching", the chat line sent by one arrives at the other, and at the same
+  wall-clock moment the two players were 0.083 s apart playing (one frame of the 12-frames-a-second
+  sample) and 0 to 0.083 s apart after a pause made in either copy; a speed change made by the guest
+  showed in the host's control bar.
+
+**The notices of what WebRTC contains** (added after the user's go-ahead to fetch from Google's
+repositories): 26 texts in `Config/licenses.lock`, from `webrtc.googlesource.com`,
+`chromium.googlesource.com`, `boringssl.googlesource.com` and `aomedia.googlesource.com`, each at the
+revision that WebRTC's `DEPS` pins for commit `fb1c41a9` (branch-heads/8127, the commit stasel's
+release notes for 158.0.0 name; the binary's own source stamp, 2026-10-26, agrees). Those servers
+answer in base64 (`?format=TEXT`), which `collect-licenses.sh` now decodes before checking the hash.
+Rust's texts come from Chromium's mirror of rust-lang/rust at the toolchain's revision. 60 licence
+files in all go into the app.
+
+Three bugs found by those checks, each now covered by a test:
+
+- **A person's own jump could be undone.** The position changes before the player reports that a jump
+  has landed; a sync tick in between saw the player far from the party and pulled it back. The party
+  now leaves a player alone while `hasPendingUserSeek`.
+- **A newcomer could take the party over.** Someone who opened a video in the first quarter-second
+  after connecting, before the party's state had arrived, published theirs, and a coin toss between the
+  two versions decided. Nobody decides what is watched until they know how the party stands
+  (`isInformed`), and the host publishes what is playing at once rather than at the first tick.
+- **Catching up took fifteen seconds.** If the player had not started a jump by the first look after it,
+  the landing was never noticed and a gap of up to a second and a half was closed at 8 %. The landing
+  is now waited for, a jump more than 0.3 s off is repeated once with what was learnt, and anything
+  over a second is jumped rather than played off.
+
+Carried over or not verified in Stage 10:
+
+- **Nobody has spoken or heard a word.** Voice is built on WebRTC's defaults and has never carried
+  sound: checks may not open the microphone or play audio. The one test that negotiates audio (one
+  person in the voice chat, which sends nothing) is skipped on this Mac because the microphone question
+  has never been answered for the test runner; it runs where it has. Two people in the voice chat, the
+  microphone prompt, echo cancellation, muting as heard by the other side, and whether the film's own
+  sound leaks into the microphone badly enough to need push-to-talk are all untried.
+- **No two networks have been connected.** Everything ran on one Mac's loopback interface: no STUN, no
+  TURN, no NAT, no real latency or packet loss, no second Mac, no Intel Mac. That connections form
+  between Germany, Singapore and India rests on WebRTC and on a relay being available where needed
+  (see the decisions table). Clock comparison was tested with simulated delay only.
+- **The server has only run on this Mac**, over plain http on loopback. TLS in front of it, a real host,
+  many rooms, the TURN credential it issues (written to coturn's documented scheme, never tried against
+  coturn) and its rate limits under abuse are untested.
+- **Nothing was clicked or typed.** The panel was seen through debug arguments. Typing in the chat field
+  (and whether the player's key bindings stay out of the way while typing), the start/join sheet, the
+  File menu items, the Settings fields, Copy Invitation and the clipboard, "Show It" and bringing the
+  main window forward, the host's control switch, Join Voice and Mute, and the unread badge on the
+  people button are covered by view-model tests or not at all.
+- **Streams from add-ons in a party were not tried**: only local files. A catalog title's identity
+  (`video:<type>:<id>`) and the stall rule for paused streams are unit-tested; a torrent that needs a
+  minute to start, two people on different streams of different lengths or with different intros, and
+  next-episode autoplay in a party are untried. Two cuts of a film stay "in sync" by position, which is
+  not the same scene.
+- **An A-B loop does not hold in a party** (the loop's jump back is corrected as drift), by reading the
+  code; not tried. Frame stepping is shared as a pause and a jump.
+- A party survives the signalling server restarting, but not a Mac sleeping: connections time out and
+  the person has to join again with the link. There is no rejoin by itself, and no way to remove someone.
+- The invitation's secret is in the link; anyone who is given the link can join. The people in a party
+  learn each other's internet addresses, as in any direct call.
+- **Which libraries WebRTC contains was worked out, not read off a manifest.** The framework ships no
+  list. The 16 components in `Config/ThirdParty.json` are the ones WebRTC's own licence generator
+  (`tools_webrtc/libs/generate_licenses.py` at the built commit) maps to a notice and of which the
+  binary shows a trace (file paths and version strings), plus the ones every build includes but that
+  leave no strings (CRC32C, PFFFT, RNNoise, the in-tree FFTs, G.711/G.722 and square root) and `cxx`,
+  which WebRTC's one Rust module needs. Left out for want of any trace: zlib, libjpeg-turbo, jsoncpp,
+  perfetto, the third-party SFrame library, and `foldhash` (whose licence asks nothing of a binary).
+  LLVM's compiler-rt and libc are under the same text as libc++, which is included. The certain way
+  to settle the list is WebRTC's generator run on a real checkout of the build, which was not done.
+- The x86_64 half of `WebRTC.framework` is checked with `lipo` only.
+- The user's own running copy of the app (an older build, open since 17 November) crashed twice during
+  this stage, in libmpv's CoreAudio hot-plug callback (`hotplug_cb` → `mp_msg`, a null context) when the
+  list of audio devices changed. Not this branch's code, and not reproduced. The test runs here are
+  probably not what changed the list: a listener on the system's device list saw no change through the
+  second half of the engine tests, all of the AppUI and WatchParty tests, a Release launch and packaging.
+  Worth its own investigation: a device appearing or going away should not take the app down.
 
 ## Performance log
 
@@ -1124,6 +1324,11 @@ Targets (spec section 4): cold launch < 1.5 s; idle memory < 250 MB; playing 4K 
 | 2026-11-22 | after 9 | Debug, in a test | Same, with the peer search put right: description / peers at 50 s / rate | 20 s (when the hash table reported ready) / 68 / about 3 MB/s |
 | 2026-11-22 | after 9 | Debug, in a test | Same, asking early and in file order: description / first bytes / rate (two runs) | 3.1 and 3.8 s / 17 and 5.7 s / 3 to 9 MB/s |
 | 2026-11-22 | after 9 | Debug, in a test | Loopback, 256 KiB pieces: how far arrivals ran ahead of the reader, before / after | 300 pieces and more / 2 |
+| 2026-11-21 | 10 | Release, universal | Launch to first screen / Home content, first run after the build (with WebRTC linked) | 191 ms / 372 ms |
+| 2026-11-21 | 10 | Release, universal | Idle memory, Home loaded (nothing of WebRTC is started until a party is) | 69 MB |
+| 2026-11-21 | 10 | Packaged app | App as built / stripped; disk image (WebRTC.framework is 28 MB of it, both architectures) | 178 MB / 146 MB; 65 MB |
+| 2026-11-21 | 10 | Debug app, two copies | Watch party on loopback: how far apart the two players were at the same moment, playing / after a pause | 0.083 s (one frame at 12 fps) / 0–0.083 s |
+| 2026-11-21 | 10 | In a test | Two engines in one process, over real WebRTC on loopback: from the guest opening the file to within 0.25 s of the host | under 3 s for the whole test |
 
 **The Stage 3 memory rows above are wrong, and its CPU rows rest on three samples.** The samples are
 10 seconds long and `measure-playback.sh` read memory after the file had ended (about 200 MB too low)
@@ -1154,6 +1359,9 @@ Reading the Stage 2 numbers: launch and memory are well inside the targets. The 
 is met most of the time while artwork streams in but not always (run 2); that is SwiftUI committing
 many image updates at once, and it is the first thing to look at in Stage 8. Scrolling itself has not
 been measured.
+
+Not measured in Stage 10: CPU and memory while a party is on (a data channel, four ticks a second and,
+with voice, WebRTC's audio pipeline), and anything about voice.
 
 Not yet measured: a true cold launch (after reboot or `sudo purge`), anything on an M1, and the
 Allocations instrument (footprint, `heap`, `vmmap` and `leaks` were used instead).

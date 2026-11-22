@@ -4,6 +4,7 @@
     import MediaCore
     import os
     import PlayerKit
+    import WatchParty
 
     /// Debug-only launch arguments that open the app in a given state, so a screen can
     /// be checked (or screenshotted) without clicking through the UI:
@@ -28,6 +29,9 @@
     ///     open -g Nebula.app --args -section discover -autoscroll 8   (scrolls by itself; see DebugAutoscroll)
     ///     open -g Nebula.app --args -acknowledgements YES   (opens the Acknowledgements window)
     ///     open -g Nebula.app --args -featured 2   (Home's banner on its third title; -playFeatured YES presses its Play)
+    ///     open -g -n Nebula.app --args -silent YES -profile /tmp/a -partyHost "http://127.0.0.1:8787/#<code>" -partyName Asha -play /path/a.mp4 -panel party
+    ///     open -g -n Nebula.app --args -silent YES -profile /tmp/b -partyJoin "http://127.0.0.1:8787/#<code>" -partyName Ravi -play /path/a.mp4 -partySay "hello"
+    ///         (a watch party between two copies of the app; see Scripts/party-check.sh)
     ///
     /// Compiled out of Release builds.
     enum DebugLaunchOptions {
@@ -80,6 +84,7 @@
                 Task { await model.addons.fetchPendingInstall() }
             }
             applyLibraryOptions(to: model, defaults: defaults)
+            applyPartyOptions(to: model, defaults: defaults)
             // Not now: this runs while SwiftUI is still creating the app's state, and anything
             // that lays out a window from here (resizing the player's, for one) re-enters
             // SwiftUI's update and aborts the app.
@@ -191,6 +196,56 @@
             }
         }
 
+        /// The arguments that put the app in a watch party, as starting or joining one by hand would.
+        /// Only with a scratch profile, which keeps the party's connections on this machine, and
+        /// only with an invitation to a server on this machine.
+        @MainActor
+        private static func applyPartyOptions(to model: AppModel, defaults: UserDefaults) {
+            let hosting = defaults.string(forKey: "partyHost")
+            let link = hosting ?? defaults.string(forKey: "partyJoin")
+            guard profileDirectory != nil, let invite = link.flatMap({ PartyInvite($0) }), invite.server.isLocal else { return }
+            // Once the settings have been read: the name is one of them.
+            Task { @MainActor in
+                for _ in 0 ..< 100 where !model.settings.hasLoaded {
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                if let name = defaults.string(forKey: "partyName") {
+                    model.party.displayName = name
+                }
+                model.party.begin(invite, isHost: hosting != nil)
+                if defaults.object(forKey: "partyReportAt") != nil {
+                    reportParty(of: model, at: Date(timeIntervalSince1970: defaults.double(forKey: "partyReportAt")))
+                }
+                if let text = defaults.string(forKey: "partySay") {
+                    // After the others have had time to arrive.
+                    try? await Task.sleep(for: .seconds(defaults.object(forKey: "partySayAfter") != nil ? defaults.double(forKey: "partySayAfter") : 6))
+                    model.party.session?.send(text)
+                }
+            }
+        }
+
+        /// `-partyReportAt <seconds since 1970>`: at that moment on the wall clock, logs where the
+        /// player is and how the party stands. Two copies of the app given the same moment say
+        /// where they were at the same time, which is how Scripts/party-check.sh compares them.
+        @MainActor
+        private static func reportParty(of model: AppModel, at moment: Date) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(max(moment.timeIntervalSinceNow, 0)))
+                let player = model.player.player
+                let session = model.party.session
+                let people = session?.people.map { "\($0.name):\($0.activity.rawValue)" }.joined(separator: ",") ?? "-"
+                let report = [
+                    "name=\(model.party.displayName)",
+                    "position=\(player?.engineProperty("time-pos") ?? "-")",
+                    "paused=\(player?.engineProperty("pause") ?? "-")",
+                    "speed=\(player?.engineProperty("speed") ?? "-")",
+                    "people=\(people)",
+                    "chat=\(session?.chat.count ?? 0)",
+                ].joined(separator: " ")
+                Logger(subsystem: Branding.current.bundleIdentifier, category: "party").notice("party-report \(report, privacy: .public)")
+            }
+        }
+
         /// `-stats <seconds>`: that long after launch, logs how many frames were dropped or shown
         /// late and how much the engine has buffered. For Scripts/measure-playback.sh.
         @MainActor
@@ -205,6 +260,18 @@
             }
         }
 
+        /// `-panel video|audio|subtitles|queue|party`: one of the player's side panels.
+        @MainActor
+        private static func show(panel: String, in player: PlayerCoordinator) {
+            if let tab = PlayerSettingsTab(rawValue: panel) {
+                player.showPlayerSettings(tab)
+            } else if panel == "queue" {
+                player.showQueue()
+            } else if panel == "party" {
+                player.showAccessory()
+            }
+        }
+
         /// The arguments that concern the player: what to play, and which of its panels to show.
         @MainActor
         private static func applyPlayerOptions(to player: PlayerCoordinator, defaults: UserDefaults) {
@@ -215,11 +282,7 @@
                 player.enqueue(userInput: media)
             }
             if let panel = defaults.string(forKey: "panel") {
-                if let tab = PlayerSettingsTab(rawValue: panel) {
-                    player.showPlayerSettings(tab)
-                } else if panel == "queue" {
-                    player.showQueue()
-                }
+                show(panel: panel, in: player)
             }
             if let name = defaults.string(forKey: "window"), let mode = PlayerWindowMode(rawValue: name) {
                 player.setWindowMode(mode)
@@ -234,9 +297,10 @@
                 logStats(of: player, after: max(defaults.double(forKey: "stats"), 1))
             }
             if let keys = defaults.string(forKey: "keys") {
-                // After the file has had time to open, as most commands need one.
+                // After the file has had time to open, as most commands need one; `-keysAfter <seconds>` waits longer.
+                let delay = defaults.object(forKey: "keysAfter") != nil ? defaults.double(forKey: "keysAfter") : 2
                 Task {
-                    try? await Task.sleep(for: .seconds(2))
+                    try? await Task.sleep(for: .seconds(max(delay, 0)))
                     player.pressKeys(keys)
                 }
             }
