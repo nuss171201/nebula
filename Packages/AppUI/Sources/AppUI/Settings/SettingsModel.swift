@@ -37,6 +37,7 @@ public final class SettingsModel {
     /// belong to the app and are shown in Settings.
     @ObservationIgnored public var partyHost: PartyHost?
     @ObservationIgnored public var account: AccountCenter?
+    @ObservationIgnored public var localNetwork: LocalNetworkGate?
 
     @ObservationIgnored private let store: SettingsStore
     @ObservationIgnored private let coordinator: PlayerCoordinator

@@ -383,3 +383,101 @@ struct PartyHostTests {
         #expect(SettingsTab.allCases.map(\.title) == ["General", "Account", "Playback", "Streaming", "Watch Party", "Shortcuts", "Advanced"])
     }
 }
+
+@MainActor
+@Suite("Whether macOS lets the app onto the local network")
+struct LocalNetworkGateTests {
+    /// Answers in turn, and counts how often it was asked.
+    private final class Answers: @unchecked Sendable {
+        private let lock = NSLock()
+        private var remaining: [LocalNetworkAccess.Answer]
+        private(set) var asked = 0
+
+        init(_ answers: [LocalNetworkAccess.Answer]) {
+            remaining = answers
+        }
+
+        func next() -> LocalNetworkAccess.Answer {
+            lock.withLock {
+                asked += 1
+                return remaining.isEmpty ? .unknown : remaining.removeFirst()
+            }
+        }
+
+        var count: Int {
+            lock.withLock { asked }
+        }
+    }
+
+    @Test("A refusal is said, with the way to the switch; asking again notices that the switch was flipped")
+    func deniedThenAllowed() async {
+        let answers = Answers([.denied, .allowed])
+        var opened = 0
+        let gate = LocalNetworkGate(check: { answers.next() }, openSettings: { opened += 1 })
+        #expect(gate.state == .unknown && LocalNetworkGate.message(for: gate.state, appName: "Nebula") == nil)
+
+        gate.refresh()
+        // While macOS may be asking, the user is told what to answer.
+        #expect(gate.state == .checking)
+        #expect(LocalNetworkGate.message(for: .checking, appName: "Nebula")?.contains("choose Allow") == true)
+        // Asked once, however often the screens that care come and go.
+        gate.refresh()
+        await gate.waitForCheck()
+        #expect(gate.state == .denied && answers.count == 1)
+        let message = LocalNetworkGate.message(for: .denied, appName: "Nebula")
+        #expect(message?.contains("Privacy & Security › Local Network") == true && message?.contains("Nebula") == true)
+
+        gate.showSystemSettings()
+        #expect(opened == 1)
+
+        gate.refresh()
+        await gate.waitForCheck()
+        #expect(gate.state == .allowed && LocalNetworkGate.message(for: .allowed, appName: "Nebula") == nil)
+    }
+
+    @Test("No answer is no claim; and what was allowed stays allowed while it is looked into again")
+    func unknownAnswers() async {
+        let answers = Answers([.unknown, .allowed, .unknown])
+        let gate = LocalNetworkGate(check: { answers.next() })
+        gate.refresh()
+        await gate.waitForCheck()
+        #expect(gate.state == .unknown)
+        gate.refresh()
+        await gate.waitForCheck()
+        #expect(gate.state == .allowed)
+        gate.refresh()
+        // Not back to "checking": nothing has taken the permission away.
+        #expect(gate.state == .allowed)
+        await gate.waitForCheck()
+        #expect(gate.state == .allowed)
+    }
+
+    @Test("A check or a test never asks macOS about the network")
+    func neverAsksInChecks() async {
+        let gate = LocalNetworkGate(check: nil)
+        gate.refresh()
+        await gate.waitForCheck()
+        #expect(gate.state == .unknown)
+        // The app as tests and scratch profiles make it keeps to this machine.
+        let model = AppModel(dependencies: .ephemeral(http: StubHTTPClient(data: Data())))
+        model.localNetwork.refresh()
+        await model.localNetwork.waitForCheck()
+        #expect(model.localNetwork.state == .unknown)
+        #expect(model.party.localNetwork === model.localNetwork && model.partyHost.localNetwork === model.localNetwork)
+    }
+
+    @Test("The check's Bonjour type is one the system accepts: short, and listed in the app's Info.plist")
+    func serviceType() throws {
+        let type = LocalNetworkAccess.serviceType
+        #expect(type.hasPrefix("_") && type.hasSuffix("._tcp"))
+        // A service's name is at most fifteen characters.
+        #expect(type.dropFirst().dropLast("._tcp".count).count <= 15)
+        let plist = URL(filePath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "App/Info.plist")
+        let info = try #require(NSDictionary(contentsOf: plist) as? [String: Any])
+        #expect((info["NSBonjourServices"] as? [String])?.contains(type) == true)
+        #expect((info["NSLocalNetworkUsageDescription"] as? String)?.isEmpty == false)
+    }
+}

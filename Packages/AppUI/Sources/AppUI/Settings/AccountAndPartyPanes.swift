@@ -148,6 +148,12 @@ struct PartySettingsPane: View {
                                 .foregroundStyle(.orange)
                         }
                         Text(host.reachNote)
+                        if let gate = model.localNetwork, host.server?.isOnLocalNetwork == true {
+                            LocalNetworkNotice(gate: gate, appName: ProcessInfo.processInfo.processName)
+                            if gate.state == .allowed {
+                                Label("macOS lets this Mac be reached on the local network.", systemImage: "checkmark.circle")
+                            }
+                        }
                     }
                 }
             }

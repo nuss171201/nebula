@@ -19,6 +19,9 @@ public final class PartyHost {
     @ObservationIgnored private let logger: Logger
     /// The switch as it was last asked to be, so that a start overtaken by a stop does not win.
     @ObservationIgnored private var wanted = false
+    /// Asked to find out whether macOS lets the app onto the local network, once the server is
+    /// somewhere others could reach it.
+    @ObservationIgnored public var localNetwork: LocalNetworkGate?
 
     /// The port it listens on unless told otherwise: fixed, so that an address given to a
     /// friend yesterday still works today.
@@ -63,6 +66,11 @@ public final class PartyHost {
             running = host
             self.server = server
             problem = nil
+            if server.isOnLocalNetwork {
+                // A server nobody is allowed to reach is no server: find out now, not when a
+                // friend's invitation fails.
+                localNetwork?.refresh()
+            }
         } catch {
             logger.error("the party server did not start: \(String(describing: error), privacy: .public)")
             problem = "The party server could not be started. Something else may be using port \(port)."

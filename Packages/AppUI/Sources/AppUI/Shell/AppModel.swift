@@ -31,6 +31,8 @@ public final class AppModel {
     /// The party server this Mac runs itself, when switched on in Settings.
     public let partyHost: PartyHost
     public let account: AccountCenter
+    /// Whether macOS lets the app onto the local network, which a party between Macs on one network needs.
+    public let localNetwork: LocalNetworkGate
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -122,9 +124,8 @@ public final class AppModel {
         party = PartyCenter(environment: dependencies.party, settings: settings, coordinator: player, streamPlayer: streamPlayer)
         partyHost = PartyHost(staysOnThisMachine: dependencies.party.staysOnThisMachine, logSubsystem: dependencies.branding.bundleIdentifier)
         account = AccountCenter(client: dependencies.accountClient, store: dependencies.accountStore)
-        party.host = partyHost
-        settings.partyHost = partyHost
-        settings.account = account
+        // A check or a test keeps to this machine and must not make macOS ask about the network.
+        localNetwork = LocalNetworkGate(staysOnThisMachine: dependencies.party.staysOnThisMachine, logSubsystem: dependencies.branding.bundleIdentifier)
         selection = initialSection
         currentSection = initialSection
         usesStartSection = initialSection == .home
@@ -132,6 +133,18 @@ public final class AppModel {
         self.reportMilestone = reportMilestone ?? { LaunchMetrics.report($0, subsystem: subsystem) }
         home.onFirstContent = { [weak self] in self?.reached(.homeContent) }
         party.onOpenContent = { [weak self] reference in self?.open(reference) }
+        connectPartyAndAccount()
+    }
+
+    /// Hands the pieces that belong together to one another: the party its server and what is
+    /// known of the local network, and Settings what it shows of all three.
+    private func connectPartyAndAccount() {
+        party.host = partyHost
+        party.localNetwork = localNetwork
+        partyHost.localNetwork = localNetwork
+        settings.localNetwork = localNetwork
+        settings.partyHost = partyHost
+        settings.account = account
     }
 
     public var branding: AppBranding {

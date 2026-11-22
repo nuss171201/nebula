@@ -573,6 +573,21 @@ StreamPlayer ─┬─ web address ───────────────
   (`Configuration.signalingURL`, `PartyServer.socketURLOnThisMachine`), and the panel says where the
   permission is (`PartyCenter.localNetworkHint`). **The direct connection between two Macs still needs
   the permission on both**, which only the user can give; whether a party then connects is untested.
+- **The app now finds out for itself whether macOS lets it onto the local network**
+  (`LocalNetworkAccess`, `LocalNetworkGate`): it advertises a Bonjour service that means nothing
+  (`_partycheck._tcp`, listed under `NSBonjourServices`) and looks for it. Finding it is permission;
+  "policy denied" from the browser is refusal; and looking is what puts the system's question on
+  screen. It is asked when the party server starts somewhere others could reach it and when a party
+  at a local address begins; the answer shows in the party panel and in Settings > Watch Party, with a
+  button to the system's Local Network switches and "Check Again". Never with `-profile` or in tests.
+  After the first fix the second Mac still could not join: no connection from it ever reached this
+  Mac's server. The user had turned the permission on there, seen it fail (the fault was then on the
+  host), turned it off, and the entry was gone. On this Mac the system held two records for the
+  app's identifier: one allowed, tied to the old `Orbit.app` path, and one with no path, denied.
+  **macOS keys this permission to a build's identity, and every ad-hoc build is a new one**: a
+  Developer ID signature is what would make it stick. **Not seen working between two Macs yet**; the
+  real check has run nowhere but on the user's own machines, by them.
+- The version is 0.1.1 (build 2) from here, so that two Macs can be told to have the same build.
 - **Accounts** (decided by the user, 22 Nov 2026: a hosted Supabase project): `AccountClient` speaks
   Supabase's sign-in REST interface directly (sign up, log in, refresh, log out, password reset; no
   SDK), `AccountCenter` is the model, and the session lives in the keychain (`KeychainSessionStore`),

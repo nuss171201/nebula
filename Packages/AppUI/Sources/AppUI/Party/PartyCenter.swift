@@ -107,6 +107,9 @@ public final class PartyCenter {
 
     @ObservationIgnored private let hostBox = HostBox()
 
+    /// Knows whether macOS lets the app onto the local network. `nil` never asks.
+    @ObservationIgnored public var localNetwork: LocalNetworkGate?
+
     /// What to tell someone whose party is at a server on the local network and is not
     /// connecting: macOS keeps an app off the local network until the user lets it on, and a
     /// refusal looks to the app like a network that is not there.
@@ -166,6 +169,11 @@ public final class PartyCenter {
         unreadCount = 0
         joinText = ""
         isSetupPresented = false
+        if invite.server.isOnLocalNetwork {
+            // The party's server and the people in it are on this network: without macOS's
+            // leave to use it nothing will connect, and nothing will say why.
+            localNetwork?.refresh()
+        }
         session.start()
         follow(session)
     }

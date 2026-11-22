@@ -74,7 +74,9 @@ struct PartyNotices: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        if let hint = PartyCenter.localNetworkHint(server: session.invite.server, connection: session.connection, appName: center.appName) {
+        if session.invite.server.isOnLocalNetwork, let gate = center.localNetwork, gate.state != .unknown {
+            LocalNetworkNotice(gate: gate, appName: center.appName)
+        } else if let hint = PartyCenter.localNetworkHint(server: session.invite.server, connection: session.connection, appName: center.appName) {
             Text(hint)
                 .font(.caption)
                 .foregroundStyle(.secondary)
