@@ -610,7 +610,7 @@ StreamPlayer ─┬─ web address ───────────────
   user's second MacBook, found by a session run there: a record for the app that was never set to
   allow. The user's line is also behind carrier-grade NAT (router address 100.114.x.x), so a server
   on this Mac can never serve friends elsewhere; that needs a hosted server and a TURN relay.
-- The version is 0.1.2 (build 3) from here (0.1.1 was the first with the local-network check), so that two Macs can be told to have the same build.
+- The version is 0.1.3 (build 4) from here (0.1.1 was the first with the local-network check, 0.1.3 the first with the party log and check page), so that two Macs can be told to have the same build.
 - **Accounts** (decided by the user, 22 Nov 2026: a hosted Supabase project): `AccountClient` speaks
   Supabase's sign-in REST interface directly (sign up, log in, refresh, log out, password reset; no
   SDK), `AccountCenter` is the model, and the session lives in the keychain (`KeychainSessionStore`),
