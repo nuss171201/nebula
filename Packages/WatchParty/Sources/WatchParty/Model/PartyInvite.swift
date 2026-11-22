@@ -50,6 +50,19 @@ public struct PartyServer: Sendable, Hashable {
         return components.url ?? url
     }
 
+    /// The same server as reached from the machine it runs on: by the loopback interface.
+    public var socketURLOnThisMachine: URL {
+        guard var components = URLComponents(url: socketURL, resolvingAgainstBaseURL: false) else { return socketURL }
+        components.host = "127.0.0.1"
+        return components.url ?? socketURL
+    }
+
+    /// Whether the server is on a local network (reached by a private address), which macOS
+    /// lets an app onto only with the user's permission.
+    public var isOnLocalNetwork: Bool {
+        url.host.map(Self.isPrivateAddress) ?? false
+    }
+
     /// Whether the server is on this machine.
     public var isLocal: Bool {
         url.host.map { Self.loopbackHosts.contains($0.lowercased()) } ?? false

@@ -564,6 +564,15 @@ StreamPlayer ─┬─ web address ───────────────
   invitation's secret either way. It is for one network: no relay, no TLS, gone when the app quits.
   With `-profile` it keeps to this machine. **Never tried between two Macs**; on a real run macOS may
   ask about incoming connections (firewall) and, on the joining Mac, about the local network.
+- **The first party between two Macs did not connect, and the cause was macOS's Local Network
+  privacy.** The host's own connection to its server at its LAN address failed ("Can't assign
+  requested address", "appears to be offline") while `curl` from Terminal reached it: the app's
+  record in `/Library/Preferences/com.apple.networkextension.plist` had the local network denied (and
+  still named the old `Orbit.app` path). An app is not told it was refused; it sees a dead network.
+  Now the Mac that runs the server reaches it on the loopback interface
+  (`Configuration.signalingURL`, `PartyServer.socketURLOnThisMachine`), and the panel says where the
+  permission is (`PartyCenter.localNetworkHint`). **The direct connection between two Macs still needs
+  the permission on both**, which only the user can give; whether a party then connects is untested.
 - **Accounts** (decided by the user, 22 Nov 2026: a hosted Supabase project): `AccountClient` speaks
   Supabase's sign-in REST interface directly (sign up, log in, refresh, log out, password reset; no
   SDK), `AccountCenter` is the model, and the session lives in the keychain (`KeychainSessionStore`),

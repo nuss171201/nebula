@@ -56,7 +56,7 @@ public final class PartyCenter {
         self.settings = settings
         self.coordinator = coordinator
         bridge = PlayerPartyBridge(coordinator: coordinator, streamPlayer: streamPlayer)
-        self.makeTransport = makeTransport ?? { invite, me in
+        self.makeTransport = makeTransport ?? { [hostBox] invite, me in
             WebRTCTransport(configuration: .init(
                 invite: invite,
                 me: me,
@@ -64,7 +64,9 @@ public final class PartyCenter {
                 // An invitation to a server on this machine is a check, whatever else is set.
                 staysOnThisMachine: environment.staysOnThisMachine || invite.server.isLocal,
                 allowsVoice: environment.allowsVoice,
-                logSubsystem: environment.logSubsystem
+                logSubsystem: environment.logSubsystem,
+                // The Mac that runs the party's server reaches it without going out onto the network.
+                signalingURL: hostBox.host?.server == invite.server ? invite.server.socketURLOnThisMachine : nil
             ))
         }
         self.requestMicrophone = requestMicrophone ?? Self.askForMicrophone
@@ -92,7 +94,34 @@ public final class PartyCenter {
     }
 
     /// The party server this Mac runs itself, when it does.
-    @ObservationIgnored public var host: PartyHost?
+    @ObservationIgnored public var host: PartyHost? {
+        get { hostBox.host }
+        set { hostBox.host = newValue }
+    }
+
+    /// Holds the host where the closure that makes connections can see it.
+    @MainActor
+    private final class HostBox {
+        var host: PartyHost?
+    }
+
+    @ObservationIgnored private let hostBox = HostBox()
+
+    /// What to tell someone whose party is at a server on the local network and is not
+    /// connecting: macOS keeps an app off the local network until the user lets it on, and a
+    /// refusal looks to the app like a network that is not there.
+    public nonisolated static func localNetworkHint(server: PartyServer, connection: PartySession.Connection, appName: String) -> String? {
+        guard server.isOnLocalNetwork, connection == .connecting || connection == .reconnecting else { return nil }
+        return """
+        If this does not connect: on each Mac open System Settings › Privacy & Security › Local Network and switch \(appName) on, \
+        then leave the party and join again.
+        """
+    }
+
+    /// The name of the app, for messages.
+    public var appName: String {
+        environment.appName
+    }
 
     /// The server a new party is started at: the one this Mac is running, else the one named
     /// in Settings, else the one the build came with.

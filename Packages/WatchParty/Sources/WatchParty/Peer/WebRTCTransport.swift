@@ -17,10 +17,15 @@ public final class WebRTCTransport: PartyTransport, @unchecked Sendable {
         /// no sound is played. For tests and silent checks.
         public var allowsVoice: Bool
         public var logSubsystem: String
+        /// Where to reach the party's server from here, when that is not the invitation's own
+        /// address: the Mac that runs the server speaks to it on the loopback interface. macOS
+        /// lets an app reach itself that way without asking; by its address on the local
+        /// network it does not, until the user has allowed the app onto the local network.
+        public var signalingURL: URL?
 
         public init(
             invite: PartyInvite, me: MemberID, userAgent: String, staysOnThisMachine: Bool = false,
-            allowsVoice: Bool = true, logSubsystem: String
+            allowsVoice: Bool = true, logSubsystem: String, signalingURL: URL? = nil
         ) {
             self.invite = invite
             self.me = me
@@ -28,6 +33,7 @@ public final class WebRTCTransport: PartyTransport, @unchecked Sendable {
             self.staysOnThisMachine = staysOnThisMachine
             self.allowsVoice = allowsVoice
             self.logSubsystem = logSubsystem
+            self.signalingURL = signalingURL
         }
     }
 
@@ -134,7 +140,7 @@ public final class WebRTCTransport: PartyTransport, @unchecked Sendable {
         var attempt = 0
         emit(.signaling(.connecting))
         while !Task.isCancelled {
-            let connection = SignalingConnection(url: configuration.invite.server.socketURL, userAgent: configuration.userAgent)
+            let connection = SignalingConnection(url: configuration.signalingURL ?? configuration.invite.server.socketURL, userAgent: configuration.userAgent)
             connection.enqueue(.join(room: configuration.invite.roomID, peer: configuration.me))
             queue.async { [self] in
                 if isStopped {

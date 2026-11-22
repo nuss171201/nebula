@@ -74,6 +74,12 @@ struct PartyNotices: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        if let hint = PartyCenter.localNetworkHint(server: session.invite.server, connection: session.connection, appName: center.appName) {
+            Text(hint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
         if session.isElsewhere, let content = session.content {
             VStack(alignment: .leading, spacing: 4) {
                 Text("The party is watching \(content.title).")

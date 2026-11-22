@@ -358,6 +358,23 @@ struct PartyHostTests {
         #expect(model.party.server?.url.host == "party.example.com")
     }
 
+    @Test("The Mac that runs the server reaches it without going onto the network; others are told what macOS may be blocking")
+    func reachingTheServer() throws {
+        let nearby = try #require(PartyServer("http://192.168.178.188:8787"))
+        // Same server, same port and path, by the loopback interface: no permission is needed for that.
+        #expect(nearby.socketURLOnThisMachine.absoluteString == "ws://127.0.0.1:8787/ws")
+        #expect(nearby.isOnLocalNetwork)
+        let hosted = try #require(PartyServer("https://party.example.com"))
+        #expect(!hosted.isOnLocalNetwork && PartyServer("http://127.0.0.1:8787")?.isOnLocalNetwork == false)
+
+        let hint = PartyCenter.localNetworkHint(server: nearby, connection: .connecting, appName: "Nebula")
+        #expect(hint?.contains("Privacy & Security › Local Network") == true && hint?.contains("Nebula") == true)
+        #expect(PartyCenter.localNetworkHint(server: nearby, connection: .reconnecting, appName: "Nebula") != nil)
+        // Nothing to say once it works, or about a server that is not on the local network.
+        #expect(PartyCenter.localNetworkHint(server: nearby, connection: .connected, appName: "Nebula") == nil)
+        #expect(PartyCenter.localNetworkHint(server: hosted, connection: .connecting, appName: "Nebula") == nil)
+    }
+
     @Test("Settings says what a typed server address comes to")
     func footnote() {
         #expect(PartySettingsPane.serverFootnote(typed: "ftp://x", isHosting: false).hasPrefix("That is not an address"))
