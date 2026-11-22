@@ -70,6 +70,8 @@ public struct AppSettings: Sendable, Equatable, Codable {
     public var partyName = ""
     /// The signalling server new parties are started at; empty uses the one the app came with.
     public var partyServer = ""
+    /// Whether this Mac runs a party server of its own, for people on the same network.
+    public var hostsPartyServer = false
 
     public static let cacheLimitRange = 1.0 ... 500.0
     public static let connectionsRange = 20 ... 1000
@@ -108,6 +110,7 @@ public struct AppSettings: Sendable, Equatable, Codable {
         mapsPorts = read(.mapsPorts, defaults.mapsPorts)
         partyName = read(.partyName, defaults.partyName)
         partyServer = read(.partyServer, defaults.partyServer)
+        hostsPartyServer = read(.hostsPartyServer, defaults.hostsPartyServer)
         self = clamped
     }
 

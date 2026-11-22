@@ -145,6 +145,8 @@ public struct RootView: View {
                 AddonsView(model: model.addons)
             case .library:
                 LibraryView(model: model.libraryScreen, library: model.library) { model.open($0) }
+            case .settings:
+                SettingsScreen(model: model.settings)
             case .calendar:
                 CalendarView(model: model.calendar, library: model.library, registry: model.registry) { model.open($0) }
             }

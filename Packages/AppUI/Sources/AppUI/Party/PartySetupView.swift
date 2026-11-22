@@ -59,7 +59,7 @@ struct PartySetupView: View {
 
     private var startHint: String {
         if center.server == nil {
-            "No party server is set up. Name one in Settings › General. You can still join a friend's party with their link."
+            "No party server is set up. Start one or name one in Settings › Watch Party. You can still join a friend's party with their link."
         } else {
             "You get a link to send to your friends. It is copied for you."
         }

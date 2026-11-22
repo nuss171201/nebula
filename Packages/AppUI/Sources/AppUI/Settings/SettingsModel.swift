@@ -33,6 +33,10 @@ public final class SettingsModel {
     public let shortcuts: ShortcutsModel
     /// Where the engine's config files are looked for; `nil` reads none (tests).
     public let configFolder: EngineConfigFolder?
+    /// The party server this Mac can run, switched by a setting; and the user's account. Both
+    /// belong to the app and are shown in Settings.
+    @ObservationIgnored public var partyHost: PartyHost?
+    @ObservationIgnored public var account: AccountCenter?
 
     @ObservationIgnored private let store: SettingsStore
     @ObservationIgnored private let coordinator: PlayerCoordinator
@@ -162,6 +166,10 @@ public final class SettingsModel {
         coordinator.configuration = configuration
         shortcuts.setFileBindings(usesFiles ? configReport.bindings : [:])
 
+        if let partyHost, partyHost.isRunning != settings.hostsPartyServer {
+            let shouldRun = settings.hostsPartyServer
+            Task { await partyHost.setRunning(shouldRun) }
+        }
         nextEpisode.isEnabled = settings.autoplaysNextEpisode
         nextEpisode.countdown = settings.clamped.nextEpisodeCountdown
 
@@ -210,13 +218,15 @@ public final class SettingsModel {
 
 /// The tabs of the Settings window.
 public enum SettingsTab: String, Sendable, CaseIterable, Identifiable {
-    case general, playback, streaming, shortcuts, advanced
+    case general, account, playback, streaming, party, shortcuts, advanced
 
     public var id: Self { self }
 
     public var title: String {
         switch self {
         case .general: "General"
+        case .account: "Account"
+        case .party: "Watch Party"
         case .playback: "Playback"
         case .streaming: "Streaming"
         case .shortcuts: "Shortcuts"
@@ -227,6 +237,8 @@ public enum SettingsTab: String, Sendable, CaseIterable, Identifiable {
     public var symbolName: String {
         switch self {
         case .general: "gearshape"
+        case .account: "person.crop.circle"
+        case .party: "person.2"
         case .playback: "play.rectangle"
         case .streaming: "arrow.down.circle"
         case .shortcuts: "keyboard"

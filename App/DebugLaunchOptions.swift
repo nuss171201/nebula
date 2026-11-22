@@ -41,6 +41,14 @@
             UserDefaults.standard.bool(forKey: "silent")
         }
 
+        /// `-accountServer <address>` with `-profile`: a sign-in service to use in place of the
+        /// build's, so that the account form can be looked at (`http` on this machine only; a
+        /// stand-in, never a real project's key).
+        static var accountConfiguration: AccountConfiguration? {
+            guard profileDirectory != nil, let address = UserDefaults.standard.string(forKey: "accountServer") else { return nil }
+            return AccountConfiguration(address: address, publicKey: "debug")
+        }
+
         /// `-profile <folder>`: keep the database and caches there instead of in the user's own
         /// folders, so a check can install add-ons and stream without touching their data.
         static var profileDirectory: URL? {
@@ -173,6 +181,16 @@
                     for _ in 0 ..< 200 where !model.downloadBestStreamOfShownTitle() {
                         try? await Task.sleep(for: .milliseconds(100))
                     }
+                }
+            }
+            if defaults.bool(forKey: "hostParty"), profileDirectory != nil {
+                // Once the settings have been read: switch on the party server this Mac runs
+                // (in a scratch profile it keeps to this machine).
+                Task {
+                    for _ in 0 ..< 100 where !model.settings.hasLoaded {
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                    model.settings.settings.hostsPartyServer = true
                 }
             }
             if let peer = defaults.string(forKey: "peer"), profileDirectory != nil, let port = Int(peer.split(separator: ":").last ?? "") {

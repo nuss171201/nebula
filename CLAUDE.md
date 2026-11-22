@@ -554,6 +554,30 @@ StreamPlayer ─┬─ web address ───────────────
   0.083 s apart. A downloaded file played with `StreamPlayer.playFile` sets `nowPlayingURL`, so a party
   knows it as the catalog title it is; that was not tried in a party. Everything Stage 10 lists as
   not verified still is not.
+- **Settings is also a section of the main window** (`SettingsScreen`): the Settings window's tabs
+  (`SettingsPane`) under a row of capsules. Two tabs are new: Account and Watch Party.
+- **A party server can be run from the app** (Settings > Watch Party; `PartyHost`, `PartyHostServer`).
+  It is the signalling server the tests always had, moved into the WatchParty package and able to
+  listen on the local network (port 8787); `LoopbackSignalServer` is now a name for it. While it runs,
+  parties start at it before any other server. `PartyServer` therefore accepts plain `http` for
+  private IPv4 addresses as well as for this machine; what passes through a server is sealed with the
+  invitation's secret either way. It is for one network: no relay, no TLS, gone when the app quits.
+  With `-profile` it keeps to this machine. **Never tried between two Macs**; on a real run macOS may
+  ask about incoming connections (firewall) and, on the joining Mac, about the local network.
+- **Accounts** (decided by the user, 22 Nov 2026: a hosted Supabase project): `AccountClient` speaks
+  Supabase's sign-in REST interface directly (sign up, log in, refresh, log out, password reset; no
+  SDK), `AccountCenter` is the model, and the session lives in the keychain (`KeychainSessionStore`),
+  or in a file inside a `-profile`. The service is named by `ACCOUNT_SERVER_URL` and
+  `ACCOUNT_PUBLIC_KEY` in `Config/Branding.xcconfig`; **both are empty, so the app has no accounts
+  until the user creates the project and fills them in.** Only the public ("anon") key ever goes
+  there. A request is retried only when it cannot have arrived (a second "create account" would be
+  told the account exists). An account does nothing else yet: nothing syncs. **Never run against a
+  real Supabase project**: the request and answer shapes are from its documentation and are tested
+  against a scripted stand-in. An ad-hoc signed build gets a new identity on every rebuild, so
+  macOS may ask to let it read the keychain item an earlier build made.
+  Debug: `-accountServer <http://127.0.0.1:…>` (with `-profile`) shows the form; `-hostParty YES`
+  switches the server on. Seen in the app: the Settings section, the form, the server running.
+  Nothing was typed or clicked.
 - **A series whose catalog lists each season as a title of its own** (Kitsu does) shows them all as
   seasons: `Franchise` reads the "Prequel:" and "Sequel:" links in the category "Franchise"
   (`stremio:///detail/<type>/<id>`, the protocol's address for a title's page; nothing else is

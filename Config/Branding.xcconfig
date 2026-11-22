@@ -20,3 +20,10 @@ UPDATE_PUBLIC_KEY =
 // name one in Settings, and can always join with an invitation link, which carries its own.
 // Must be https; written like the feed address above:  https:/$()/party.example.com
 PARTY_SERVER_URL =
+
+// Accounts. The address and the public ("anon") key of the sign-in service: a Supabase project
+// (Project Settings > API). Both empty, as here, the app has no accounts and says so in
+// Settings > Account. The key is public by design; the service's secret key must never be put
+// here or anywhere in the app. Written like the feed address above:  https:/$()/abc.supabase.co
+ACCOUNT_SERVER_URL =
+ACCOUNT_PUBLIC_KEY =

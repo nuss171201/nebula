@@ -35,6 +35,10 @@ public struct AppDependencies: Sendable {
     public let engineConfigFolder: EngineConfigFolder?
     /// Set when something went wrong during startup that the user should know about.
     public let startupWarning: String?
+    /// Speaks to the sign-in service; `nil` when the build names none, and then there are no accounts.
+    public var accountClient: AccountClient?
+    /// Where the session is kept between launches. In memory unless the app says otherwise.
+    public var accountStore: any AccountSessionStore = FileSessionStore()
 
     public init(
         branding: AppBranding,
@@ -192,6 +196,15 @@ public struct AppDependencies: Sendable {
             builtInServer: server, staysOnThisMachine: staysOnThisMachine, allowsVoice: allowsVoice,
             appName: branding.name, userAgent: branding.userAgent, logSubsystem: branding.bundleIdentifier
         )
+    }
+
+    /// Where a real run keeps its session: the keychain; a check with a profile of its own, a
+    /// file in that profile, so that macOS has no reason to ask about the keychain.
+    public static func accountStore(branding: AppBranding, profileDirectory: URL?) -> any AccountSessionStore {
+        if let profileDirectory {
+            return FileSessionStore(file: profileDirectory.appendingPathComponent("Support/account.json"))
+        }
+        return KeychainSessionStore(service: branding.bundleIdentifier + ".account")
     }
 
     private static func downloadsDirectory(named name: String, profile: URL?) -> URL? {

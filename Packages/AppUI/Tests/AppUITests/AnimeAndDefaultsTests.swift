@@ -73,7 +73,7 @@ struct AnimeTests {
 
     @Test("The sidebar has Anime and Downloads")
     func sections() {
-        #expect(AppSection.allCases.map(\.title) == ["Home", "Discover", "Anime", "Library", "Downloads", "Calendar", "Add-ons"])
+        #expect(AppSection.allCases.map(\.title) == ["Home", "Discover", "Anime", "Library", "Downloads", "Calendar", "Add-ons", "Settings"])
         #expect(AppSection(rawValue: "anime") == .anime && AppSection(rawValue: "downloads") == .downloads)
     }
 }

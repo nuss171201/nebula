@@ -14,25 +14,62 @@ public struct SettingsView: View {
     public var body: some View {
         TabView(selection: $model.selectedTab) {
             ForEach(SettingsTab.allCases) { tab in
-                pane(tab)
+                SettingsPane(tab: tab, model: model)
                     .tabItem { Label(tab.title, systemImage: tab.symbolName) }
                     .tag(tab)
             }
         }
-        .frame(width: 640, height: 540)
+        .frame(width: 720, height: 560)
         // Until the stored settings have been read there is nothing true to show or to edit.
         .disabled(!model.hasLoaded)
     }
+}
 
-    @ViewBuilder
-    private func pane(_ tab: SettingsTab) -> some View {
+/// One tab's worth of settings, wherever it is shown: the Settings window or the sidebar's section.
+struct SettingsPane: View {
+    let tab: SettingsTab
+    let model: SettingsModel
+
+    var body: some View {
         switch tab {
         case .general: GeneralSettingsPane(model: model)
+        case .account: AccountSettingsPane(center: model.account)
         case .playback: PlaybackSettingsPane(model: model)
         case .streaming: StreamingSettingsPane(model: model)
+        case .party: PartySettingsPane(model: model, host: model.partyHost)
         case .shortcuts: ShortcutsSettingsPane(model: model.shortcuts)
         case .advanced: AdvancedSettingsPane(model: model)
         }
+    }
+}
+
+/// Settings as a section of the main window: the same tabs as the Settings window, chosen from
+/// a row of capsules, on the app's own background.
+struct SettingsScreen: View {
+    @Bindable var model: SettingsModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal) {
+                PillPicker(
+                    options: SettingsTab.allCases,
+                    selection: model.selectedTab,
+                    title: \.title,
+                    select: { model.selectedTab = $0 },
+                    label: "Settings"
+                )
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+            }
+            .scrollIndicators(.hidden)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial)
+            SettingsPane(tab: model.selectedTab, model: model)
+                .scrollContentBackground(.hidden)
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .disabled(!model.hasLoaded)
     }
 }
 
@@ -71,31 +108,8 @@ struct GeneralSettingsPane: View {
                 Toggle("Show Featured Titles", isOn: $model.settings.showsFeatured)
                 Toggle("Show Continue Watching", isOn: $model.settings.showsContinueWatching)
             }
-            Section {
-                TextField("Your name", text: $model.settings.partyName, prompt: Text(PartyCenter.defaultName))
-                TextField("Party server", text: $model.settings.partyServer, prompt: Text("https://…"))
-                    .autocorrectionDisabled()
-            } header: {
-                Text("Watch Party")
-            } footer: {
-                Text(partyFootnote)
-            }
         }
         .formStyle(.grouped)
-    }
-}
-
-extension GeneralSettingsPane {
-    /// What the party server is, and whether what was typed can be used as one.
-    var partyFootnote: String {
-        let typed = model.settings.partyServer.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !typed.isEmpty, PartyServer(typed) == nil {
-            return "That is not an address that can be used: it has to start with https://."
-        }
-        return """
-        The party server lets the apps in a party find each other; what they say then goes directly between them. \
-        Leave it empty to use the one this app came with, if it came with one. An invitation link always names its own.
-        """
     }
 }
 

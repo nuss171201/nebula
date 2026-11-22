@@ -51,18 +51,25 @@ struct MediaCenterApp: App {
             engineOptions = DebugLaunchOptions.engineOptions
             profile = DebugLaunchOptions.profileDirectory
         #endif
-        let model = AppModel(
-            dependencies: .live(
-                branding: Branding.current,
-                defaultAddons: DefaultAddons.addons(in: .main),
-                playsAudio: playsAudio,
-                additionalEngineOptions: engineOptions,
-                profileDirectory: profile,
-                // A check with a scratch profile streams only between programs on this machine.
-                streamsStayLocal: profile != nil,
-                partyServer: PartyEnvironment.builtInServer(infoDictionary: Bundle.main.infoDictionary)
-            )
+        var dependencies = AppDependencies.live(
+            branding: Branding.current,
+            defaultAddons: DefaultAddons.addons(in: .main),
+            playsAudio: playsAudio,
+            additionalEngineOptions: engineOptions,
+            profileDirectory: profile,
+            // A check with a scratch profile streams only between programs on this machine.
+            streamsStayLocal: profile != nil,
+            partyServer: PartyEnvironment.builtInServer(infoDictionary: Bundle.main.infoDictionary)
         )
+        // Accounts exist only where the build names a sign-in service.
+        dependencies.accountClient = AccountConfiguration(infoDictionary: Bundle.main.infoDictionary).map { AccountClient(configuration: $0) }
+        dependencies.accountStore = AppDependencies.accountStore(branding: Branding.current, profileDirectory: profile)
+        #if DEBUG
+            if let stand = DebugLaunchOptions.accountConfiguration {
+                dependencies.accountClient = AccountClient(configuration: stand)
+            }
+        #endif
+        let model = AppModel(dependencies: dependencies)
         #if DEBUG
             DebugLaunchOptions.apply(to: model)
         #endif

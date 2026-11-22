@@ -28,6 +28,9 @@ public final class AppModel {
     /// The Anime section's board: the catalogs of anime, with a banner of their own.
     public let anime: HomeModel
     public let party: PartyCenter
+    /// The party server this Mac runs itself, when switched on in Settings.
+    public let partyHost: PartyHost
+    public let account: AccountCenter
 
     /// The sidebar selection. Optional because a list selection can be cleared;
     /// `currentSection` is what the detail area should show.
@@ -117,6 +120,11 @@ public final class AppModel {
             settings.noteStreamSession(bestRate: rate)
         }
         party = PartyCenter(environment: dependencies.party, settings: settings, coordinator: player, streamPlayer: streamPlayer)
+        partyHost = PartyHost(staysOnThisMachine: dependencies.party.staysOnThisMachine, logSubsystem: dependencies.branding.bundleIdentifier)
+        account = AccountCenter(client: dependencies.accountClient, store: dependencies.accountStore)
+        party.host = partyHost
+        settings.partyHost = partyHost
+        settings.account = account
         selection = initialSection
         currentSection = initialSection
         usesStartSection = initialSection == .home
@@ -149,6 +157,7 @@ public final class AppModel {
         await dependencies.streamManager.trimCache()
         // Carries on with what was being downloaded when the app was last quit.
         await downloads.load()
+        await account.start()
     }
 
     /// Called when the root view first appears.

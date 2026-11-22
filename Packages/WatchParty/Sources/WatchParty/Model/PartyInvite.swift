@@ -7,13 +7,16 @@ public struct PartyServer: Sendable, Hashable {
     /// The address as people see and share it, always ending in a slash.
     public let url: URL
 
-    /// Accepts an `https` address with a host. Plain `http` is accepted for this machine only,
-    /// which is what checks and tests use.
+    /// Accepts an `https` address with a host. Plain `http` is accepted for this machine (what
+    /// checks and tests use) and for an address on the local network, where a party server run
+    /// from the app itself is found (`PartyHostServer`): what passes through a server is sealed
+    /// with the invitation's secret either way.
     public init?(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var components = URLComponents(string: trimmed), let host = components.host, !host.isEmpty else { return nil }
         let scheme = components.scheme?.lowercased()
-        let isAllowed = scheme == "https" || (scheme == "http" && Self.loopbackHosts.contains(host.lowercased()))
+        let isNearby = Self.loopbackHosts.contains(host.lowercased()) || Self.isPrivateAddress(host)
+        let isAllowed = scheme == "https" || (scheme == "http" && isNearby)
         guard isAllowed, components.user == nil, components.password == nil else { return nil }
         components.scheme = scheme
         components.query = nil
@@ -26,6 +29,18 @@ public struct PartyServer: Sendable, Hashable {
     }
 
     private static let loopbackHosts: Set<String> = ["127.0.0.1", "localhost", "::1", "[::1]"]
+
+    /// Whether text is an IPv4 address that only exists on a local network (10.x, 172.16 to
+    /// 172.31, 192.168.x, or the self-assigned 169.254.x): never a name, never a public address.
+    public static func isPrivateAddress(_ text: String) -> Bool {
+        let parts = text.split(separator: ".", omittingEmptySubsequences: false).map { UInt8($0) }
+        guard parts.count == 4, let first = parts[0], let second = parts[1], parts[2] != nil, parts[3] != nil else { return false }
+        switch (first, second) {
+        case (10, _), (192, 168), (169, 254): return true
+        case (172, 16 ... 31): return true
+        default: return false
+        }
+    }
 
     /// Where the app connects: the same place, spoken to over a web socket.
     public var socketURL: URL {

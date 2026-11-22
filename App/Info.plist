@@ -129,6 +129,10 @@
 	<string>$(UPDATE_PUBLIC_KEY)</string>
 	<key>PartyServerURL</key>
 	<string>$(PARTY_SERVER_URL)</string>
+	<key>AccountServerURL</key>
+	<string>$(ACCOUNT_SERVER_URL)</string>
+	<key>AccountPublicKey</key>
+	<string>$(ACCOUNT_PUBLIC_KEY)</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>$(BRAND_NAME) looks for people sharing a stream on your network, asks your router to let others reach it, and connects directly to friends in a watch party who are on the same network.</string>
 	<key>NSMicrophoneUsageDescription</key>

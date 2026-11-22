@@ -91,9 +91,13 @@ public final class PartyCenter {
         NSFullUserName().split(separator: " ").first.map(String.init) ?? "Guest"
     }
 
-    /// The server a new party is started at: the one named in Settings, else the one the build came with.
+    /// The party server this Mac runs itself, when it does.
+    @ObservationIgnored public var host: PartyHost?
+
+    /// The server a new party is started at: the one this Mac is running, else the one named
+    /// in Settings, else the one the build came with.
     public var server: PartyServer? {
-        PartyServer(settings.settings.partyServer) ?? environment.builtInServer
+        host?.server ?? PartyServer(settings.settings.partyServer) ?? environment.builtInServer
     }
 
     // MARK: - Starting, joining, leaving
@@ -102,7 +106,7 @@ public final class PartyCenter {
     public func startParty() {
         guard session == nil else { return }
         guard let server else {
-            errorMessage = "No party server is set up. Name one in Settings › General, or join a friend's party with their invitation link."
+            errorMessage = "No party server is set up. Start one or name one in Settings › Watch Party, or join a friend's party with their invitation link."
             return
         }
         begin(PartyInvite.make(server: server), isHost: true)

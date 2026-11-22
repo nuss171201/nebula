@@ -7,6 +7,7 @@ public enum AppSection: String, CaseIterable, Identifiable, Sendable {
     case downloads
     case calendar
     case addons
+    case settings
 
     public var id: Self { self }
 
@@ -19,6 +20,7 @@ public enum AppSection: String, CaseIterable, Identifiable, Sendable {
         case .downloads: "Downloads"
         case .calendar: "Calendar"
         case .addons: "Add-ons"
+        case .settings: "Settings"
         }
     }
 
@@ -32,6 +34,7 @@ public enum AppSection: String, CaseIterable, Identifiable, Sendable {
         case .downloads: "arrow.down.circle"
         case .calendar: "calendar"
         case .addons: "puzzlepiece.extension"
+        case .settings: "gearshape"
         }
     }
 }
