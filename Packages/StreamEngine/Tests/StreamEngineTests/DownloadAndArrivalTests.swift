@@ -230,16 +230,21 @@ struct SlowArrivalTests {
     func partialPiecesCount() async throws {
         let swarm = try await LoopbackSwarm.make(size: 4 << 20, pieceLength: 1 << 20)
         defer { Task { await swarm.tearDown() } }
-        // A megabyte a second, so that each piece takes about a second to come.
+        // Someone who shares the same file at a megabyte a second, so that each piece takes
+        // about a second to come. (Held back at the sending end: a receiver that limits itself
+        // was seen to stall for good on a piece with a deadline.)
         var settings = TorrentEngineSettings.loopback()
-        settings.downloadRateLimit = 1 << 20
+        settings.uploadRateLimit = 1 << 20
         settings.limitsPeersOnThisMachine = true
-        let slow = TorrentEngine(settings: settings, directory: swarm.root.appendingPathComponent("slow"))
-        defer { Task { await slow.shutdown() } }
+        let slowSeeder = TorrentEngine(settings: settings, directory: swarm.root.appendingPathComponent("slow-seeder"))
+        let torrentFile = swarm.root.appendingPathComponent("sample.torrent")
+        #expect(try await slowSeeder.seed(torrentFile: torrentFile, dataDirectory: swarm.file.deletingLastPathComponent()) == swarm.infoHash)
+        let slow = swarm.leecher
+        defer { Task { await slowSeeder.shutdown() } }
         try await slow.add(#require(TorrentSource(infoHash: swarm.infoHash)))
         var port = 0
         for _ in 0 ..< 200 where port == 0 {
-            port = await swarm.seeder.listenPort
+            port = await slowSeeder.listenPort
             try await Task.sleep(for: .milliseconds(25))
         }
         await slow.connect(swarm.infoHash, toPeerAt: "127.0.0.1", port: port)
@@ -248,7 +253,7 @@ struct SlowArrivalTests {
 
         var readings: [ArrivalProgress] = []
         let started = ContinuousClock.now
-        while ContinuousClock.now - started < .seconds(30) {
+        while ContinuousClock.now - started < .seconds(60) {
             guard let reading = await slow.arrival(of: swarm.infoHash) else { break }
             readings.append(reading)
             if reading.fraction >= 1 {

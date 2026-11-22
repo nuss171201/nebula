@@ -544,9 +544,12 @@ at 93 % over a torrent seeded at 900 kB/s. Carried over or not verified:
 - The Kitsu add-on is community-run; whether it stays up, and how its titles fare with the user's
   stream add-ons, is the user's to report. Its `subtitles` resource is now also asked by the player.
 - The time-left figure uses the torrent's whole download rate, so it is rough by nature.
-- **`carriesOnFromAJump` (StreamEngine) failed once in three full CI runs** ("arrivals ran more than 4
-  pieces ahead after a jump") and passed six times out of six by itself. Nothing in this work touches
-  piece priorities; the suite now runs beside more engine tests. Not investigated further.
+- **A receiver that limits its own download rate can stall for good** on a piece with a deadline
+  when its only peer is on this machine (seen in a test: stuck part-way through a piece for a minute,
+  one run in four). The test now holds the sender back instead and passed ten runs of ten. Whether a
+  user's download limit (Settings → Streaming) can do the same in a real swarm is not known; with many
+  peers it has not been seen. `carriesOnFromAJump` failed twice in a dozen full runs while that test
+  was stalling beside it, and not once in the ten runs since.
 - The first `ci.sh` in a fresh worktree fetched the pinned mpv and FFmpeg archives again (the frameworks
   had been copied from the main checkout without their stamps): copy `Vendor/cache` too next time.
 
