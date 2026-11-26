@@ -1,6 +1,6 @@
-# Orbit
+# Nebula
 
-Native macOS media center with a libmpv-based player. "Orbit" is a placeholder name.
+Native macOS media center with a libmpv-based player. It was first called "Orbit"; the bundle identifier still is.
 The full product spec is the original brief; this file is the working reference.
 
 ## Ground rules
@@ -79,7 +79,7 @@ PROFILE_BUILD=1 DETAIL=60 DETAIL_FROM_MS=3500 Scripts/profile-launch.sh 13 -sect
 swift Scripts/generate-icon.swift App/Assets.xcassets/AppIcon.appiconset   # redraw placeholder icon
 ```
 
-Built app: `build/DerivedData/Build/Products/{Debug,Release}/Orbit.app`. Logs: `build/logs/`.
+Built app: `build/DerivedData/Build/Products/{Debug,Release}/Nebula.app`. Logs: `build/logs/`.
 Traces: `build/traces/` (open in Instruments).
 
 ### Running the app for verification
@@ -111,7 +111,7 @@ A scratch profile is also the only way a silent check records watch history and 
 re-enters SwiftUI's update and aborts (this crashed the app twice in Stage 4, with a crash dialog on the
 user's screen each time). For the same reason the player window is resized through the animator, never
 with the blocking `setFrame(_:display:animate:)`. Before trying a new launch argument in the app, check
-`ls ~/Library/Logs/DiagnosticReports | grep Orbit` afterwards.
+`ls ~/Library/Logs/DiagnosticReports | grep Nebula` afterwards.
 
 **Never make macOS ask the user for permission during a check.** Do not point the app at files in
 `~/Documents`, `~/Desktop` or `~/Downloads` (this repository is in Documents): macOS shows a

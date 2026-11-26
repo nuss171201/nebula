@@ -21,7 +21,7 @@ quit_app() {
 trap quit_app EXIT
 quit_app
 # A profile of its own: nothing of the user's is read or trimmed, and it runs alongside the app if that is open.
-SCRATCH_PROFILE="$(mktemp -d "${TMPDIR:-/tmp}/orbit-check.XXXXXX")"
+SCRATCH_PROFILE="$(mktemp -d "${TMPDIR:-/tmp}/nebula-check.XXXXXX")"
 # shellcheck disable=SC2086  # EXTRA_ARGS is a list of words on purpose
 open -g ${OPEN_ENV:+--env "$OPEN_ENV"} "$APP" --args -profile "$SCRATCH_PROFILE" -silent YES -section addons -engine "$ENGINE_OPTIONS" -play "$MEDIA" ${EXTRA_ARGS:-}
 sleep "$WAIT"

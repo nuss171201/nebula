@@ -41,7 +41,7 @@ trap quit_app EXIT
 
 quit_app
 # A profile of its own: nothing of the user's is read or trimmed, and it runs alongside the app if that is open.
-SCRATCH_PROFILE="$(mktemp -d "${TMPDIR:-/tmp}/orbit-check.XXXXXX")"
+SCRATCH_PROFILE="$(mktemp -d "${TMPDIR:-/tmp}/nebula-check.XXXXXX")"
 # The Add-ons section keeps the main window quiet, so the numbers are the player's.
 open -g "$APP" --args -profile "$SCRATCH_PROFILE" -silent YES -section addons -engine "$ENGINE_OPTIONS" -play "$MEDIA" -stats "$((SECONDS_TO_SAMPLE + 2))"
 PID=""

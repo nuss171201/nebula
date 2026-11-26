@@ -4,7 +4,7 @@
 # Usage: Scripts/stage-media.sh <path-or-url>
 #
 # Why: this repository lives in ~/Documents. When the app (not the test runner) opens a
-# file there, macOS asks the user "Orbit would like to access files in your Documents
+# file there, macOS asks the user "Nebula would like to access files in your Documents
 # folder" and playback waits for the answer. Local builds are ad-hoc signed, so every
 # rebuild is a "new app" and the question comes back. Checks must never put that dialog
 # on the user's screen, so they play a copy from the temporary folder instead.
@@ -24,7 +24,7 @@ case "$ABSOLUTE" in
 esac
 
 TEMPORARY="${TMPDIR:-/tmp}"
-STAGE="${TEMPORARY%/}/orbit-staged-media"
+STAGE="${TEMPORARY%/}/nebula-staged-media"
 mkdir -p "$STAGE"
 TARGET="$STAGE/$(basename "$ABSOLUTE")"
 if [[ ! -f "$TARGET" || "$ABSOLUTE" -nt "$TARGET" ]]; then
